@@ -79,6 +79,11 @@ namespace WeaponForge
             public string material;
             public float? offset;
             public float? impactFps;
+
+            // Renderer tint. Left unset, custom art resets it to white so the
+            // sprite shows as drawn instead of inheriting the template's
+            // element colour. See ApplyTint.
+            public string color;
         }
 
         // "beam": "mySprite" is shorthand for just re-skinning the fire beam.
@@ -121,12 +126,90 @@ namespace WeaponForge
                     glow = (bool?)o["glow"],
                     material = (string)o["material"],
                     offset = (float?)o["offset"],
-                    impactFps = (float?)o["impactFps"]
+                    impactFps = (float?)o["impactFps"],
+                    color = (string)o["color"]
                 };
             }
 
             spec.fileName = fileName;
             return spec;
+        }
+
+        // Why this exists: a stock beam prefab carries its ELEMENT tint on the
+        // SpriteRenderer itself - the Caps laser's is orange-red. A renderer
+        // tint MULTIPLIES whatever sprite sits in the slot, so custom art
+        // loaded perfectly and then came out the wrong colour: magenta art on
+        // an orange renderer reads as orange. Nothing in the game's own beam
+        // code sets that colour, so it is purely inherited from the template.
+        //
+        // So: art you supplied resets its renderer to white and shows as drawn,
+        // and "color" re-tints deliberately. A renderer whose sprite was NOT
+        // replaced is left alone, or a custom fire beam would silently bleach
+        // the stock warm-up beam next to it.
+        private static void ApplyTint(
+            SpriteRenderer fire,
+            SpriteRenderer warmup,
+            Spec spec,
+            string fileName)
+        {
+            Color? tint = null;
+
+            if (!string.IsNullOrEmpty(spec.color))
+            {
+                if (VisualCustomizer.IsRainbow(spec.color))
+                {
+                    Log.LogWarning(
+                        fileName + ": beam \"color\": rainbow is not " +
+                        "supported on a beam yet - the beam is one stretched " +
+                        "quad with no per-frame driver on it. Use a solid " +
+                        "colour. Ignored.");
+                }
+                else
+                {
+                    Color parsed;
+
+                    if (VisualCustomizer.TryParseColor(spec.color, out parsed))
+                        tint = parsed;
+                    else
+                        Log.LogWarning(
+                            fileName + ": beam \"color\": '" + spec.color +
+                            "' is not a colour I recognise - ignored.");
+                }
+            }
+
+            if (tint.HasValue)
+            {
+                if (fire != null) fire.color = tint.Value;
+                if (warmup != null) warmup.color = tint.Value;
+
+                Log.LogInfo(fileName + ": beam tinted " + spec.color + ".");
+                return;
+            }
+
+            bool reset = false;
+
+            if (fire != null && !string.IsNullOrEmpty(spec.spriteName) &&
+                fire.color != Color.white)
+            {
+                fire.color = Color.white;
+                reset = true;
+            }
+
+            if (warmup != null && !string.IsNullOrEmpty(spec.warmupSprite) &&
+                warmup.color != Color.white)
+            {
+                warmup.color = Color.white;
+                reset = true;
+            }
+
+            if (reset)
+            {
+                Log.LogInfo(
+                    fileName + ": beam tint reset to white so your art shows " +
+                    "its own colours - this template's beam carried an " +
+                    "element tint that would have multiplied over it. Set " +
+                    "\"color\" in the beam block to tint it on purpose.");
+            }
         }
 
         public static void Apply(HitscanWeaponVisual visual, Spec spec)
@@ -152,6 +235,8 @@ namespace WeaponForge
 
             ApplySprite(fire, spec.spriteName, "sprite", fileName);
             ApplySprite(warmup, spec.warmupSprite, "warmupSprite", fileName);
+
+            ApplyTint(fire, warmup, spec, fileName);
 
             bool tiled = false;
 

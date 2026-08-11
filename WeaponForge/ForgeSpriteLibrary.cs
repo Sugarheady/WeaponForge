@@ -29,6 +29,12 @@ namespace WeaponForge
         // The game's own scale: 20 texture pixels to one world unit.
         public const float DefaultPixelsPerUnit = 20f;
 
+        // How much world space a module icon takes up. Stock icons are
+        // HUD_GridTiles_NN: 24x24 px at pixels-per-unit 40, so 0.6 units -
+        // NOT the 20 ppu everything else in this game uses. See
+        // ResolveIconSprite for why that matters.
+        public const float ModuleIconUnits = 0.6f;
+
         // One frame sequence, ready to hand to a ForgeSpriteAnimation.
         public class SpriteAnim
         {
@@ -58,6 +64,11 @@ namespace WeaponForge
         // uploading the texture more than once.
         private static readonly Dictionary<string, Texture2D> _sheets =
             new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+
+        // Icon-scaled rebuilds, cached so ten modules naming one sprite do
+        // not create ten Sprite objects off the same rect.
+        private static readonly Dictionary<string, Sprite> _icons =
+            new Dictionary<string, Sprite>(StringComparer.OrdinalIgnoreCase);
 
         private static bool _loaded;
 
@@ -158,6 +169,106 @@ namespace WeaponForge
             return null;
         }
 
+        // Resolve a custom sprite for use as a MODULE ICON, rebuilt at the
+        // scale the game's own icons use. Returns null when the name is not
+        // one of ours - the caller should then treat it as a stock sprite
+        // name. Module Forge reaches this by reflection (ForgeInterop), so
+        // there is one sprites folder across both mods; keep the signature
+        // stable.
+        //
+        // Why rebuild rather than hand back the sprite as loaded: an icon is
+        // drawn TWICE, by two renderers that disagree about size.
+        //   * the card on the grid/shop is a UI Image, 72x72, Simple, with
+        //     preserveAspect OFF - it stretches art to fill and does not
+        //     care about pixels-per-unit at all;
+        //   * the pickup lying on the ground is a world SpriteRenderer,
+        //     where pixels-per-unit is the ONLY thing deciding how big it
+        //     draws.
+        // Stock icons are 0.6 units. Art imported at this library's default
+        // 20 ppu would be double that on the ground while looking perfect on
+        // the card - which reads as a mod bug and is miserable to diagnose.
+        // So the longest side is fitted to the stock footprint, whatever
+        // size it was drawn at, and the pivot is centred to match stock (a
+        // sprite authored for a beam has a left-edge pivot, and would
+        // otherwise hang off to one side).
+        public static Sprite ResolveIconSprite(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            // Load order between two BepInEx plugins is not guaranteed and
+            // Module Forge may ask before anything here has run. Idempotent.
+            LoadAll();
+
+            string key = name.Trim();
+
+            Sprite cached;
+            if (_icons.TryGetValue(key, out cached))
+                return cached;
+
+            // Deliberately NOT TryGetArt: it emits a "did you mean the
+            // animation?" hint that only makes sense for a projectile. An
+            // icon cannot animate - the widget assigns a sprite and nothing
+            // ever ticks it - so an animation name resolves to its first
+            // frame, quietly.
+            Sprite source;
+
+            if (!_sprites.TryGetValue(key, out source))
+            {
+                SpriteAnim anim;
+
+                if (!_anims.TryGetValue(key, out anim) ||
+                    anim.frames == null || anim.frames.Length == 0)
+                {
+                    return null;
+                }
+
+                source = anim.frames[0];
+
+                Log.LogInfo(
+                    "Icon '" + key + "' is an animation; module icons cannot " +
+                    "animate, so its first frame is used.");
+            }
+
+            if (source == null || source.texture == null)
+                return null;
+
+            Rect rect = source.rect;
+            float longest = Mathf.Max(rect.width, rect.height);
+
+            if (longest <= 0f)
+                return null;
+
+            Sprite icon = Sprite.Create(
+                source.texture,
+                rect,
+                new Vector2(0.5f, 0.5f),
+                longest / ModuleIconUnits,
+                0,
+                SpriteMeshType.FullRect,
+                Vector4.zero);
+
+            if (icon == null)
+                return null;
+
+            icon.name = "Forge Icon " + key;
+            icon.hideFlags = HideFlags.HideAndDontSave;
+
+            _icons[key] = icon;
+
+            if (Mathf.Abs(rect.width - rect.height) > 0.5f)
+            {
+                Log.LogWarning(
+                    "Icon '" + key + "' is " + (int)rect.width + "x" +
+                    (int)rect.height + ", not square. The module CARD " +
+                    "stretches art to a square, so it will look squashed " +
+                    "there, while the pickup on the ground keeps its shape. " +
+                    "Square art (24x24 is the stock size) avoids that.");
+            }
+
+            return icon;
+        }
+
         // Scan the folder once. Safe to call repeatedly.
         public static void LoadAll()
         {
@@ -174,6 +285,12 @@ namespace WeaponForge
                 WriteReadme(folder);
                 return;
             }
+
+            // Refresh the readme when the mod's has moved on. Writing it
+            // only on first run means anyone who already had this folder
+            // never learns about anything added since - which is exactly
+            // what happened with module icons.
+            WriteReadme(folder);
 
             // Three passes, because an animation names sprites and those
             // sprites may live in a different sheet (or be a bare PNG):
@@ -677,14 +794,35 @@ namespace WeaponForge
 
         private static void WriteReadme(string folder)
         {
-            File.WriteAllText(
-                Path.Combine(folder, "README.txt"),
+            string path = Path.Combine(folder, "README.txt");
+            string text = ReadmeText();
+
+            try
+            {
+                // Don't rewrite an identical file every launch.
+                if (File.Exists(path) && File.ReadAllText(path) == text)
+                    return;
+
+                File.WriteAllText(path, text);
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning(
+                    "Could not write " + path + ": " + e.Message);
+            }
+        }
+
+        private static string ReadmeText()
+        {
+            return
                 @"CUSTOM SPRITES FOR WEAPON FORGE
 ==============================
 
 Drop your own art in this folder and reference it from a weapon's JSON:
 
     ""weapon"": { ""projectileSprite"": ""myBullet"" }
+
+The same art can also be a MODULE CARD ICON - see the end of this file.
 
 TWO WAYS TO DO IT
 -----------------
@@ -782,9 +920,43 @@ THINGS THAT WILL BITE YOU
 * Art is uploaded uncompressed, so a few small PNGs are free but a
   hundred large ones cost memory.
 
+MODULE CARD ICONS
+-----------------
+
+The picture on the module card is the same kind of thing, so the same
+names work there. In a WEAPON FORGE weapon file:
+
+    ""module"": { ""icon"": ""myicon"" }
+
+and in a MODULE FORGE module file, the top-level ""icon"". (Module Forge
+has no sprites folder of its own - it borrows this one, so there is one
+folder and one set of names for both mods. Custom icons therefore need
+Weapon Forge installed; stock icon names work either way.)
+
+Four things to know, because an icon is drawn by two different renderers:
+
+* DRAW IT SQUARE. Stock icons are 24x24. The card on the grid stretches
+  art to fill a square and does not preserve the aspect ratio, so a tall
+  or wide picture looks squashed there - while the pickup lying on the
+  ground keeps its shape. Any SIZE is fine (it is scaled to match the
+  stock icons automatically, at the icons' own 40 pixels-per-unit rather
+  than the 20 used for bullets), but the SHAPE is yours to get right.
+
+* IT IS TINTED by the module's ""color"", in both places. Draw in white or
+  grey and let color do the work, or set ""color"": ""#ffffff"" to see your
+  art's own colours.
+
+* AN ICON CANNOT ANIMATE. The game assigns the sprite once and nothing
+  ticks it. Naming an animation gets you its first frame, and the log
+  says so.
+
+* THE GAME WINS A NAME CLASH. Naming your PNG after a stock sprite gets
+  the stock one, with a warning telling you to rename yours. Stock module
+  icons are called HUD_GridTiles_NN.
+
 Anything the mod could not read is reported in BepInEx\LogOutput.log -
 search for ""WeaponForge.Sprites"".
-");
+";
         }
     }
 }

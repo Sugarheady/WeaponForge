@@ -8,7 +8,7 @@ namespace WeaponForge
 {
     // Coexistence bridge for the burn tick-rate / burn-color mechanic.
     //
-    // ModuleForge (com.andy.moduleforge) already owns a global burn engine
+    // ModuleForge (com.sugarheady.moduleforge) already owns a global burn engine
     // by patching DamagableResource.Update + the burn-particle emit
     // methods. If WeaponForge ALSO patched them, the two would fight
     // (stuck tick rates, permanently miscolored fire). So:

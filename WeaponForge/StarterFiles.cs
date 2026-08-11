@@ -417,10 +417,21 @@ Full details in sounds/README.txt, written on first run.
 
 MODULE EXTRAS (inside ""module"")
 --------------------------------
-icon          module card icon sprite name, e.g. ""HUD_GridTiles_8""
-              (the weapon icons). The builder page has a dropdown to
-              pick one by weapon name. A few: Popper=13, Bolt=1,
-              Dart/Rocket=29, Shotgun=7, Laser=8, AirMine=25, Drone=19
+icon          module card icon. A game sprite name, e.g.
+              ""HUD_GridTiles_8"" (the weapon icons) - the builder page
+              has a dropdown to pick one by weapon name. A few:
+              Popper=13, Bolt=1, Dart/Rocket=29, Shotgun=7, Laser=8,
+              AirMine=25, Drone=19.
+              OR art YOU drew: the same names projectileSprite takes,
+              so a PNG in the ""sprites"" folder called myicon.png is
+              ""icon"": ""myicon"". Draw it SQUARE (stock icons are
+              24x24) - the card stretches art to a square, though the
+              pickup on the ground keeps its shape. Any size works;
+              it is scaled to match the stock icons. The icon is
+              TINTED by ""color"" below, so draw white/grey and let
+              color do the work, or set color to ""#ffffff"" to see
+              your own colours. A game sprite wins a name clash, and
+              the log says so.
 color         game ColorAsset name (ColorWhite, ColorOrange,
               ColorPurple, ColorBlue, ColorRed, ColorYellow,
               Color Tech, ColorPower) OR a hex value ""#7fd4ff""

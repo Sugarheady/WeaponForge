@@ -12,6 +12,13 @@
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <!-- Keeps the builder's absolute paths OUT of the shipped DLL. Without
+         this, the PE debug directory embeds the full path to the .pdb
+         (C:\Users\<name>\...\obj\Debug\WeaponForge.pdb) and every source file
+         path goes into the .pdb - all readable out of a released DLL with
+         `strings`. PathMap rewrites them to a relative form; combined with
+         Deterministic it also makes the build reproducible. -->
+    <PathMap>$(MSBuildProjectDirectory)=.</PathMap>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -30,48 +37,48 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
-  <!-- Reference DLLs are pulled from the WhiteTeslaMod build output, which
-       already contains copies of the game's Managed assemblies and the
-       BepInEx core. If building on another machine, point these HintPaths
-       at <game folder>\Punk_Data\Managed and <game folder>\BepInEx\core. -->
+  <!-- $(PunkManaged) is <your PUNK folder>\Punk_Data\Managed and $(PunkCore)
+       is <your PUNK folder>\BepInEx\core. Both are resolved by
+       Directory.Build.props at the repo root - see BUILDING.md. None of
+       these DLLs are redistributed here; they come from your own install. -->
   <ItemGroup>
     <Reference Include="0Harmony">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\0Harmony.dll</HintPath>
+      <HintPath>$(PunkCore)\0Harmony.dll</HintPath>
     </Reference>
     <Reference Include="BepInEx.Core">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\BepInEx.Core.dll</HintPath>
+      <HintPath>$(PunkCore)\BepInEx.Core.dll</HintPath>
     </Reference>
     <Reference Include="BepInEx.Unity.Mono">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\BepInEx.Unity.Mono.dll</HintPath>
+      <HintPath>$(PunkCore)\BepInEx.Unity.Mono.dll</HintPath>
     </Reference>
     <Reference Include="MyBox">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\MyBox.dll</HintPath>
+      <HintPath>$(PunkManaged)\MyBox.dll</HintPath>
     </Reference>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Newtonsoft.Json.dll</HintPath>
+      <HintPath>$(PunkManaged)\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="Punk.Main">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Punk.Main.dll</HintPath>
+      <HintPath>$(PunkManaged)\Punk.Main.dll</HintPath>
     </Reference>
     <!-- WeaponBase.Fire returns a UniTaskVoid, so the type must be
          resolvable even though we just let the task run. -->
     <Reference Include="UniTask">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UniTask.dll</HintPath>
+      <HintPath>$(PunkManaged)\UniTask.dll</HintPath>
     </Reference>
     <Reference Include="ServiceLocator">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\ServiceLocator.dll</HintPath>
+      <HintPath>$(PunkManaged)\ServiceLocator.dll</HintPath>
     </Reference>
     <Reference Include="Sirenix.OdinInspector.Attributes">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Sirenix.OdinInspector.Attributes.dll</HintPath>
+      <HintPath>$(PunkManaged)\Sirenix.OdinInspector.Attributes.dll</HintPath>
     </Reference>
     <Reference Include="Sirenix.Serialization">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Sirenix.Serialization.dll</HintPath>
+      <HintPath>$(PunkManaged)\Sirenix.Serialization.dll</HintPath>
     </Reference>
     <Reference Include="Sirenix.Serialization.Config">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Sirenix.Serialization.Config.dll</HintPath>
+      <HintPath>$(PunkManaged)\Sirenix.Serialization.Config.dll</HintPath>
     </Reference>
     <Reference Include="Sirenix.Utilities">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Sirenix.Utilities.dll</HintPath>
+      <HintPath>$(PunkManaged)\Sirenix.Utilities.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -82,40 +89,40 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
     <Reference Include="Unity.RenderPipelines.Universal.2D.Runtime">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Unity.RenderPipelines.Universal.2D.Runtime.dll</HintPath>
+      <HintPath>$(PunkManaged)\Unity.RenderPipelines.Universal.2D.Runtime.dll</HintPath>
     </Reference>
     <Reference Include="Unity.RenderPipelines.Universal.Runtime">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
+      <HintPath>$(PunkManaged)\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
     <!-- Texture2D.LoadImage is an extension method that lives here, not on
          Texture2D itself - needed to build a sprite from a PNG on disk. -->
     <Reference Include="UnityEngine.ImageConversionModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.ImageConversionModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.ImageConversionModule.dll</HintPath>
     </Reference>
     <!-- AudioClip / AudioSource / AudioMixerGroup live here, not in
          UnityEngine.dll - needed to build a sound from a file on disk. -->
     <Reference Include="UnityEngine.AudioModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.AudioModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.AudioModule.dll</HintPath>
     </Reference>
     <!-- Unity has no synchronous decoder for ogg/mp3; UnityWebRequestMultimedia
          is the only runtime route, and it needs both of these. -->
     <Reference Include="UnityEngine.UnityWebRequestModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.UnityWebRequestModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.UnityWebRequestModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.UnityWebRequestAudioModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.ParticleSystemModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.ParticleSystemModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.Physics2DModule">
-      <HintPath>..\..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug\UnityEngine.Physics2DModule.dll</HintPath>
+      <HintPath>$(PunkManaged)\UnityEngine.Physics2DModule.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -169,8 +176,6 @@
     <Compile Include="ForgeDeflectPatch.cs" />
     <Compile Include="ForgeGrowth.cs" />
     <Compile Include="ForgeGrowthPatch.cs" />
-    <Compile Include="ForgeExplosionColor.cs" />
-    <Compile Include="ForgeExplosionColorPatch.cs" />
     <Compile Include="ForgeSfxRegistry.cs" />
     <Compile Include="ForgeSoundLibrary.cs" />
     <Compile Include="ForgeSoundLoader.cs" />

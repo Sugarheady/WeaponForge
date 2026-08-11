@@ -21,7 +21,13 @@ namespace WeaponForge
         // Set by WeaponBuilder when any orbit weapon enables blockProjectiles.
         public static bool Enabled;
 
-        private static readonly List<Projectile> _live = new List<Projectile>();
+        // Component, not Projectile: the game has TWO projectile classes and
+        // enemies use both. Straight shots are Projectile; lobbed shots and
+        // missiles are PhysicsProjectile, a separate class that shares no base
+        // with it. Both are Components and both implement IProjectile, which is
+        // all a caller needs - position and gameObject from the Component,
+        // Velocity/Owner/Damage from the interface.
+        private static readonly List<Component> _live = new List<Component>();
         private static int _enemyLayer = -2;
 
         private static int EnemyLayer
@@ -34,7 +40,7 @@ namespace WeaponForge
             }
         }
 
-        public static void Register(Projectile projectile)
+        public static void Register(Component projectile)
         {
             if (!Enabled || projectile == null)
                 return;
@@ -67,7 +73,7 @@ namespace WeaponForge
 
             for (int i = _live.Count - 1; i >= 0; i--)
             {
-                Projectile p = _live[i];
+                Component p = _live[i];
                 if (p == null)
                 {
                     _live.RemoveAt(i);
@@ -93,7 +99,7 @@ namespace WeaponForge
         // dead: it wants to re-aim them back at whoever fired them, and that
         // needs the actual Projectile, not a body count.
         public static int CollectNear(
-            Vector2 pos, float radius, int max, List<Projectile> into)
+            Vector2 pos, float radius, int max, List<Component> into)
         {
             if (into == null || _live.Count == 0)
                 return 0;
@@ -106,7 +112,7 @@ namespace WeaponForge
                 if (max > 0 && taken >= max)
                     break;
 
-                Projectile p = _live[i];
+                Component p = _live[i];
 
                 if (p == null)
                 {
@@ -134,6 +140,22 @@ namespace WeaponForge
         public class OnShoot
         {
             static void Postfix(Projectile __instance)
+            {
+                try
+                {
+                    Register(__instance);
+                }
+                catch { }
+            }
+        }
+
+        // Enemy missiles and lobbed shots are PhysicsProjectile, an unrelated
+        // class - without this hook a deflector simply never sees them, which
+        // reads as "it ignores missiles".
+        [HarmonyPatch(typeof(PhysicsProjectile), "Shoot")]
+        public class OnShootPhysics
+        {
+            static void Postfix(PhysicsProjectile __instance)
             {
                 try
                 {

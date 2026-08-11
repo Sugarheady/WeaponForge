@@ -6,7 +6,7 @@ using HarmonyLib;
 namespace WeaponForge
 {
     [BepInPlugin(
-        "com.andy.weaponforge",
+        "com.sugarheady.weaponforge",
         "Weapon Forge",
         "1.0.0")]
     public class WeaponForgePlugin : BaseUnityPlugin
@@ -14,6 +14,24 @@ namespace WeaponForge
         private void Awake()
         {
             Logger.LogInfo("Weapon Forge loaded");
+
+            // Build stamp. We wasted a test round arguing about whether an
+            // old DLL was installed; this makes that unanswerable. The
+            // timestamp is the DLL's own last-write time, so it changes on
+            // every rebuild whether or not anyone remembers to bump a number.
+            try
+            {
+                string dll = System.Reflection.Assembly
+                    .GetExecutingAssembly().Location;
+
+                Logger.LogInfo(
+                    "BUILD " +
+                    System.IO.File.GetLastWriteTime(dll)
+                        .ToString("yyyy-MM-dd HH:mm:ss") +
+                    "  (if this is older than the change you are testing, " +
+                    "the DLL did not get copied)");
+            }
+            catch { }
 
             // Cap for WeaponForge's OWN burn tick-rate engine (used only
             // when ModuleForge isn't installed; otherwise ModuleForge's cap
@@ -32,7 +50,7 @@ namespace WeaponForge
                 ForgeBurn.MaxTicksPerSecond = maxBurnTicks.Value;
 
             var harmony =
-                new Harmony("com.andy.weaponforge");
+                new Harmony("com.sugarheady.weaponforge");
 
             harmony.PatchAll();
 

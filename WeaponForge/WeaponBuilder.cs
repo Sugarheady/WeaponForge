@@ -229,8 +229,6 @@ namespace WeaponForge
             float muzzleRgbSpeed = 0.5f;
             string projectileSprite = null;
             string subEmitterName = null;
-            string explosionColor = null;
-            float explosionRgbSpeed = 0.5f;
             bool spriteOnly = false;
             string projectileMaterial = null;
             bool? projectileGlow = null;
@@ -285,10 +283,6 @@ namespace WeaponForge
                 // is built - see ResolvePendingSubEmitters.
                 subEmitterName = (string)weaponJson["subEmitter"];
 
-                explosionColor = (string)weaponJson["explosionColor"];
-                explosionRgbSpeed =
-                    (float?)weaponJson["explosionRgbSpeed"] ?? 0.5f;
-
                 spriteOnly =
                     (bool?)weaponJson["projectileSpriteOnly"] ?? false;
 
@@ -314,8 +308,6 @@ namespace WeaponForge
                 weaponJson.Remove("projectileMaterial");
                 weaponJson.Remove("projectileGlow");
                 weaponJson.Remove("subEmitter");
-                weaponJson.Remove("explosionColor");
-                weaponJson.Remove("explosionRgbSpeed");
                 weaponJson.Remove("projectileSpriteOnly");
                 weaponJson.Remove("trail");
                 weaponJson.Remove("beam");
@@ -404,8 +396,6 @@ namespace WeaponForge
                 projectileSprite,
                 projectileMaterial,
                 projectileGlow,
-                explosionColor,
-                explosionRgbSpeed,
                 spriteOnly,
                 trailSpec,
                 beamSpec);
@@ -462,11 +452,10 @@ namespace WeaponForge
 
                 JToken powerNodes = moduleJson["powerNodes"];
 
-                // gridPlacementSfx is a REAL ModuleData field, so the mapper
-                // would happily write it - but only as a raw sfx guid. Held
-                // back so a custom sound NAME works here too, exactly like the
-                // weapon's own sound slots.
-                string gridSfx = (string)moduleJson["gridPlacementSfx"];
+                // icon can name a sprite from the sprites folder as well as
+                // a stock one, so it needs the Forge lookup rather than the
+                // generic mapper's game-asset-only scan.
+                JToken icon = moduleJson["icon"];
 
                 if (resourceGain != null)
                     moduleJson.Remove("resourceGain");
@@ -474,13 +463,19 @@ namespace WeaponForge
                 if (powerNodes != null)
                     moduleJson.Remove("powerNodes");
 
-                if (gridSfx != null)
-                    moduleJson.Remove("gridPlacementSfx");
+                if (icon != null)
+                    moduleJson.Remove("icon");
 
                 JsonFieldMapper.Apply(
                     module,
                     moduleJson,
                     name + ".module");
+
+                if (icon != null)
+                {
+                    ApplyModuleIcon(
+                        module, icon.ToString(), name + ".module.icon");
+                }
 
                 if (resourceGain != null)
                 {
@@ -493,11 +488,6 @@ namespace WeaponForge
                 if (powerNodes != null)
                 {
                     ApplyPowerNodes(module, powerNodes, fileName);
-                }
-
-                if (!string.IsNullOrEmpty(gridSfx))
-                {
-                    ApplyGridPlacementSfx(module, gridSfx, fileName);
                 }
             }
 
@@ -896,8 +886,6 @@ namespace WeaponForge
             string projectileSpriteName,
             string projectileMaterialName,
             bool? projectileGlow,
-            string explosionColorText,
-            float explosionRgbSpeed,
             bool spriteOnly,
             ForgeTrail.Spec trailSpec,
             ForgeBeam.Spec beamSpec)
@@ -980,38 +968,10 @@ namespace WeaponForge
                 }
             }
 
-            // Explosion tint. The game gives an explosion no colour of its
-            // own - the burst comes from damages[0].damageType - so this is
-            // carried on the shot and applied as the blast spawns.
-            ForgeExplosionColor explosionTint = null;
-            if (!string.IsNullOrEmpty(explosionColorText))
-            {
-                bool exRainbow = VisualCustomizer.IsRainbow(explosionColorText);
-                Color exColor = Color.white;
-
-                if (exRainbow ||
-                    VisualCustomizer.TryParseColor(explosionColorText, out exColor))
-                {
-                    explosionTint = new ForgeExplosionColor
-                    {
-                        color = exColor,
-                        rainbow = exRainbow,
-                        rgbSpeed = explosionRgbSpeed
-                    };
-                }
-                else
-                {
-                    Log.LogWarning(
-                        fileName + ": explosionColor '" + explosionColorText +
-                        "' is not a hex value, colour name, ColorAsset or " +
-                        "\"rainbow\" - ignored.");
-                }
-            }
-
             bool hasVisual =
                 color.HasValue || rainbow || scale.HasValue ||
                 customArt != null || customMaterial != null ||
-                explosionTint != null || spriteOnly || trailSpec != null ||
+                spriteOnly || trailSpec != null ||
                 beamSpec != null;
 
             int fromLayer = VisualCustomizer.FactionFromLayer(target);
@@ -1028,7 +988,7 @@ namespace WeaponForge
                             : null,
                         color, rainbow, rainbowSpeed, scale,
                         fromLayer, toLayer, hasVisual, customArt,
-                        customMaterial, explosionTint, spriteOnly,
+                        customMaterial, spriteOnly,
                         trailSpec);
 
                 if (newProjectile != null)
@@ -1053,7 +1013,7 @@ namespace WeaponForge
                                 .physicsProjectilePrefab.gameObject,
                             color, rainbow, rainbowSpeed, scale,
                             fromLayer, toLayer, hasVisual, customArt,
-                            customMaterial, explosionTint, spriteOnly,
+                            customMaterial, spriteOnly,
                             trailSpec);
 
                     if (pp != null)
@@ -1171,7 +1131,6 @@ namespace WeaponForge
             bool hasVisual,
             ForgeSpriteLibrary.Art customArt = null,
             Material customMaterial = null,
-            ForgeExplosionColor explosionTint = null,
             bool spriteOnly = false,
             ForgeTrail.Spec trailSpec = null)
         {
@@ -1210,14 +1169,6 @@ namespace WeaponForge
             if (trailSpec != null)
                 ForgeTrail.Apply(clone, trailSpec);
 
-            // A marker the explosion patch reads off the live shot.
-            if (explosionTint != null)
-            {
-                var tag = clone.AddComponent<ForgeExplosionColor>();
-                tag.color = explosionTint.color;
-                tag.rainbow = explosionTint.rainbow;
-                tag.rgbSpeed = explosionTint.rgbSpeed;
-            }
 
             Paint(clone, color, rainbow, rainbowSpeed);
 
@@ -2049,23 +2000,34 @@ namespace WeaponForge
                 return;
             }
 
-            if (pw.usePhysics)
+            // A usePhysics weapon fires a PhysicsProjectile - a different
+            // class on a different prefab - so it needs its own clone and its
+            // own component. The growth patch hooks both.
+            bool physics = pw.usePhysics;
+
+            if (physics && pw.physicsProjectilePrefab == null)
             {
                 Log.LogWarning(
-                    fileName + ": grow does not work on usePhysics (lobbed) " +
-                    "shots - it runs on the plain projectile only. Ignored.");
+                    fileName + ": grow - usePhysics is on but there is no " +
+                    "physicsProjectilePrefab to grow. Ignored.");
                 return;
             }
 
             GameObject clone = VisualCustomizer.ClonePrefab(
-                pw.projectilePrefab.gameObject);
+                physics
+                    ? pw.physicsProjectilePrefab.gameObject
+                    : pw.projectilePrefab.gameObject);
 
-            var comp = clone.GetComponentInChildren<Projectile>(true);
+            Component comp = physics
+                ? (Component)clone.GetComponentInChildren<PhysicsProjectile>(true)
+                : clone.GetComponentInChildren<Projectile>(true);
 
             if (comp == null)
             {
                 Log.LogWarning(
-                    fileName + ": grow - no Projectile on prefab.");
+                    fileName + ": grow - no " +
+                    (physics ? "PhysicsProjectile" : "Projectile") +
+                    " on prefab.");
                 return;
             }
 
@@ -2114,7 +2076,24 @@ namespace WeaponForge
                     "values (e.g. from 0.4 to 3).");
             }
 
-            pw.projectilePrefab = comp;
+            // A lobbed shot's collider is REAL and scales with the transform,
+            // so "visual only" is not achievable there - the hitbox comes along
+            // whether or not it was asked for. Say so rather than silently
+            // doing the opposite of what the file requested.
+            if (physics && !g.hitbox)
+            {
+                Log.LogWarning(
+                    fileName + ": grow \"hitbox\": false is ignored on a " +
+                    "usePhysics (lobbed) shot. Those collide with a real " +
+                    "Collider2D, which scales with the art, so the hitbox " +
+                    "always follows. Only straight projectiles can grow the " +
+                    "art alone.");
+            }
+
+            if (physics)
+                pw.physicsProjectilePrefab = (PhysicsProjectile)comp;
+            else
+                pw.projectilePrefab = (Projectile)comp;
 
             // The span defaults to the weapon's own range so the shot peaks
             // exactly as it expires - say which one it landed on, since a
@@ -2145,9 +2124,10 @@ namespace WeaponForge
 
             Log.LogInfo(
                 fileName + ": " +
-                (g.to > g.from ? "growing" : "shrinking") + " shot x" +
+                (g.to > g.from ? "growing" : "shrinking") +
+                (physics ? " lobbed" : "") + " shot x" +
                 g.from + " -> x" + g.to + " over " + spanText +
-                (g.hitbox ? ", hitbox follows" : ", visual only") +
+                ((g.hitbox || physics) ? ", hitbox follows" : ", visual only") +
                 (g.damageAtFull != 1f
                     ? ", damage up to x" + g.damageAtFull : "") + ".");
         }
@@ -3081,45 +3061,59 @@ namespace WeaponForge
             }
         }
 
-        // The click when this module is DROPPED onto the ship grid.
+        // The picture on the module card. Accepts a stock icon name
+        // ("HUD_GridTiles_12") or the name of your own art from the sprites
+        // folder - the same names projectileSprite takes.
         //
-        // Exactly one call site in the game - ModuleGridScreen does
-        // AudioManager.PlaySfx(module.Data.gridPlacementSfx) on drop - so it
-        // cannot leak into anything else. Accepts a stock sfx guid OR the name
-        // of a file in the "sounds" folder, since it goes through the same
-        // AudioManager the weapon slots do.
-        private static void ApplyGridPlacementSfx(
+        // Stock is tried FIRST on purpose. Every weapon written before
+        // custom icons existed names a stock sprite, and letting a
+        // same-named PNG quietly replace one would be a nasty surprise to
+        // debug. A collision is reported instead, so it can be renamed.
+        private static void ApplyModuleIcon(
             ModuleData module,
-            string value,
-            string fileName)
+            string iconName,
+            string path)
         {
-            string wanted = value.Trim();
+            if (module == null || string.IsNullOrEmpty(iconName))
+                return;
 
-            // Nothing to inherit from here: unlike a weapon slot there is no
-            // "sound this replaces", so a custom clip is registered on its own
-            // and takes the sensible defaults. Not looping - it is one click.
-            string guid =
-                ForgeSfxRegistry.Resolve(wanted, null, false, fileName);
+            iconName = iconName.Trim();
 
-            if (guid != null)
+            var stock =
+                JsonFieldMapper.FindAsset(typeof(Sprite), iconName) as Sprite;
+
+            Sprite custom = ForgeSpriteLibrary.ResolveIconSprite(iconName);
+
+            if (stock != null)
             {
-                module.gridPlacementSfx = guid;
+                module.icon = stock;
 
-                Log.LogInfo(
-                    fileName + ": gridPlacementSfx -> custom sound '" +
-                    wanted + "'.");
+                if (custom != null)
+                {
+                    Log.LogWarning(
+                        path + ": '" + iconName + "' is both a game sprite " +
+                        "and one of yours in the sprites folder. The GAME's " +
+                        "is used. Rename yours to use it.");
+                }
+
                 return;
             }
 
-            module.gridPlacementSfx = wanted;
-
-            if (!ForgeSfxRegistry.KnownGuid(wanted))
+            if (custom != null)
             {
-                Log.LogWarning(
-                    fileName + ": gridPlacementSfx '" + wanted + "' is " +
-                    "neither a custom sound nor a sound id this game has, so " +
-                    "placing the module will be silent.");
+                module.icon = custom;
+                return;
             }
+
+            string known = ForgeSpriteLibrary.Count > 0
+                ? " Your own sprites are: " +
+                  string.Join(", ", ForgeSpriteLibrary.Names) + "."
+                : " There is no art in the sprites folder yet.";
+
+            Log.LogWarning(
+                path + ": no sprite named '" + iconName + "'. Module icons " +
+                "in the base game are called HUD_GridTiles_NN." + known +
+                " The module keeps the template's icon.");
         }
 
         // Sets how many power cores can attach to the weapon module -

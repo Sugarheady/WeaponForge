@@ -467,21 +467,7 @@ namespace WeaponForge
 
         private void SpawnWeaponExplosion(Orb orb, Vector3 pos)
         {
-            // Orbs bypass Projectile.SpawnExplosion, so the tint
-            // handshake has to be opened by hand here or an orbit
-            // weapon would be the one place explosionColor did
-            // nothing. The orb art is a clone of the weapon's
-            // projectile prefab, so it carries the marker.
-            ForgeExplosionTint.Begin(
-                (orb != null) ? orb.proj : null);
-            try
-            {
-                SpawnWeaponExplosionInner(pos);
-            }
-            finally
-            {
-                ForgeExplosionTint.End();
-            }
+            SpawnWeaponExplosionInner(pos);
         }
 
         private void SpawnWeaponExplosionInner(Vector3 pos)

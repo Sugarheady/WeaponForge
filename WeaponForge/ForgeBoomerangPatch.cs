@@ -26,6 +26,78 @@ namespace WeaponForge
         private const float SampleInterval = 0.05f;
         private const int MaxCrumbs = 256;
 
+        // The game's own "base heading" for a shot. Everything that curves a
+        // projectile - our wave motion, the game's own noise wobble - rebuilds
+        // Velocity each frame by rotating THIS, not by reading Velocity. So a
+        // boomerang that only wrote Velocity got overwritten every frame and
+        // flew off along its ORIGINAL heading, still visibly waving. Writing
+        // the return heading here instead makes the two compose: wave
+        // oscillates around wherever the boomerang currently points, and the
+        // shot waves its way home.
+        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
+        private static bool _ready;
+
+        private static void Ensure()
+        {
+            if (_ready)
+                return;
+
+            _ready = true;
+
+            try
+            {
+                _idealRef = AccessTools.FieldRefAccess<Projectile, Vector2>(
+                    "idealDirection");
+            }
+            catch (Exception e)
+            {
+                _idealRef = null;
+                Log.LogWarning(
+                    "Could not reach Projectile.idealDirection - a boomerang " +
+                    "combined with wave motion will fly off along its " +
+                    "original heading. Boomerang on its own is unaffected. " +
+                    e.Message);
+            }
+        }
+
+        // The single place a return direction is decided: sets the shot's
+        // heading AND the shared base heading together, so they cannot drift
+        // apart.
+        private static void SetHeading(Projectile p, Vector2 dir, float speed)
+        {
+            if (dir.sqrMagnitude < 0.000001f)
+                return;
+
+            Vector2 unit = dir.normalized;
+
+            Ensure();
+
+            if (_idealRef != null)
+                _idealRef(p) = unit;
+
+            p.Velocity = unit * speed;
+        }
+
+        // The boomerang's own heading, free of whatever wave motion did to
+        // Velocity this frame. Steering from Velocity instead would fold the
+        // wave's offset back in every frame and widen into a spiral.
+        private static Vector2 Heading(Projectile p)
+        {
+            Ensure();
+
+            if (_idealRef != null)
+            {
+                Vector2 ideal = _idealRef(p);
+
+                if (ideal.sqrMagnitude > 0.000001f)
+                    return ideal.normalized;
+            }
+
+            return (p.Velocity.sqrMagnitude > 0.0001f)
+                ? p.Velocity.normalized
+                : Vector2.zero;
+        }
+
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot
         {
@@ -223,9 +295,10 @@ namespace WeaponForge
             Vector2 target = ReturnTarget(p, b);
             Vector2 to = target - (Vector2)p.transform.position;
 
-            p.Velocity = (to.sqrMagnitude > 0.0001f)
-                ? to.normalized * b.startSpeed * b.returnSpeed
-                : -b.fireDir * b.startSpeed * b.returnSpeed;
+            SetHeading(
+                p,
+                (to.sqrMagnitude > 0.0001f) ? to : -b.fireDir,
+                b.startSpeed * b.returnSpeed);
         }
 
         // Where the return leg is aiming right now.
@@ -270,8 +343,12 @@ namespace WeaponForge
 
             if (to.sqrMagnitude > 0.000001f)
             {
-                float current =
-                    Mathf.Atan2(p.Velocity.y, p.Velocity.x) * Mathf.Rad2Deg;
+                Vector2 from = Heading(p);
+
+                if (from == Vector2.zero)
+                    from = to.normalized;
+
+                float current = Mathf.Atan2(from.y, from.x) * Mathf.Rad2Deg;
                 float desired = Mathf.Atan2(to.y, to.x) * Mathf.Rad2Deg;
                 float step = b.turnRate * Time.fixedDeltaTime;
                 float delta =
@@ -279,12 +356,9 @@ namespace WeaponForge
                         Mathf.DeltaAngle(current, desired), -step, step);
 
                 Vector2 dir =
-                    Quaternion.AngleAxis(delta, Vector3.forward) *
-                    (p.Velocity.sqrMagnitude > 0.0001f
-                        ? p.Velocity.normalized
-                        : to.normalized);
+                    Quaternion.AngleAxis(delta, Vector3.forward) * from;
 
-                p.Velocity = dir.normalized * speed;
+                SetHeading(p, dir, speed);
             }
 
             // Caught?
@@ -313,7 +387,7 @@ namespace WeaponForge
                 b.nextSample = 0f;
                 b.startTime = Time.time;
                 b.origin = p.transform.position;
-                p.Velocity = b.fireDir * b.startSpeed;
+                SetHeading(p, b.fireDir, b.startSpeed);
 
                 // No RangeData any more, so the outward leg no longer
                 // decelerates - give it a fresh pivot by distance instead.
