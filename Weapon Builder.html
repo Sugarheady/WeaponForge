@@ -712,34 +712,6 @@
             <option>Resource Fuel</option><option>Resource Tech</option>
           </select>
           <em>Resource/element the blast damage counts as.</em></label>
-        <label class="field"><span>explosionColor</span>
-          <input type="text" data-path="weapon.explosionColor"
-                 placeholder="#33ddff / cyan / ColorBlue / rainbow">
-          <em>recolor the blast. <b>The game has no explosion colour of its
-              own</b> - stock explosions take their look from the FIRST
-              damage type in the list below (White is orange-white, Electron
-              is blue, and so on), so without this the only way to change the
-              colour is to change what the damage counts as. This tints the
-              burst directly and leaves the damage alone. Same value styles as
-              projectileColor: hex, an HTML colour name, a game colour, or
-              "rainbow". Multiply-tinted like the muzzle flash, so the
-              artist's fade survives and a <b>dark</b> value dims the blast
-              rather than darkening it. Works on impact, lifetime, orbit-orb
-              and lobbed explosions.</em></label>
-        <label class="field"><span>explosionRgbSpeed</span>
-          <input type="number" step="any" data-path="weapon.explosionRgbSpeed"
-                 placeholder="0.5">
-          <em>"rainbow" only. A blast is a single burst, so it cannot cycle
-              <i>within</i> one explosion - instead each explosion takes the
-              next hue, so rapid fire walks the wheel. This is how fast that
-              walk goes (hue per second).</em></label>
-        <label class="field"><span>known limit</span>
-          <em>The brief <b>light flash</b> an explosion throws still uses the
-              damage type's colour - that one is read straight off the shared
-              resource asset, and overriding it would change every explosion
-              of that element in the game. So a strongly recoloured blast
-              keeps an element-coloured flash for a fraction of a
-              second.</em></label>
         <label class="field"><span>sfx</span>
           <input type="text" data-path="weapon.explosion.sfx"
                  placeholder="42200f6d-88ea-4e34-9bec-aa5c019582c9">
@@ -805,10 +777,13 @@
               <br>If you write <code>"damages": [{ "amount": 4 }]</code> the mod
               now fills the type in from the weapon's own damage and warns in the
               log, so it will not crash &mdash; but set it explicitly if you want a
-              particular element. And note that
-              <code>explosionColor</code> can do nothing if no explosion
-              spawned, so a missing damageType looks like "explosionColor is
-              broken" too.</em></label>
+              particular element.
+              <br><br>Worth knowing: <b>the damage type also decides what the
+              blast looks like.</b> The game picks the explosion prefab from
+              the FIRST damage type in the list &mdash; White is orange-white,
+              Electron is blue, and so on &mdash; and there is no separate colour
+              to override. So changing the element is the only way to change
+              the blast's appearance.</em></label>
       </div>
     </details>
 
@@ -2000,8 +1975,18 @@
               overlap &mdash; a query finds nothing no matter how big the radius.
               The mod keeps its own register of live enemy shots instead, and
               only switches that on when a weapon actually needs it.
+              <br><br><b>Catches missiles and lobbed shots as well as straight
+              ones.</b> Those are a different class the register had to be
+              taught about separately &mdash; and a reflected <i>missile</i> needs
+              more than its velocity reversed, because its homing keeps running
+              and was still steering at whoever fired it. It is re-aimed on
+              reflect, so it flies at enemies instead of curving back into you.
+              <br><br><b>Lasers can never be deflected</b>, and that is physics
+              rather than a gap: a hitscan hits instantly, so there is no
+              projectile in flight to catch.
               <br><br>Pairs naturally with a slow, long-lived, low-damage shot.
-              Plain projectiles only; lobbed shots are refused.</em></label>
+              The <i>carrier</i> still has to be a straight projectile &mdash; a
+              lobbed shot can be deflected, but can't be the deflector.</em></label>
         <label class="field"><span>enabled</span>
           <select data-path="deflect.enabled" data-type="bool">
             <option value="">&mdash; (on if any field below is set)</option>
@@ -2092,7 +2077,14 @@
               their parent's scale, so the puffs stay their own size while the
               shot balloons. Usually looks right &mdash; set the trail's own
               <code>size</code> if you want it to match.
-              <br><br>Plain projectiles only; lobbed shots are refused.</em></label>
+              <br><br><b>Works on lobbed (<code>usePhysics</code>) shots too</b>,
+              like Derbis. Those are simpler, in fact: a lobbed shot collides
+              with a <i>real</i> collider that scales with its art, so the
+              hitbox follows automatically and there is nothing to keep in
+              sync. The trade is that <code>hitbox: false</code> is meaningless
+              there and gets ignored with a warning &mdash; art and hitbox are the
+              same object, so only straight shots can grow the art
+              alone.</em></label>
         <label class="field"><span>enabled</span>
           <select data-path="grow.enabled" data-type="bool">
             <option value="">&mdash; (on if any field below is set)</option>
@@ -2239,6 +2231,23 @@
               back as fast as it went out. Above 1 snaps back at you, which
               reads well since the outbound leg ends slow; below 1 gives a long
               lazy float home.</em></label>
+        <label class="field"><span>turnRate</span>
+          <input type="number" step="any" data-path="boomerang.turnRate"
+                 placeholder="540">
+          <em>degrees per second the shot may swing while chasing you on the
+              way back. The default <b>540</b> is deliberately high, so the
+              turn reads as a snap rather than a drift. Drop it to
+              <b>120&ndash;200</b> and the return becomes a wide banking curve
+              that can miss you and loop round for another go &mdash; good on a
+              slow heavy disc, frustrating on a fast one.</em></label>
+        <label class="field"><span>catchRadius</span>
+          <input type="number" step="any" data-path="boomerang.catchRadius"
+                 placeholder="1.2">
+          <em>how close it must get to count as caught &mdash; which is what
+              triggers <code>onCatch</code> (refund or loop). Raise it if a
+              fast return keeps overshooting you and orbiting instead of
+              landing; the game runs at 20 pixels per world unit, so 1.2 is
+              roughly a ship's width.</em></label>
         <label class="field"><span>returnDamage</span>
           <input type="number" step="any" data-path="boomerang.returnDamage"
                  placeholder="1">
@@ -2270,6 +2279,15 @@
           <em>loop only: total out-and-back trips before it gives up. Careful
               at any real fire rate &mdash; these stack up on screen
               fast.</em></label>
+        <label class="field"><span>maxLife</span>
+          <input type="number" step="any" data-path="boomerang.maxLife"
+                 placeholder="12">
+          <em>seconds before the shot gives up and dies, wherever it is. This
+              is the safety net: a boomerang deliberately switches OFF the
+              range-based death that normally cleans a shot up, so without this
+              one that never quite reaches you would live forever. Raise it for
+              very long throws or a slow <code>returnSpeed</code>; lower it if
+              stray shots are piling up.</em></label>
         <label class="field"><span>pierce</span>
           <select data-path="boomerang.pierce" data-type="bool">
             <option value="">true (default)</option>
@@ -2658,9 +2676,15 @@
         <label class="field"><span>does NOT work on a lobbed shot</span>
           <em>piercingData / pierceLimit, projectileBounceData (physics does
               its own bouncing), movementNoiseData, rotationData,
-              projectileRadius - and the custom wave, phasing and turret
-              options. Those are all handled by the straight-flying
-              projectile, which a lob weapon never spawns.</em></label>
+              projectileRadius - and the custom <b>wave</b>, <b>phasing</b>,
+              <b>turret</b>, <b>ricochet</b> and <b>boomerang</b> options.
+              Those are all handled by the straight-flying projectile, which a
+              lob weapon never spawns. A lobbed shot also cannot be the
+              <b>deflector</b> itself, though it can be deflected.
+              <br><br><b>Grow DOES work on lobbed shots</b> &mdash; see the grow
+              block. It is the one custom behaviour that crosses over, because
+              a lobbed shot's collider is real and scales with its
+              art.</em></label>
       </div>
     </details>
 
@@ -2946,6 +2970,21 @@
           <em>animated spark only: fixed frame rate. Blank spreads the sequence
               over each spark's lifetime so it finishes as the spark
               dies.</em></label>
+        <label class="field"><span>color</span>
+          <input type="text" data-path="weapon.beam.color"
+                 placeholder="#33ddff">
+          <em>Tint for the beam quad &mdash; hex, an HTML colour name, or a game
+              colour like <code>ColorPurple</code>.
+              <br><br><b>Read this if your custom beam art came out the wrong
+              colour.</b> A stock beam prefab carries its <i>element</i> tint on
+              the renderer itself (the Caps laser's is orange-red), and a
+              renderer tint <b>multiplies</b> whatever sprite is in the slot &mdash;
+              so magenta art on that template rendered orange even though the
+              sprite loaded perfectly. Supplying your own <code>sprite</code>
+              now resets that tint to white automatically, so art shows as
+              drawn; this field is for tinting on purpose. Rainbow isn't
+              supported here &mdash; a beam is one stretched quad with nothing
+              driving it per frame.</em></label>
         <label class="field"><span>glow</span>
           <select data-path="weapon.beam.glow" data-type="bool">
             <option value="">keep template</option>
@@ -3355,10 +3394,23 @@
             </optgroup>
           </select>
           <em>fills the icon field below</em></label>
-        <label class="field"><span>icon (sprite asset name)</span>
+        <label class="field"><span>icon (sprite name)</span>
           <input type="text" id="f-icon-custom" data-path="module.icon"
-                 placeholder="e.g. HUD_GridTiles_13">
-          <em>Sprite shown on the module card; use the dropdown above to pick one.</em></label>
+                 placeholder="e.g. HUD_GridTiles_13 or myicon">
+          <em>Sprite shown on the module card. Use the dropdown above to pick
+          a game icon, <b>or type the name of your own art</b> &mdash; the
+          same names <code>projectileSprite</code> takes, so
+          <code>myicon.png</code> in the <code>sprites</code> folder is just
+          <code>myicon</code>.
+          <br>Draw it <b>square</b>: stock icons are 24&times;24, and the card
+          stretches art to a square without preserving the aspect ratio &mdash;
+          though the pickup lying on the ground <i>does</i> keep its shape. Any
+          size works, it is scaled to match the stock icons for you.
+          <br>The icon is <b>tinted by the card color</b> below, so draw it
+          white or grey and let the color do the work, or set the color to
+          <code>#ffffff</code> to see your art's own colours. An icon cannot
+          animate &mdash; naming an animation gets its first frame. A game
+          sprite wins a name clash, and the log says so.</em></label>
         <label class="field"><span>card color (game presets)</span>
           <select id="f-color-preset">
             <option value="">-- pick a game color --</option>
@@ -3405,18 +3457,6 @@
               you have bought or picked one up. This is the <i>shop</i> twin of
               <code>lootRepeat</code>, which does the same job for
               crates.</em></label>
-        <label class="field"><span>gridPlacementSfx <span class="tag">accepts YOUR sounds</span></span>
-          <input type="text" data-path="module.gridPlacementSfx"
-                 placeholder="myclick, or an audio guid">
-          <em>the click when this weapon is <b>dropped onto the ship grid</b>.
-              Exactly one place in the game plays it
-              (<code>ModuleGridScreen</code>, on drop), so it can't leak
-              anywhere else &mdash; and stock modules leave it silent, so this is
-              free character.
-              <br>Takes an audio <b>GUID</b> <i>or</i> the name of a file in
-              your <code>sounds</code> folder, same as the weapon sound slots.
-              A name that is neither is reported in the log rather than being
-              silently mute.</em></label>
         <label class="field"><span>power nodes (fixed)</span>
           <input type="number" step="1" data-path="module.powerNodes"
                  placeholder="e.g. 4">
@@ -4191,8 +4231,12 @@
         damage: { amount: 2, damageType: "Resource White" },
         projectileSpeed: 22,
         projectileRadius: 0.35,
+        // The stock Popper draws a small core blob on top of its sprite. It
+        // does not scale with the shot, so a growing bullet ends up with a dot
+        // stuck in the middle - spriteOnly drops it.
+        projectileSpriteOnly: true,
         rangeData: { enabled: true, range: 16, destroyWhenReached: true },
-        piercingData: { enabled: true }
+        piercingData: { enabled: true, damageRepeatDelay: 0.3 }
       },
       module: {
         icon: "HUD_GridTiles_29",
@@ -4221,7 +4265,10 @@
         projectileSpeed: 12,
         projectileRadius: 0.5,
         rangeData: { enabled: true, range: 14, destroyWhenReached: true },
-        piercingData: { enabled: true }
+        // A slow, wide disc SITS on whatever it touches, and piercing means it
+        // never dies on contact - so without a repeat delay the same enemy is
+        // re-damaged every frame it overlaps (reads as ~10 hits/second).
+        piercingData: { enabled: true, damageRepeatDelay: 0.5 }
       },
       module: {
         icon: "HUD_GridTiles_25",

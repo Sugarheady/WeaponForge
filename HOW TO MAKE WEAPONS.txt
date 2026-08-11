@@ -383,16 +383,6 @@ Off by default, because the game drops a module from the pool once you
 have bought or picked one up.
 
     "module": { "repeatInShop": true }
-
-"gridPlacementSfx" (also inside "module") is the click when the weapon is
-DROPPED ONTO THE SHIP GRID. Exactly one place in the game plays it
-(ModuleGridScreen, on drop), so it cannot leak anywhere else, and stock
-modules leave it silent - so it is free character. It takes an audio GUID
-OR the name of a file in your "sounds" folder, exactly like the weapon
-sound slots:
-
-    "module": { "gridPlacementSfx": "myclick" }
-
 MAKING DUPLICATES WORTH FINDING. Pair "lootRepeat" with a RANGE on
 "powerNodes" (inside the "module" block) and the power-core cap is
 ROLLED PER DROPPED COPY:
@@ -899,33 +889,6 @@ These go inside the "weapon": { } block and work on every type.
       get a mixed-element blast. NEVER leave it empty while radius > 0 -
       the game reads entry 1 unconditionally and errors.
       "sfx" is the boom, as an audio GUID (see SOUND below).
-  "explosionColor": "#33ddff"   RECOLOR THE BLAST.
-  "explosionRgbSpeed": 0.5      The game has no explosion colour of its own:
-                            a stock explosion takes its look from the FIRST
-                            entry in "damages" - i.e. from the damage TYPE
-                            (White reads orange-white, Electron blue, and so
-                            on). So without this key the only way to change
-                            the colour is to change what the damage counts
-                            as, which changes the maths too. This tints the
-                            burst directly and leaves the damage alone.
-                            Accepts the same values as projectileColor: hex,
-                            an HTML colour name, a game colour
-                            ("ColorBlue"), or "rainbow" / "rgb".
-                            It MULTIPLIES the artist's particle gradient, so
-                            the fade survives and a DARK value dims the blast
-                            instead of darkening it - use bright hues.
-                            "rainbow" cannot cycle within one blast (a blast
-                            is a single burst), so instead each explosion
-                            takes the next hue and rapid fire walks the
-                            wheel; explosionRgbSpeed is how fast (hue/sec).
-                            Applies to impact, lifetime, lobbed and
-                            orbit-orb explosions alike.
-                            KNOWN LIMIT: the brief LIGHT FLASH an explosion
-                            throws still uses the damage type's colour. That
-                            one is read straight off the shared resource
-                            asset, so overriding it would recolour every
-                            explosion of that element in the game - not worth
-                            it for a fraction of a second of flash.
       "skipCamShake": true stops the blast shaking the camera - the fix
       for a fast-firing explosive turning the screen to mush. This shake
       is separate from "shakePreset": the explosion one is auto-scaled by
