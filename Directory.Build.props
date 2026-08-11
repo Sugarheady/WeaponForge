@@ -1,0 +1,52 @@
+<Project>
+
+  <!-- ==================================================================
+       Where are the reference assemblies?
+
+       This mod compiles against PUNK's own managed assemblies plus the
+       BepInEx core. Neither can be committed to this repo - they are the
+       game's code, not ours - so the build has to be told where YOUR copy
+       of PUNK lives.
+
+       PunkDir is resolved in this order; the first one set wins:
+
+         1. -p:PunkDir="C:\...\PUNK Playtest"   (command line)
+         2. a PUNK_DIR environment variable
+         3. Punk.props sitting next to this file (copy Punk.props.example)
+         4. the legacy sibling layout this repo was first developed in
+
+       See BUILDING.md. Nothing here needs editing.
+       ================================================================== -->
+
+  <PropertyGroup>
+    <PunkDir Condition="'$(PunkDir)' == '' and '$(PUNK_DIR)' != ''">$(PUNK_DIR)</PunkDir>
+  </PropertyGroup>
+
+  <Import Project="$(MSBuildThisFileDirectory)Punk.props"
+          Condition="'$(PunkDir)' == '' and Exists('$(MSBuildThisFileDirectory)Punk.props')" />
+
+  <PropertyGroup Condition="'$(PunkDir)' != ''">
+    <PunkManaged>$(PunkDir)\Punk_Data\Managed</PunkManaged>
+    <PunkCore>$(PunkDir)\BepInEx\core</PunkCore>
+  </PropertyGroup>
+
+  <!-- Fallback for the original dev machine, where one sibling folder held
+       copies of BOTH sets of DLLs. Keeps that checkout building with no
+       configuration at all; harmless everywhere else, since it only applies
+       when the folder actually exists. -->
+  <PropertyGroup Condition="'$(PunkDir)' == ''">
+    <_ForgeLegacyRefs>$(MSBuildThisFileDirectory)..\WhiteTeslaMod\WhiteTeslaMod\bin\Debug</_ForgeLegacyRefs>
+    <PunkManaged Condition="Exists('$(_ForgeLegacyRefs)')">$(_ForgeLegacyRefs)</PunkManaged>
+    <PunkCore Condition="Exists('$(_ForgeLegacyRefs)')">$(_ForgeLegacyRefs)</PunkCore>
+  </PropertyGroup>
+
+  <!-- Fail with an instruction instead of 200 "type or namespace not found"
+       errors, which is what an unresolved HintPath looks like otherwise. -->
+  <Target Name="ForgeCheckPunkDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(PunkManaged)' == '' or !Exists('$(PunkManaged)')"
+           Text="WeaponForge: can't find PUNK's managed assemblies. Point the build at your game install - e.g. msbuild WeaponForge.sln -p:PunkDir=&quot;C:\Program Files (x86)\Steam\steamapps\common\PUNK Playtest&quot; - or set a PUNK_DIR environment variable, or copy Punk.props.example to Punk.props and edit the one line in it. See BUILDING.md. (looked in: '$(PunkManaged)')" />
+    <Error Condition="!Exists('$(PunkCore)\0Harmony.dll')"
+           Text="WeaponForge: found the game but not BepInEx - '$(PunkCore)\0Harmony.dll' is missing. Install BepInEx into your PUNK folder and launch the game once so it unpacks. See BUILDING.md." />
+  </Target>
+
+</Project>

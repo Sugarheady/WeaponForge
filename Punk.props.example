@@ -1,0 +1,16 @@
+<!-- ====================================================================
+     Copy this file to  Punk.props  (same folder) and put YOUR PUNK
+     install path below. Punk.props is git-ignored, so your path never
+     ends up in the repo.
+
+     Prefer not to have a file at all? Set a PUNK_DIR environment
+     variable instead, or pass -p:PunkDir="..." on the command line.
+
+     The path is the folder that CONTAINS Punk_Data and BepInEx - not
+     Punk_Data itself. No trailing backslash needed.
+     ==================================================================== -->
+<Project>
+  <PropertyGroup>
+    <PunkDir>C:\Program Files (x86)\Steam\steamapps\common\PUNK Playtest</PunkDir>
+  </PropertyGroup>
+</Project>
