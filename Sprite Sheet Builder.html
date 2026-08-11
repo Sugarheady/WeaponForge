@@ -228,7 +228,17 @@
           the .json, never a pixel of your art, so it is the knob to reach for
           first. (Under the hood it is pixelsPerUnit inverted: more pixels per
           unit means a <i>smaller</i> sprite, which is backwards for a size
-          slider.) Watch the <b>scale check</b> panel while you drag.</em>
+          slider.) Watch the <b>scale check</b> panel while you drag.
+          <br><br><b>Drawing a module card icon?</b> The stock ones are
+          <b>24&times;24</b>, and <i>square</i> &mdash; that is the size to copy.
+          <b>pixelsPerUnit is ignored for icons</b>: the mod rescales any icon to
+          the stock footprint for you, so this dial only matters if the same art
+          is also used as a projectile. What you do have to get right is the
+          <b>shape</b>, because an icon is drawn in two places that disagree
+          &mdash; the card on the grid stretches art to a square, while the pickup
+          lying on the ground keeps its proportions. Draw it square and both look
+          the same. (Icons are also tinted by the module's colour, so draw white
+          or grey unless you set that colour to <code>#ffffff</code>.)</em>
       <div id="gif-note"></div>
     </section>
 
@@ -345,6 +355,8 @@
 
       <div class="row" style="margin-top:12px">
         <button id="grid">Grid slice</button>
+        <button class="secondary" id="cell-icon" type="button"
+                title="Set the cell size to 24x24 - the size of a stock module card icon">24&times;24 (module icon)</button>
         <label class="f"><span>cell w</span><input type="number" id="cw" value="16" min="1"></label>
         <label class="f"><span>cell h</span><input type="number" id="ch" value="16" min="1"></label>
         <label class="f"><span>cols</span><input type="number" id="cols" value="0" min="0"></label>
@@ -436,8 +448,14 @@
     <section>
       <h2>6 &mdash; scale check</h2>
       <div class="prev" id="preview"></div>
-      <em>Every sprite drawn at its real in-game size next to the stock Popper bullet
-          (7&times;7). If yours dwarfs it, raise pixelsPerUnit or draw smaller.</em>
+      <em>Every sprite drawn at its real in-game size next to two stock things:
+          the <b>Popper bullet</b> (7&times;7 at 20 ppu) and a <b>module card
+          icon</b> (24&times;24 at 40 ppu). Match whichever one your art is meant
+          to be. If a bullet dwarfs the Popper, raise pixelsPerUnit or draw
+          smaller.
+          <br><b>An icon needs no matching</b> &mdash; the mod rescales it to that
+          size whatever you drew, so the swatch is there to show you how big an
+          icon actually is on the ground, not as a target to hit.</em>
     </section>
 
     <section>
@@ -1348,6 +1366,15 @@
 
   // ---------- grid slice ----------
 
+  // A module card icon is 24x24 in the base game. It is the one size worth
+  // a shortcut, because it is not guessable from anything else on this page
+  // - everything else here is bullet-sized.
+  el("cell-icon").addEventListener("click", function () {
+    el("cw").value = 24;
+    el("ch").value = 24;
+    if (loaded) el("grid").click();
+  });
+
   el("grid").addEventListener("click", function () {
     if (!loaded) return;
 
@@ -1890,7 +1917,13 @@
     var ppu = Math.max(1, parseFloat(el("ppu").value) || 20);
     var UNIT = 90;   // display px per world unit
 
-    host.appendChild(refCell(UNIT));
+    host.appendChild(refCell(UNIT, 7 / 20, "#7fd4ff", "Popper", "bullet"));
+    // The other thing custom art commonly becomes. A stock module icon is
+    // 24x24 at 40 ppu - a different scale from everything else in the game,
+    // and four times the area of the Popper, so without this swatch "looks
+    // huge next to the bullet" reads as a mistake when it is correct.
+    host.appendChild(refCell(
+      UNIT, 24 / 40, "#ffc600", "Module icon", "on the ground"));
 
     sprites.slice(0, 12).forEach(function (s) {
       var uw = s.w / ppu, uh = s.h / ppu;
@@ -1925,18 +1958,20 @@
     }
   }
 
-  function refCell(UNIT) {
-    var units = 7 / 20;   // the Popper bullet: 7 px at 20 ppu
+  // A stock thing at its true size, to measure yours against.
+  function refCell(UNIT, units, color, label, sub) {
     var side = Math.round(units * UNIT);
     var cell = document.createElement("div");
     cell.className = "prevcell";
     var cv = document.createElement("canvas");
     cv.width = side; cv.height = side;
     var c = cv.getContext("2d");
-    c.fillStyle = "#7fd4ff"; c.fillRect(0, 0, side, side);
+    c.fillStyle = color; c.fillRect(0, 0, side, side);
     cell.appendChild(cv);
     var cap = document.createElement("div");
-    cap.innerHTML = "<b>Popper</b><br>0.35×0.35 units";
+    cap.innerHTML = "<b>" + label + "</b><br>" +
+      units.toFixed(2) + "×" + units.toFixed(2) + " units<br>" +
+      '<span style="opacity:.65">' + sub + "</span>";
     cell.appendChild(cap);
     return cell;
   }
