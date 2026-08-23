@@ -119,6 +119,8 @@
   }
   .warn { color: var(--accent2); }
   .err { color: var(--bad); }
+  /* Not a problem - just a "if you meant X, do Y" nudge. */
+  .hint { color: var(--accent); }
   .ok { color: var(--good); }
   pre#json {
     margin: 0; padding: 10px; background: #0b0b0f; border: 1px solid var(--line);
@@ -229,6 +231,17 @@
           first. (Under the hood it is pixelsPerUnit inverted: more pixels per
           unit means a <i>smaller</i> sprite, which is backwards for a size
           slider.) Watch the <b>scale check</b> panel while you drag.
+          <br><br><b>Drawing a muzzle flash?</b> <b>pixelsPerUnit does nothing
+          for it</b> &mdash; ignore this dial entirely. A muzzle flash is drawn by
+          a <i>particle system</i>, not a sprite renderer: every stock one is a
+          <b>Billboard</b> particle with no 3D size, which means a
+          <b>square quad</b> whose width comes from the particle's own
+          <code>startSize</code> (1 world unit for the main flash). Your art is
+          mapped onto that quad whatever its pixel size, so this slider cannot
+          make a flash bigger or smaller.
+          <br>Two things that <i>do</i> matter: <b>draw it square</b>, because a
+          tall or wide picture is stretched onto that square quad; and the stock
+          flash art is <b>20&times;20</b>, which is the size worth copying.
           <br><br><b>Drawing a module card icon?</b> The stock ones are
           <b>24&times;24</b>, and <i>square</i> &mdash; that is the size to copy.
           <b>pixelsPerUnit is ignored for icons</b>: the mod rescales any icon to
@@ -357,6 +370,8 @@
         <button id="grid">Grid slice</button>
         <button class="secondary" id="cell-icon" type="button"
                 title="Set the cell size to 24x24 - the size of a stock module card icon">24&times;24 (module icon)</button>
+        <button class="secondary" id="cell-muzzle" type="button"
+                title="Set the cell size to 20x20 - the size of the stock muzzle flash frames">20&times;20 (muzzle flash)</button>
         <label class="f"><span>cell w</span><input type="number" id="cw" value="16" min="1"></label>
         <label class="f"><span>cell h</span><input type="number" id="ch" value="16" min="1"></label>
         <label class="f"><span>cols</span><input type="number" id="cols" value="0" min="0"></label>
@@ -448,14 +463,19 @@
     <section>
       <h2>6 &mdash; scale check</h2>
       <div class="prev" id="preview"></div>
-      <em>Every sprite drawn at its real in-game size next to two stock things:
-          the <b>Popper bullet</b> (7&times;7 at 20 ppu) and a <b>module card
-          icon</b> (24&times;24 at 40 ppu). Match whichever one your art is meant
-          to be. If a bullet dwarfs the Popper, raise pixelsPerUnit or draw
-          smaller.
-          <br><b>An icon needs no matching</b> &mdash; the mod rescales it to that
-          size whatever you drew, so the swatch is there to show you how big an
-          icon actually is on the ground, not as a target to hit.</em>
+      <em>Every sprite drawn at its real in-game size, next to three stock
+          things. <b>Only the first is a target to hit:</b>
+          <br>&bull; <b>Popper bullet</b> &mdash; 7&times;7 at 20 ppu. If a bullet
+          of yours dwarfs it, raise pixelsPerUnit or draw smaller.
+          <br>&bull; <b>Module icon</b> &mdash; 24&times;24 at 40 ppu. No matching
+          needed: the mod rescales an icon to this whatever you drew. It is here
+          to show how big an icon really is on the ground.
+          <br>&bull; <b>Muzzle flash</b> &mdash; 1 unit square, and <b>this swatch
+          never moves</b> when you drag the size slider, because a flash is a
+          particle: its size comes from the particle system's own
+          <code>startSize</code> and pixelsPerUnit is not involved at all. Your
+          art is stretched onto that square quad, so the only thing to get right
+          is drawing it <i>square</i>.</em>
     </section>
 
     <section>
@@ -470,6 +490,18 @@
           weapon's JSON. <b>Copy the name exactly</b> &mdash; it is the name of
           a sprite or animation inside the sheet, not the filename:</em>
       <pre id="usage" style="margin-top:6px">"weapon": { "projectileSprite": "..." }</pre>
+      <em style="margin-top:10px">The same name works in three other places &mdash;
+          one sheet can serve all of them:
+          <br><code>"weapon": { "muzzleSprite": "&lt;name&gt;" }</code> &mdash; the
+          <b>muzzle flash</b>. An <code>...Anim</code> name is usually what you
+          want, and add <code>"muzzleSpriteFps"</code> because a flash only lives
+          about <b>0.4 seconds</b>: frames &divide; 0.4 is the fps that plays it
+          through exactly once (6 frames &rarr; 15, 20 frames &rarr; 50). Too slow
+          and you only ever see the first frame or two.
+          <br><code>"module": { "icon": "&lt;name&gt;" }</code> &mdash; the
+          <b>module card icon</b>, in this mod or in Module Forge.
+          <br><code>"weapon": { "trail": { "sprite": "&lt;name&gt;" } }</code>
+          &mdash; the <b>trail</b> puffs.</em>
     </section>
   </div>
 </div>
@@ -1375,6 +1407,13 @@
     if (loaded) el("grid").click();
   });
 
+  // A muzzle flash frame is 20x20 in the base game (part_cyrcle_0..19).
+  el("cell-muzzle").addEventListener("click", function () {
+    el("cw").value = 20;
+    el("ch").value = 20;
+    if (loaded) el("grid").click();
+  });
+
   el("grid").addEventListener("click", function () {
     if (!loaded) return;
 
@@ -1777,6 +1816,30 @@
       if (a.fps <= 0)
         msgs.push(["warn", 'Animation "' + n + '" has fps ' + a.fps +
                    " - it will just show its first frame."]);
+
+      // A muzzle flash lives about 0.4s, so the fps that plays an animation
+      // through exactly once is frames / 0.4. Worth spelling out: the usual
+      // mistake is leaving a flash at 12 fps, where a 20-frame burst only
+      // ever gets through its first five frames.
+      var live = a.frames.filter(function (f) {
+        return sprites.some(function (s) { return s.name === f; });
+      });
+      if (live.length > 1) {
+        var flashFps = Math.round(live.length / 0.4);
+        if (Math.abs(a.fps - flashFps) > 1) {
+          msgs.push(["hint", 'If "' + n + '" is a MUZZLE FLASH, use fps ' +
+                     "<b>" + flashFps + "</b> - a flash lives about 0.4s, and " +
+                     live.length + " frames at " + a.fps + " fps would " +
+                     (a.fps < flashFps
+                       ? "only reach frame " +
+                         Math.max(1, Math.round(a.fps * 0.4)) + " before it " +
+                         "disappears."
+                       : "finish in " + (live.length / a.fps).toFixed(2) +
+                         "s and then hold the last frame.") +
+                     " (Ignore this for a projectile or trail - they live " +
+                     "as long as the shot does.)"]);
+        }
+      }
     });
 
     var already = {};
@@ -1924,6 +1987,13 @@
     // huge next to the bullet" reads as a mistake when it is correct.
     host.appendChild(refCell(
       UNIT, 24 / 40, "#ffc600", "Module icon", "on the ground"));
+    // The muzzle flash is the odd one out: its size comes from the particle
+    // system, NOT from pixels-per-unit, so this swatch is fixed no matter
+    // what the slider says. Shown anyway because "how big is a flash" is a
+    // fair question, and because seeing it not move is the clearest way to
+    // learn that the dial does not apply here.
+    host.appendChild(refCell(
+      UNIT, 1.0, "#ff8fb0", "Muzzle flash", "fixed by the particle"));
 
     sprites.slice(0, 12).forEach(function (s) {
       var uw = s.w / ppu, uh = s.h / ppu;

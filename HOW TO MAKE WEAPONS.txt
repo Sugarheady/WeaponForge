@@ -43,6 +43,39 @@ RENAME a weapon file, then load an old save that had the old weapon
 equipped, that old id won't exist anymore - keep a file around (same
 "name") as long as any save still uses it.
 
+
+WHAT MAKES A GOOD "name"
+------------------------
+
+SPACES ARE FINE. "Gas Grenade" works exactly as well as "GasGrenade".
+Nothing splits or tokenises the name - it becomes an asset name, a
+loadout name and a module id, and all three are compared whole.
+
+The builder page used to warn against spaces. That warning was simply
+wrong and has been removed.
+
+Two things DO matter, and both fail quietly rather than loudly:
+
+  DON'T REUSE A NAME THE GAME ALREADY HAS.
+  Every "name another weapon" feature - a split's "weapon", a minion's
+  "weapon", a turret - resolves an exact asset name FIRST. So if your
+  weapon is called "Weapon Caps Flame", anything naming it gets the
+  GAME's weapon instead of yours and behaves almost right, which is the
+  worst kind of wrong. The builder page warns if you pick a name from
+  its own template list; the mod checks the whole asset list at load and
+  warns there too.
+
+  DON'T LEAVE A SPACE AT THE START OR END.
+  This one only bites if you hand-edit the .json, and it is invisible in
+  an editor. Your weapon's asset ends up named "Forge Weapon MyGun "
+  with the space baked in, while every lookup trims what you type - so
+  "MyGun" would never find it, and the log would say the name does not
+  exist while listing that exact name as available. The mod now trims it
+  and tells you it did.
+
+Beyond that, name it whatever you like. Punctuation, mixed case and
+apostrophes are all fine - the name is only ever compared to itself.
+
 ----------------------------------------------------------------
  2. QUICK START
 ----------------------------------------------------------------
@@ -67,7 +100,7 @@ Search the log for "WeaponForge".
 
 {
   "name": "MyGun",                <- REQUIRED. Unique internal id.
-                                     Letters/numbers, no spaces.
+                                     Spaces are FINE - see below.
   "displayName": "MY GUN",        <- Name shown on the menu card.
   "description": "It shoots.",    <- Card description text.
   "template": "Module Weapon White Popper",
@@ -669,6 +702,92 @@ These are TOP-LEVEL keys (not inside "weapon"):
                             spot it died.
   "orbitPopRadius": 1.5     size of that burst.
 
+  LETTING GO OF THE RING. Without these the orbs BLINK OUT of existence
+  the frame the trigger comes up, which reads as a glitch rather than as
+  dismissing something.
+
+  "orbitHoldDrainPerSecond": "cost"
+                            WHAT A HELD OR TOGGLED RING COSTS TO KEEP UP,
+                            and the only way one ever costs anything.
+                            "cost" prices it off the weapon itself -
+                            cost x fireRate, which is exactly what a
+                            normal weapon spends per second with its
+                            trigger held - so the ring costs what the
+                            weapon says it costs, and it keeps tracking
+                            if a module changes either number. A plain
+                            number gives a flat rate instead.
+                            THE WEAPON'S OWN "cost" DOES NOTHING HERE.
+                            The ship charges you when it FIRES, and hold
+                            and toggle rings suppress firing entirely, so
+                            there is no shot to attach a price to. Same
+                            reason "warmupTime" does nothing to a held
+                            ring.
+                            Running dry switches the ring OFF and plays
+                            the game's own out-of-resource cue, then lets
+                            it return half a second later if the tank
+                            recovers. (Before this the drain pushed the
+                            tank NEGATIVE and the ring kept running for
+                            free - ResourceTank.Value has no floor of its
+                            own.)
+                            "fire" mode is unaffected: it is bounded by
+                            its own duration and pays "cost" once, the
+                            normal way.
+
+  "orbitAppearFade": 0.5    Seconds the orbs spend FADING IN as the ring
+                            switches on - the mirror of the three below.
+                            They orbit, pulse and spiral normally the
+                            whole time; only opacity, size and whether
+                            they touch anything are different.
+                            DEFAULT 0 (instant), unlike the release fade.
+                            Nobody complained about the ring appearing,
+                            and turning it on for everyone would change
+                            the feel of rings already tuned around an
+                            instant one. 0.3-0.6 reads well.
+  "orbitAppearGrow": true   Default true. Swells them out of nothing as
+                            they fade in, so the ring BLOOMS rather than
+                            just brightening.
+  "orbitAppearDamage": false
+                            Default FALSE, and this is the one that
+                            actually matters. With it off - and
+                            "orbitReleaseDamage" off too - a tap costs
+                            you the whole wind-up AND the whole
+                            wind-down, so holding is strictly better than
+                            tapping. THIS IS HOW YOU STOP A RING BEING
+                            SPAMMABLE.
+                            "warmupTime" cannot do that job: a held ring
+                            never goes through the ship's fire path at
+                            all, so nothing the weapon gates on ever
+                            runs. Same reason a held ring cannot be
+                            charged "cost" - see
+                            "orbitHoldDrainPerSecond".
+
+  "orbitReleaseFade": 0.3   Seconds the orbs keep orbiting while fading
+                            out after the ring switches off. Default 0.3;
+                            0 = the old instant pop. They keep spinning,
+                            pulsing and spiralling exactly as they were
+                            while they go, and it covers a "fire" ring
+                            reaching the end of its orbitFireDuration.
+  "orbitReleaseShrink": true
+                            Default true. Shrinks them away as they fade,
+                            so a big charged ring visibly COLLAPSES
+                            rather than just dimming.
+  "orbitReleaseDamage": false
+                            Default FALSE. Off, a dissolving ring stops
+                            damaging, pushing, blocking shots and
+                            digging - it is being dismissed. On,
+                            releasing becomes an extra sweep, which makes
+                            tap-release-tap strictly better than holding:
+                            a legitimate design for a "burst" ring, an
+                            exploit if you did not mean it.
+
+  *** IF A CHARGE RING ONLY WINDS UP ONCE ***
+
+  See "orbitGrow": { "reset": true } - it is the default now. When a ring
+  switches off its orbs are only HIDDEN, never destroyed, and "orbLife"
+  measures growth from each orb's own birth - so they used to come back
+  at FULL SIZE and only the very first press ever charged. "charge" mode
+  always reset; now both do.
+
   SPIRAL OUTWARD (orbs travel out instead of holding a ring):
   "orbitSpiral":            how the orbs move outward (default "off"):
      "off"    classic fixed-radius ring (the default).
@@ -761,6 +880,253 @@ it, so keep them out of your runs with "source": "none".
 Sub weapons are fired directly, so they DON'T charge their "cost" - set
 the parent weapon's cost for balance instead.
 
+IF YOU WANT THE FRAGMENTS TO SCALE WITH YOUR MODULES, you want "split"
+(4d-2) instead. A sub-emitter's damage can never be upgraded and its
+kills credit nobody - both are properties of the game, not of this mod.
+
+----------------------------------------------------------------
+ BUFF INDICATOR - WHERE THE SETTINGS ARE
+----------------------------------------------------------------
+
+THE INDICATOR IS OFF BY DEFAULT, globally, on purpose. The game's
+status area sits right next to the ammo / fuel / health readouts, so
+anything drawn there is an overlay on top of the things you actually
+need to see. Switching it on is a CONFIG FILE edit, not a JSON one:
+
+  BepInEx\config\com.sugarheady.weaponforge.cfg
+  section [Buff indicator]
+
+  Style            "off" (DEFAULT) - nothing is drawn
+                   "feed"  - the game's own status line, the one that
+                             says "Fuel low"
+                   "icons" - a row of icons beside the minion counter
+                   "both"
+  Label            "effect" (FIRE RATE +30%), "seconds" (a countdown),
+                   "stacks" (x3), or "icon" (no text)
+  MaxFeedLines     the most status lines this mod may occupy at once
+                   (default 3). A hard backstop, so the feed can never
+                   grow over the HUD however many buffs are running.
+  IconSize         side of one icon in pixels (default 28). The widget
+                   is BORROWED from the minion counter and arrives at
+                   whatever size that prefab was authored with, so this
+                   is the number that decides how big it looks.
+  ShowTimedStates  also report shield up / orbit ring / tether latched
+  ShowDebuffs      also report BURNING, shown flashing
+
+MODULE FORGE HAS ITS OWN IDENTICAL BLOCK in
+com.sugarheady.moduleforge.cfg. The two are deliberately independent so
+either mod works with the other absent - which does mean that if you
+set only one, module buffs and weapon buffs will look different. The
+mods log a warning once at startup if the two disagree.
+
+A weapon's own "buffIndicator" key (inside the onKill block) picks the
+ICON for that weapon's buff. It does nothing at all while Style is
+"off".
+
+----------------------------------------------------------------
+ 4d-2. SPLIT (a shot that BREAKS INTO several - and they INHERIT)
+----------------------------------------------------------------
+
+"split" is the other half of 4d, and the difference is the whole point.
+
+A subEmitter fires a SEPARATE WEAPON. The game builds that weapon with
+NO MODULES AT ALL - not "it happens to miss them", the game literally
+hands it an empty module list - so its damage is forever the number
+typed in its file, however many +damage modules you bolt onto the gun.
+It is also never given an owner, which has two consequences most people
+never notice: ITS KILLS CREDIT NOBODY (so "onKill" rewards never pay for
+a sub-emitter kill), and it does no friend/foe check at all. And it
+always fires straight up.
+
+"split" is the opposite. A fragment is a COPY OF THE SHOT AS IT IS RIGHT
+NOW, so it carries the shot's upgraded damage, burn, explosion,
+discharge, piercing, art and trail - plus anything "grow" or
+"damageRamp" had already done to it mid-flight - it leaves along the
+parent's REAL HEADING, and its kills pay out normally.
+
+Neither key affects the other. Weapons already built on subEmitter keep
+behaving exactly as they did; a flak shell whose shrapnel is
+deliberately weak is a perfectly good thing to want.
+
+  "split": {
+    "on": ["death"],
+    "count": 3,
+    "spread": 70,
+    "damage": "half",
+    "aim": "auto"
+  }
+
+TRIGGERS - "on" takes one name or a list of them
+------------------------------------------------
+
+  "death"      the shot ends: impact, max range, or lifetime. This is
+               the cluster-bomb reading and the DEFAULT if you list
+               nothing.
+  "time"       a real MIRV - flies for "delay" seconds, then opens.
+  "distance"   opens after travelling "distance" world units.
+  "hit"        sheds fragments at every enemy it hits and KEEPS GOING.
+  "bounce"     sheds fragments every time it bounces.
+
+You can combine them: "on": ["hit", "death"] bursts at each enemy the
+round passes through AND again when it finally dies. That is allowed and
+is a real weapon - just know it is two bursts, and that "maxPerShot" is
+the shared budget for both.
+
+  "time" and "distance" USE THE PARENT UP by default - a MIRV that
+  carries on flying after it opens is a different weapon. Set
+  "keepParent": true and the parent flies on, re-arming its meter after
+  each burst, until "maxPerShot" runs out.
+
+  "hit" NEEDS PIERCING, and switches it on for you if you didn't. Without
+  it the shot is destroyed by its first contact, so the trigger could
+  only ever fire once and would just be a worse "death". (Same reasoning
+  as "chain", which forces piercing on for the same reason.)
+
+  "bounce" needs the shot to actually bounce: "projectileBounceData" on a
+  straight shot, or the "bounce" block on a lobbed one. You get a warning
+  if neither is set, because otherwise the trigger simply never fires and
+  the weapon looks broken rather than misconfigured.
+
+IF WE ADD A NEW TRIGGER LATER it goes on this list too - the feature is
+built so a new trigger point is one line of code and one name here.
+
+DAMAGE - "damage" takes a word or a number
+------------------------------------------
+
+  "half"     DEFAULT. Each fragment hits for half what the parent was
+             hitting for, so 3 fragments are 1.5x the damage in total -
+             a clear upgrade without being strictly better than not
+             splitting.
+  "full"     Each fragment hits as hard as the parent did. Simple to
+             explain, but N fragments really is N times the damage.
+  "share"    The parent's damage divided by count, so the total is
+             unchanged and the split is purely about coverage.
+  0.75       Any number is your own multiplier.
+
+Whichever you pick, it multiplies the shot's LIVE damage - so module
+upgrades, "grow" and "damageRamp" are all already baked in. It goes
+through the shared damage stack rather than assigning Damage directly,
+so it composes with those features instead of fighting them.
+
+AIM - "aim"
+-----------
+
+  "fan"      DEFAULT. A cone of width "spread" around the parent's real
+             heading. "spread": 360 gives an evenly spaced ring rather
+             than a cone with two fragments on top of each other.
+  "target"   One fragment per nearest enemy, up to "count". If nothing
+             is in "range" it fires NOTHING - a targeting weapon that
+             sprays when it has no target is a different weapon.
+  "auto"     Targets when it can and falls back to the fan when it
+             can't. This is the "splits into shots that auto-hit"
+             behaviour.
+
+  "lockOn" (default true) makes a targeted fragment KEEP following its
+  target instead of flying at where it was standing when the shot burst.
+  Against anything that moves, aim-once looks perfect and then misses.
+  "lockOnTurnRate" is how fast it may turn.
+
+  "targetObjects" (default true): crates and boxes carry the same
+  targeting marker enemies do, so a split bursts them open too. Set false
+  to hunt only things that fight back.
+
+SHAPE
+-----
+
+  "count"        fragments per burst, 1-16 (default 3)
+  "spread"       fan width in degrees (default 60; 360 = a ring)
+  "speed"        multiplier on the parent's speed (default 1)
+  "scale"        fragment size (default 1). This shrinks the HITBOX as
+                 well as the art, so 0.5 really is a smaller bullet.
+
+BUDGETS - the two numbers that stop a screen full of bullets
+------------------------------------------------------------
+
+  "generations"  how many times ONE LINEAGE may split, 1-3 (default 1).
+                 At 2 the fragments can split again. Watch the
+                 arithmetic: count 4 at 3 generations is 84 bullets from
+                 a single shot.
+  "maxPerShot"   total fragments one shot may ever produce, shared
+                 across all its triggers (default 8). This is what stops
+                 a piercing round through a crowd from filling the
+                 screen.
+
+There is also a hard ceiling of 200 fragments per frame across the whole
+game, which you cannot turn off. It exists because the game has no
+projectile cap of its own.
+
+FRAGMENTS FROM A DIFFERENT WEAPON - "weapon"
+--------------------------------------------
+
+Leave "weapon" out and fragments are copies of the shot. That is the
+simplest option and the one that inherits everything for free.
+
+Name a weapon and fragments wear ITS art, size and behaviour, while
+still being handed the parent's live damage, burn, explosion and
+discharge - and a real owner, so their kills still pay out.
+
+NAMING - all of these work, pick whichever you have in front of you:
+
+    "Boomerang"                    the weapon's own "name" field
+    "BOOMERANG"                    its "displayName"
+    "Forge Weapon Boomerang"       the real asset name
+    "Weapon Caps Flame"            a stock weapon, unchanged
+
+(Only the third one used to work, which is why four reasonable
+spellings all failed. If a name still misses, the log now prints every
+weapon you have by "name" - read that line rather than guessing.)
+
+  "split": {
+    "on": ["death"],
+    "weapon": "Forge Weapon Shard",
+    "count": 4,
+    "damage": "share"
+  }
+
+Two things to know about this path:
+
+  - The fragment weapon's own "projectileCount" and "spread" are
+    OVERRIDDEN by the "count" and "spread" you set here, so you get
+    exactly the fan you asked for and one shoot sound rather than four.
+  - Only its FIRST burst inherits. Give the fragment weapon
+    "burstSize": 1. A burst tail lands on a later frame, after the
+    inheritance has been handed over.
+
+  "inheritDamage", "inheritBurn", "inheritExplosion" and
+  "inheritDischarge" (all default true) turn the individual pieces off.
+  Setting inheritDamage false gives the fragment weapon its own damage
+  number back, i.e. subEmitter behaviour with a real heading and a real
+  owner.
+
+WORKS ON LOBBED WEAPONS TOO. A "usePhysics" grenade splits into
+grenades, arcing under gravity, exactly as you would hope. Remember a
+lobbed shot ignores rangeData entirely, so its "death" trigger is
+lifetime or impact.
+
+ONE TEMPLATE GOTCHA WORTH KNOWING: "rangeData.slowDown"
+-------------------------------------------------------
+
+The stock White Popper - which most weapons clone - ships slowDown ON.
+That decelerates the shot to a DEAD STOP exactly at its range, and the
+game then destroys it there. So on a "death" split the burst happens at
+the stopping point rather than where the bullet was going, and the
+fragments inherit the same deceleration and slow down over their own
+range too.
+
+The fan still points the right way (the heading is taken from the last
+frame the shot was actually moving, not from the zero velocity it dies
+with). But if your fragments crawl or clump, this is why. Set
+
+    "rangeData": { "slowDown": false }
+
+for fragments that keep their speed. The builder logs a note when it
+sees this combination.
+
+PRESETS TO START FROM (in Weapon Builder.html): Flechette (bursts into
+homing shards), MIRV (opens mid-flight), Shatter Round (pierces and
+sheds shards at every enemy), Caltrop (grenade shedding shards on every
+bounce).
+
 ----------------------------------------------------------------
  4e. TURRET / MINE (a shot that keeps firing WHILE it's alive)
 ----------------------------------------------------------------
@@ -831,6 +1197,1137 @@ sweeping along its own movement, so once it stops dead it may detect
 nothing at all. The turret does its own radius check every frame, so a
 parked mine still damages what touches it - and because it owns the
 damage there's exactly one hit per contactDelay.
+
+----------------------------------------------------------------
+ 4f. DRONE GADGETS (a real gadget that prints drones)
+----------------------------------------------------------------
+
+Take one of the five stock drone gadgets as your "template" and you get
+a proper gadget on the 1/2/3 keys, with a real minion CAP.
+
+  {
+    "name": "EscortDrone",
+    "displayName": "ESCORT DRONE",
+    "template": "Module Active Drone Caps",
+    "slot": "gadget1",
+    "drone": {
+      "cap": 3,
+      "cost": 3,
+      "resource": "Caps"
+    },
+    "minion": {
+      "weapon": "Boomerang"
+    }
+  }
+
+  NOTE THIS NEEDS TWO FILES - the drone, and the weapon it names. If the
+  named weapon is missing the drone quietly keeps its stock gun (the log
+  says so, and lists what you do have). "Boomerang" above is a preset in
+  Weapon Builder.html, so save that one too and this works as written.
+
+THE FIVE TEMPLATES
+------------------
+
+  Module Active Drone Caps       COMBAT DRONE    Caps 4
+  Module Active Drone Electron   ELECTRIC DRONE  Caps 5
+  Module Active Drone Purple     MISILLE DRONE   Caps 3
+  Module Active Drone Phantom    PHANTOM DRONE   Caps 2
+  Module Active Drone Suicide    SUICIDE DRONE   Caps 2
+
+All five ship cap 1, cooldown 0.33 and boostable ON.
+
+"cap" IS THE HEADLINE NUMBER
+----------------------------
+
+  "cap": 3     how many drones you may have at once
+
+This is the module's "level", one for one. The game refuses to spawn
+once you are at the cap, and - this is the part worth knowing - if the
+cap ever DROPS it destroys the excess. Which is why a BOOSTERCORE
+RAISES IT: a booster raises the module's level, and level is the cap.
+
+Boostability is switched on for you if the template lacked it. You can
+write "level" instead of "cap" if you prefer the raw field name.
+
+WHY IT MUST BE A GADGET SLOT
+----------------------------
+
+Put one in a weapon slot and the builder moves it to gadget1 and says
+so. That is not us being strict. A spawn-minion module in a weapon slot
+installs fine and caps correctly - the game's own connection lookup
+handles weapon slots - but the ship builds its gun from the slot's main
+module cast to a WEAPON module, and this is not one. So no weapon is
+ever built and clicking does nothing at all. It is unreachable, not
+forbidden.
+
+If you want a PRIMARY-fire swarm gun, use a minion-spawner WEAPON
+template instead (4e above) - but be aware those have no cap at all.
+
+THE SPAWN
+---------
+
+  "minion"              unit prefab to print, by asset name. Empty =
+                        keep the template's drone.
+  "cost"                resource per drone
+  "resource"            which resource pays (Caps, White, Tech, Purple,
+                        Electron, Fuel, Health, Money)
+  "cooldown"            seconds between presses (stock 0.33)
+  "startSpeed"          how hard it is flung out (stock 10)
+  "dropAngle"           direction, degrees (stock 180 = straight down)
+  "dropAngleVariance"   random spread on that angle
+  "spawnOffsetX/Y"      where it appears relative to you (stock 0,-1)
+
+WHAT YOU CAN PUT IN "minion"
+---------------------------
+
+Weapon Builder.html has the COMPLETE list as a dropdown next to the
+field - every prefab in the game with both a Unit and a savable entity,
+which is exactly what the spawner requires. There are 80. Grouped:
+
+   5  the drones the stock gadgets print (Player faction, they shoot,
+      and the only ones actually designed for this):
+        Enemy_Fly Variant Drone            (COMBAT)
+        Enemy_Fly Variant Drone Electric   (ELECTRIC)
+        Enemy_Fly Variant Drone Missile    (MISSILE)
+        Enemy_Fly Variant Drone Phantom    (PHANTOM)
+        Enemy_Fly Variant Drone Suicide    (SUICIDE - dies on contact)
+   1  other Player-faction unit: Unit Beacon
+  59  HOSTILE prefabs - Cross (28), Fly (24), Maggot (6), Crawler (1).
+      Perfectly usable; they are enemy assets, so leave "faction" at
+      "owner" (the default) and they fight FOR you.
+   1  no Shooter - Unit Hiver. Spawnable, but "minion.weapon" would do
+      nothing because it has no weapon holder.
+  14  no AI - the crates and boxes. They spawn and sit there, which is
+      either useless or a loot printer depending on your mood.
+
+THE FOUR PLAYER SHIP PREFABS ARE DELIBERATELY LEFT OUT of the dropdown.
+They pass the spawnable test (ShipKBM has a Unit and a savable entity),
+and spawning one would put a second input handler in your level.
+
+A BAD MINION NAME IS REFUSED RATHER THAN TRUSTED, and it matters: the
+game hands the prefab's savable-entity component straight to its spawner
+with no null check, so a prefab that is not one would throw the first
+time you pressed the key. A bad name keeps the template's drone, and the
+log prints the same list the dropdown holds - generated from whatever
+the game actually has loaded, so it cannot go stale.
+
+WHAT THE DRONES CARRY - the "minion" block
+------------------------------------------
+
+  "weapon": "Boomerang"       one of YOUR weapons, by its "name",
+                              its "displayName", or the full
+                              "Forge Weapon <name>". Needs that weapon's
+                              file to exist too.
+  "faction": "owner"          "owner" (default) / "keep" / a faction
+  "lifetime": 0               seconds before it dies on its own
+
+WHY THE WEAPON NEEDS CODE AT ALL: a drone already receives the modules
+from its cluster - that is why extra projectiles or health visibly reach
+it - but it receives them as AUGMENTATIONS, and the code that adds them
+never touches the cluster's MAIN module, which is what the weapon is
+built from. So a weapon module handed over the ordinary way becomes a
+modifier on the drone's existing gun rather than a replacement. This
+sets the main module. Resolved when the first drone spawns, so file
+order never matters.
+
+FACTION: "owner" is the default and it only changes the case that was
+broken. Owning something is not the same as it being on your side - the
+game's spawn sets the owner and the minion list and never touches
+faction. The five stock drones are player-faction assets despite their
+"Enemy_" names, but several other spawnables are genuinely hostile, so
+pointing at one used to give you a pet that counted against your cap
+and then shot at you. Use "keep" for the old behaviour.
+
+LIFETIME is what turns a pet into a SWARM: a high cap plus a short
+lifetime gives a cloud of short-lived helpers instead of a permanent
+escort. It kills them the same way the game's own cap enforcer does, so
+death effects and drops behave normally. 0 = lives until killed.
+
+HOW THE MINIONS LOOK - color and scale
+--------------------------------------
+
+Both work on either path - a swarm gun or a drone gadget - because they
+live in the same "minion" block.
+
+  "minion": {
+    "color": "#9ad14a",
+    "colorMode": "replace",
+    "scale": 0.7,
+    "scaleMode": "full"
+  }
+
+COLOR takes "#rrggbb", an HTML name ("purple"), or a game colour asset
+("ColorPurple").
+
+  "colorMode": "replace"  (DEFAULT) every visual sprite becomes exactly
+                          your colour. Unmistakable, which is usually the
+                          point of recolouring a swarm; it does flatten
+                          whatever shading the prefab had.
+                "tint"    multiplies over the existing art, so light and
+                          dark detail survives - but you cannot get a
+                          specific colour. The drone's body is orange and
+                          its glow red, so tinting purple gives muddy
+                          brown. That is why replace is the default.
+
+ONLY THE PREFAB'S "Visual" SUBTREE IS RECOLOURED, and that is the whole
+point rather than an implementation detail. A unit's AI STATE INDICATORS
+are sprites too, and they are deliberately colour-coded - green Idle,
+red Aggro, yellow Seek, blue Regroup, plus FLEE / Search / Charge on
+other prefabs. Recolouring "every sprite" would wipe out the AI's own
+tells, so you could no longer see what a minion was doing. All 66
+combatant prefabs keep their art under a "Visual*" child with the state
+sprites outside it, so that subtree is the boundary. The 15 spawnables
+without one are exactly the crates, boxes, Dummy and FieldGenerator -
+no state sprites to protect - and those fall back to a name filter.
+
+It survives being shot, too: the damage flash swaps the sprite's
+MATERIAL and never touches its colour.
+
+SCALE is 0.1 to 8.
+
+  "scaleMode": "full"    (DEFAULT) scales the root, so the collider goes
+                         with the art - a bigger minion really is a
+                         bigger target - AND scales mass by scale
+                         SQUARED, because in 2D something twice as wide
+                         covers four times the area. Without that a giant
+                         minion stays as light as a fly and gets punted
+                         across the room by every explosion.
+               "hitbox"  the same, without the mass change.
+               "art"     scales only the Visual subtree, so the hitbox is
+                         unchanged. Purely cosmetic. Cannot work on a
+                         crate or box (no Visual node) - the log says so
+                         rather than resizing the hitbox behind your back.
+
+Scaling is safe to do at all because the Animator sits on the "Visual"
+child and never on the root, and NOT ONE of the game's 404 animation
+clips animates scale - so nothing overwrites it.
+
+A STOCK BUG WORTH KNOWING
+-------------------------
+
+When the game trims drones for being over the cap it destroys the FIRST
+MINION IN YOUR LIST rather than the first one belonging to that gadget.
+With two drone gadgets equipped, going over the cap on one can kill a
+drone belonging to the other. That is the base game, not this mod.
+
+Presets: "Combat Drone", "Drone Swarm", "Rogue Drone".
+
+----------------------------------------------------------------
+ 4g. SWARM GUNS (a minion spawner on the TRIGGER)
+----------------------------------------------------------------
+
+Take one of the five minion-spawner WEAPON templates, put it in a
+weapon slot, and you get a gun that prints units on left click.
+
+  {
+    "name": "SwarmGun",
+    "template": "Weapon Minion CrossSmallCaps",
+    "slot": "primary",
+    "weapon": {
+      "minionPrefab": "Unit Cross Small Caps",
+      "projectileSpeed": 12,
+      "minionFacesShootDirection": true
+    },
+    "minion": {
+      "faction": "owner",
+      "cap": 6,
+      "capMode": "killOldest",
+      "lifetime": 10
+    }
+  }
+
+WHY THEY USED TO PARK IN A CORNER
+---------------------------------
+
+This is worth knowing because it explains every symptom at once.
+
+The only thing in the game that gives a spawner weapon's minions an
+OWNER is MinionOwnerSetter - a component carrying a serialized reference
+to its owning unit. It exists on exactly THREE prefabs: the Cross Queen
+and the two Floater Officers. IT IS NOT ON YOUR SHIP.
+
+So a spawner weapon in a player slot produced ownerless minions:
+  - the follow AI had nothing to follow, so they drifted to a spot and
+    stayed there;
+  - no owner means no minion list, so no cap was possible at all;
+  - and kills credited nobody.
+
+Weapon Forge now sets the owner itself. That single change is what gives
+you follow AI, a countable cap, and attribution.
+
+HOW MANY COME OUT PER CLICK
+---------------------------
+
+    total per trigger pull  =  burstSize x projectileCount
+
+AND BOTH ARE INHERITED FROM THE TEMPLATE, which is the trap. What the
+five spawner templates actually ship:
+
+  template                          fRate burst pCount  default minion
+  --------------------------------- ----- ----- ------  ----------------------
+  Weapon Minion CrossSmallCaps       0.2    4     1     Cross Variant Pin
+  Weapon Minion Cross Red            0.2    4     1     Cross Variant Pin
+  Weapon_Minion_CrossQueen           0.2    4     1     Enemy_Child
+  Weapon Minion CrossRedBomber       0.2    1     1     Cross OneShot 4
+  Weapon FloaterOfficerCaps Mines    0.5    1     1     Mine FloaterOfficerCaps
+
+All five also ship angleVariance 30.
+
+So THREE of the five fire four minions per click if you mention neither,
+staggered a tenth of a second apart and scattered +/-30 degrees. Against
+any sane cap that saturates in one click and looks exactly like a broken
+cap.
+
+(An earlier version of this file said "every template except the
+Bomber". That was wrong - two of the five ship burstSize 1.)
+
+Note all five default to a SLOW pull - 0.2 is one every five seconds -
+and to a LIGHT minion prefab. If your spawner pours out heavy units,
+that came from your own overrides, not the template.
+
+NOT ALL SPAWNABLES ARE THE SAME WEIGHT
+--------------------------------------
+
+This one cost a testing round, and the prefab names are actively
+misleading.
+
+    a drone                     25 GameObjects, 1 gun
+    Enemy_Cross                 16 GameObjects, 1 gun
+    Unit Cross Small Caps      173 GameObjects, TWENTY fixed turrets
+    Unit Cross Red Electron    300 GameObjects, twenty turrets
+    Enemy_CrossQueen           705 GameObjects, sixty-four turrets
+
+"Small" is not small. The shipped "Swarm Gun" preset named
+Unit Cross Small Caps and spawned six of them at four a second, which
+froze the game for a couple of seconds and produced what looked like a
+room full of bosses dropping loot. That was a preset bug, now fixed to
+Enemy_Cross at one per click.
+
+Sixteen of the spawnables are in that heavy class. They are marked HEAVY
+in the builder page's picker, and the mod warns at load if you pair one
+with a high cap or a fast rate. Use them as a single escort, not a
+swarm.
+
+  burstSize        shots per trigger pull, burstDelay apart
+  projectileCount  minions per shot, fanned by "spread"
+  angleVariance    random jitter on each one, in degrees
+  fireRate         pulls per SECOND - see below
+
+All four live in the normal weapon block - they are ordinary weapon
+stats, not minion-specific ones.
+
+FIRERATE IS SHOTS PER SECOND, NOT A DELAY
+-----------------------------------------
+
+This one catches people, because "rate" reads like "wait" to a lot of
+us. The game does
+
+    next shot allowed at:  lastShootTime + 1 / fireRate
+
+so the number is a FREQUENCY and lower means slower:
+
+    fireRate 4      a pull every 0.25s     fast
+    fireRate 1      a pull every 1s
+    fireRate 0.5    a pull every 2s
+    fireRate 0.1    a pull every 10s       very slow
+    fireRate 0      divide by zero - do not
+
+If you want a drone every couple of seconds, that is fireRate 0.5.
+
+AND BURSTDELAY IS NOT A COOLDOWN. It is the gap between the shots
+*inside* one burst, so at burstSize 1 there is no second shot and it
+does nothing at all. The builder now warns when you set it anyway.
+
+WHAT THE LOG TELLS YOU
+----------------------
+
+Two lines, and they are worth knowing about because between them they
+tell you which half of the machine to blame.
+
+At load, for every spawner, unconditionally:
+
+    minion FIRING - 1 minion(s) per trigger pull (burstSize 1 x
+    projectileCount 1), one pull every 2.000s (fireRate 0.500 = shots
+    per SECOND, so lower is slower)
+
+That is the mod reporting the numbers it actually wrote. If that line
+disagrees with your file, the file is not being read the way you think.
+
+Then, the first time a spawner fires for two seconds:
+
+    minion RATE CHECK on '...': 1 minion(s) actually spawned in 2.05s
+    of firing. The file asks for 1 per pull at fireRate 0.500 ... so
+    about 1.0 were expected - which matches the file.
+
+That is the mod counting what the GAME did. If the first line looks
+right and this one says "FAR MORE THAN THE FILE ASKS FOR", the values
+are being applied and something downstream is ignoring them - which is a
+real bug worth reporting with both lines quoted.
+
+THE CAP IS ENTIRELY OURS
+------------------------
+
+MinionSpawnerWeapon.FireSingle has NO count check of any kind. The cap
+logic in this game exists only in the drone GADGET. So a spawner weapon
+with no cap is a firehose - a few seconds of held fire fills the room,
+which is exactly what "spawns like 12 drones" was.
+
+  "cap"          how many may be alive at once. 0 = unlimited, and the
+                 builder warns you about it.
+  "capMode"      what happens when you are full:
+                   "killOldest" (DEFAULT) - always fires; the
+                       longest-lived minion dies to make room, so the
+                       gun never feels dead.
+                   "block" - refuses to fire and KEEPS YOUR RESOURCE.
+                       Checked before the cost is taken, because paying
+                       for a shot that spawns nothing reads as a bug.
+                       Feels like a magazine that refills as the swarm
+                       dies off.
+                   "fizzle" - fires, costs, nothing appears.
+                   "none" - no cap. You asked for it.
+
+                 ONE SLOT-DEPENDENT CATCH: "block" keeps your resource
+                 because it is checked inside the Shooter, and GADGETS
+                 BYPASS THE SHOOTER ENTIRELY. So a spawner weapon in a
+                 gadget slot cannot be blocked before it pays - it
+                 degrades to "fizzle" there. In a primary or secondary
+                 slot it works as described. "killOldest" (the default)
+                 behaves identically in every slot, which is another
+                 reason it is the default.
+  "capPerLevel"  extra cap per module level above 1, so a BOOSTERCORE
+                 raises your swarm size the way it raises a drone
+                 gadget's. OFF by default (0): a weapon's level normally
+                 drives FloatSeries stats and a spawner has none, so
+                 levelling one would otherwise do nothing and quietly
+                 waste a BoosterCore. Setting this switches
+                 "canBeBoosted" on for you, since the level cannot move
+                 without it.
+
+The cap counts only what THIS weapon made, deliberately - so a swarm gun
+and a drone gadget never fight over each other's minions. (The game's own
+trim is not so careful: it destroys the first minion in your list rather
+than the first one belonging to that gadget.)
+
+LIFETIME - what makes it a swarm
+--------------------------------
+
+  "lifetime": 10     seconds before a minion dies on its own.
+                     0 = lives until something kills it.
+
+A high cap plus a short lifetime gives a cloud that constantly renews,
+rather than a permanent escort. Pairs naturally with "killOldest". It
+kills them the same way the game's own trim does, so drops and death
+effects behave normally.
+
+GRID MODULES - "inheritGrid"
+----------------------------
+
+A drone GADGET hands each drone a copy of its cluster's other modules.
+A spawner WEAPON does nothing of the sort - nothing in the game gives
+them any. "inheritGrid": true replicates it.
+
+OFF by default because it multiplies: a cap of 10 means ten minions each
+carrying your whole grid, which is a different weapon entirely.
+
+WHAT TO SPAWN
+-------------
+
+"minionPrefab" takes the same 80 prefabs the drone gadget's dropdown
+lists (see 4f). Most are hostile assets - leave "faction" at "owner"
+(the default) and they fight FOR you.
+
+THE SUICIDE DRONE, AND WHY IT CAN KILL YOU
+------------------------------------------
+
+Enemy_Fly Variant Drone Suicide is the ONLY unit in the game with
+suicide-on-contact behaviour. It carries ImpactDamage at minVelocity 0
+and amount 30, so ANY contact kills it, and its death explosion is what
+actually damages things.
+
+AND EXPLOSIONS IN THIS GAME HAVE NO FRIENDLY FILTER AT ALL.
+DoExplosionLogic walks OverlapCircleAll and calls OnExplosion on every
+listener in radius - no faction check, no owner check, nothing. So a
+suicide drone that dies next to you WILL hurt you, and so will your own
+grenades. That is the base game, not this mod.
+
+If you build a kamikaze swarm, throw them fast (high projectileSpeed) so
+they meet something before you do, and keep the cap low. The
+"Kamikaze Swarm" preset is tuned that way.
+
+Presets: "Swarm Gun", "Kamikaze Swarm".
+
+
+----------------------------------------------------------------
+ 4h. WHAT THE MINION IS (stats) AND WHAT ITS OWN GUN DOES
+----------------------------------------------------------------
+
+Everything here goes in the same "minion" block that 4f and 4g use, so
+it works identically for a drone GADGET and a swarm GUN.
+
+  "minion": {
+    "health": 60,
+    "speed": 90,
+    "sight": 40,
+    "iFrames": 0.2,
+    "resources": { "Resource White": 20 },
+    "regen":     { "Resource White": 2 },
+    "explosion": { "damage": 9, "radius": 1.6 },
+    "hurtsOwner": false
+  }
+
+ABSOLUTE BY DEFAULT
+-------------------
+
+"health": 60 means 60. Add
+
+    "statMode": "multiply"
+
+and every number in the block becomes a factor on whatever the prefab
+already had. Absolute is clearer; multiply is what you want when one
+file is meant to work on several different prefabs, because their base
+values disagree wildly - the five stock drones have health pools of 10,
+20, 30 and 50, IN FOUR DIFFERENT RESOURCES.
+
+HEALTH IS NOT A FIELD, IT IS A RESOURCE TANK
+--------------------------------------------
+
+This is the fact everything else here follows from, and it is not
+guessable.
+
+A unit's health is the capacity of a resource tank, and that capacity is
+NOT stored anywhere. It is recomputed from the unit's module effects
+every time its stats recalculate - and recalculating starts by setting
+every capacity to ZERO and adding it all back up again.
+
+So the obvious approach (write the tank) is not merely fragile, it is
+actively broken:
+
+  - the write is erased on the next recalculation, which on a gadget
+    drone happens a few lines later in the same method;
+  - and the recalculation rebuilds the CAPACITY without refilling the
+    VALUE, so you are left holding more health than your maximum, in a
+    state that never self-corrects because the recharger only runs on a
+    tank that is not full.
+
+What the mod does instead is edit the module EFFECT that feeds the sum.
+Every recalculation then reproduces your number instead of eating it.
+That is also exactly what the game does to itself: it scales enemy
+health for co-op by multiplying the same effect's base value.
+
+One consequence worth knowing: the effects belong to the unit, but the
+ASSET they were copied from is shared - one of them is on seven
+different enemy prefabs - so this only ever touches the copy.
+
+WHICH RESOURCE IS "HEALTH"?
+---------------------------
+
+Whichever one that prefab uses, and it is usually not Health:
+
+  drone           Caps        50
+  electric drone  Electron    30
+  missile drone   Purple      50
+  suicide drone   Health      20
+  phantom drone   Tech        10
+
+You do not have to care - "health" reads the prefab's own choice. This
+is only worth knowing because it explains why you cannot fix a drone's
+health by adding a Health pool: you would get a real second tank that
+the healthbar ignores.
+
+SPEED, AND THE TWO THINGS IT DRAGS WITH IT
+------------------------------------------
+
+A unit has ONE MOVEMENT COMPONENT PER AI STATE - the stock drone has
+five, the suicide drone six - and each state is tuned separately. The
+drone cruises at about 30-60 and sprints at 250-350 when regrouping.
+
+In absolute mode, "speed" targets the SLOWEST sustained state and scales
+all the others by the same factor, so the prefab keeps its own fast/slow
+spread. Setting every state to one flat number would cost the minion its
+sprint, which reads as broken AI rather than as a fast minion.
+
+Two things then happen without being asked:
+
+  - WAYPOINT ARRIVAL DISTANCE is scaled to match. A movement action only
+    advances to the next waypoint once it is within a small radius, and
+    most of them build their path once on entry and never again. A faster
+    minion overshoots that radius inside one physics step and then
+    orbits waypoint one until a timeout rescues it.
+
+  - THE LEASH is scaled too, if you did not set it yourself. A minion
+    that covers more ground per second but is recalled at the same
+    distance flips between chasing and regrouping on the spot.
+
+And the factor is CLAMPED. Past a point a minion outruns the loaded
+region around the camera, and the game unloads and destroys it. That
+presents as "my minions randomly expire", with nothing in the log, so
+the clamp says so instead.
+
+"turnSpeed" only affects the swimming units - the Maggot, Fish and Queen
+Child family. Push-movers have no turn rate at all; they shove
+themselves toward the target and their scatter angle is randomness, not
+steering.
+
+TOUGHNESS WITHOUT MORE HEALTH
+-----------------------------
+
+    "iFrames": 0.25
+
+Seconds of invulnerability after each hit. Every minion ships 0. This is
+a cap on how OFTEN anything can damage it, so it is specifically a
+defence against fast weapons.
+
+There is no armour or resistance stat to expose instead. The only
+resistance system in the game lives on the shared resource assets, so
+changing it would change it for the whole run - you included.
+
+RESOURCE POOLS, AND WHY A COSTED WEAPON NEVER FIRES
+---------------------------------------------------
+
+    "resources": { "Resource White": 20 },
+    "regen":     { "Resource White": 2 }
+
+NO MINION PREFAB HAS A WHITE POOL, and White is what most weapons spend.
+Hand a minion a costed weapon and it will never fire once - it just
+chirps the no-resource sound, once per shot, forever. The affordability
+check reads a tank that does not exist as zero.
+
+The mod forces cost 0 on the prefab's OWN gun for exactly this reason
+(and says so in the log). A weapon you hand it with "minion.weapon"
+keeps its cost, so either zero it there or give the minion a pool.
+
+Note the recharge DELAY belongs to the shared resource asset rather than
+to the minion, so it is the same as everything else using that resource.
+Only the rate is yours.
+
+SHIELDS
+
+    "shield": { "resource": "Resource Electron", "effectiveness": 2 }
+
+Needs a matching pool or it is decoration - a shield spends the
+resource. Refused with a warning on the one selectable prefab that ships
+no shield visual, because the game instantiates that without checking
+and would throw inside its own code on the first recalculation.
+
+LIFETIME, AND THE PREFABS THAT WERE ALREADY ON A CLOCK
+------------------------------------------------------
+
+Three of the spawner-weapon prefabs burn a fuel resource and die when it
+runs out: Cross Pin at about 9s, OneShot 4 at 15s, the Queen Child at
+5s. So "lifetime": 30 on those used to mean nothing at all.
+
+Now "lifetime" scales that fuel pool to cover the time you asked for, so
+one key means one thing everywhere. Turn it off with
+
+    "extendFuel": false
+
+if you would rather keep the prefab's own clock.
+
+ITS OWN GUN
+-----------
+
+    "weaponStats": { "fireRate": 2, "damage": 6 },
+    "explosion":   { "damage": 9, "radius": 1.6 },
+    "lightning":   { "chainLength": 3, "damage": 4 },
+    "burn":        2
+
+These tune THE WEAPON THE PREFAB ALREADY CARRIES, so they are what you
+want when you have NOT set "minion.weapon". If you did name a weapon,
+put these in that weapon's own file - the log will say so rather than
+half-applying them.
+
+weaponStats takes fireRate, damage, damageType, burstSize, burstDelay,
+projectileCount, spread, angleVariance, angleOffset, knockbackForce,
+pushForce, warmupTime, projectileSpeed, projectileRadius and range, all
+obeying statMode.
+
+THE PREFAB'S WEAPON IS CLONED FIRST, and that is not politeness. Those
+weapon assets are shared with the enemies you fight: one gun is the
+primary weapon of three of the five drone gadgets, and the Cross gun is
+shared by eight prefabs including the ordinary Cross. Writing an
+explosion into one in place would arm every user of it, permanently,
+for the rest of the session.
+
+A few prefabs cannot be tuned at all - the Queen and the mines carry
+fixed turrets rather than a module-driven gun. Those are refused with a
+warning and everything else still applies.
+
+Hitscan guns cannot explode or discharge; that code never reads either.
+Only "burn" works on those, and the log says which kind you have.
+
+Two things are fixed for you on lightning, because the stock values
+produce a light show and no damage: the subsystem (without which no
+beams spawn at all) and the layer mask (the stock drone gun ships 0,
+which draws arcs that damage nothing). Per-hop reach is a single global
+in this game rather than a per-weapon value, so it is not settable.
+
+"burn" raises how LONG a target burns, not how hard - damage per tick
+belongs to whatever is on fire.
+
+EXPLOSIONS WILL HURT YOU
+------------------------
+
+    "hurtsOwner": false,
+    "hurtsAllies": false
+
+Both default to TRUE, because that is simply what the engine does.
+Explosions in this game have NO OWNER FILTER ANYWHERE: the explosion
+walks every collider in radius and asks each one to take the damage,
+with no faction or owner check at any point. Your ship's hull qualifies
+like anything else. And the AI parks a minion within a few units of what
+it is shooting.
+
+Turning an explosion on also moves its burn OFF contact and INTO the
+blast, so an incendiary minion sets you alight as well.
+
+Setting either to false switches on a filter of the mod's own, covering
+damage and burn together. "hurtsAllies" is what stops an explosive swarm
+chain-detonating itself.
+
+WHAT SURVIVES A SAVE AND RELOAD
+-------------------------------
+
+All of it, now. It did not used to.
+
+The save system stores an entity as a prefab plus a list of mementos and
+replays only those, so anything not in a memento came back as prefab
+values - faction, colour, scale, stats, the lot. Colour and scale had
+been silently reverting since the day they shipped.
+
+The mod now re-derives everything when a minion is bound to its restored
+data. It needs nothing stored, because a minion remembers two things
+across a load - who owns it and which slot it came from - and that is
+enough to find the spawner that made it and read the settings again.
+
+Two details:
+
+  - its LIFETIME CLOCK RESTARTS rather than resuming;
+  - its WEAPON was already surviving on its own, because the grid is in
+    a memento. That is also why the mod registers the tuned copy of a
+    prefab's gun: the save stores modules by id and looks them up
+    without checking for a miss, so an unregistered one would be a
+    crash on load rather than a warning.
+
+WHERE THE NUMBERS SHOW UP IN GAME
+---------------------------------
+
+A swarm gun's stat card lists its minion cap, lifetime, health, speed,
+sight, shield and any explosion / chain / burn you gave its gun. A drone
+gadget's card gets a "Minions: ..." line in its description. A stat you
+can set is a stat you can see.
+
+Presets: "Swarm Gun" (absolute stats), "Drone Swarm" (multiply mode plus
+weaponStats), "Demolition Drone" (explosion, burn, and the blast filter).
+
+
+----------------------------------------------------------------
+ 4i. SLOW, AND BENDING TIME
+----------------------------------------------------------------
+
+Two separate top-level blocks, because they are two different ideas:
+
+  "slow"      a debuff on the thing you hit. It slows down; you do not.
+  "timeSlow"  bends time for EVERYTHING, you included. A hit-stop punch.
+
+A weapon can have either or both, and they share their triggers.
+
+  "slow": {
+    "amount": 0.35,
+    "duration": 3,
+    "mode": "stack",
+    "tint": "#8fd0ff"
+  },
+  "timeSlow": {
+    "scale": 0.3,
+    "duration": 0.35,
+    "onHit": false,
+    "onKill": true
+  }
+
+WHY THE SLOW TOUCHES THE RIGIDBODY AND NOT THE MOVEMENT
+-------------------------------------------------------
+
+Worth knowing, because the obvious implementation is a trap that would
+have produced a bug nobody could reproduce.
+
+A unit carries ONE MOVEMENT COMPONENT PER AI STATE, and the AI's
+movement actions SNAPSHOT that component's values when a state begins
+and RESTORE the snapshot when it ends. So a slow written into the
+movement fields has two failure modes: it is wiped at the next state
+change, and - much worse - if a state happens to begin while the target
+is slowed, the slowed numbers become that state's "original" and get
+restored forever afterwards. A temporary debuff would become permanent,
+at random, depending on AI timing.
+
+So everything goes on the RIGIDBODY, which nothing snapshots:
+
+  move        linearDamping    terminal speed under a constant force is
+                               force/damping, so damping/amount gives
+                               exactly "amount" times the speed
+  turnSpeed   angularDamping   the same trick for turning
+  knockback   mass             lower mass means YOUR shots and blasts
+                               shove it further, while its own movement
+                               is unchanged - a unit multiplies its own
+                               force by its mass, so that cancels out
+  fireRate    the weapon       scaled on the unit's own weapon instance
+
+All four are stored on the way in and written back exactly on the way
+out, and every re-application recomputes from the stored original rather
+than compounding - so a hundred hits cannot drift the numbers.
+
+This is also the game's own idiom: the one place it slows something down
+is DragCellBehaviourTarget, which multiplies velocity in FixedUpdate.
+
+TWO THINGS IT DELIBERATELY DOES NOT DO
+
+  It never slows whatever is holding the gun. Explosions in this game
+  have no owner filter, so your own blast hits you like anyone else's,
+  and self-slow is never what anyone meant.
+
+  The movement half does nothing to the player ship in any case, because
+  ShipMovement rewrites its own damping every frame in three separate
+  branches. That makes movement-slow inherently an enemies-only effect.
+
+  "turnSpeed" is a no-op on most enemies - they shove themselves toward
+  you rather than steering, so there is no turn rate to slow. It affects
+  the Maggot / Fish / Queen Child family. The log says so.
+
+MODES
+
+  refresh   each hit resets the timer, strength unchanged (default)
+  stack     each hit slows harder, up to "maxStacks", never past "floor"
+  ignore    the first hit runs its course untouched
+
+"cooldown" sets a minimum gap between re-applications on one target.
+0 (the default) means every hit counts.
+
+BENDING TIME
+
+This goes through the game's own TimeManager - the same system the
+consumable wheel uses - so it needs no patch at all. Overlapping bends do
+NOT compound; the game takes the strongest one.
+
+  scale         what time drops to. 0.35 is a good punch, 0.1 is
+                dramatic and disorienting
+  duration      how long, in REAL seconds
+  ease          ride back up to normal instead of snapping (default on,
+                and it is most of what makes hit-stop feel good)
+  cooldown      minimum real seconds between bends
+  realSeconds   leave it on - see below
+
+NEVER SET timeSlow duration TO 0. The game reads a duration of zero or
+less as PERMANENT: an indefinite modifier that is never checked for
+expiry, so the whole run would sit in slow motion with nothing to clear
+it. The builder overrides a zero and says so in the log.
+
+AND LEAVE "realSeconds" ON. With it off, the duration is measured in the
+very time you just slowed down - so a 0.25s bend at scale 0.2 would
+really last 1.25 seconds, and a heavier slow would feel like it had
+stuck.
+
+THE ONE TO THINK ABOUT: TIME-SLOW ON A FAST WEAPON
+
+With no cooldown, a weapon that hits more often than the bend lasts
+holds the game in slow motion for as long as you keep firing. It ends
+when you stop, so it is a real effect rather than a bug - but it is a
+very different weapon from an occasional punch, so the builder warns
+when your fire rate makes it continuous. Either set a "cooldown", or put
+the bend on "onKill" instead.
+
+TRIGGERS
+
+"onHit" is on by default, "onKill" is off, and they are independent - so
+a weapon can do a small reliable slow on every hit and save a big time
+bend for the kill. That is exactly what the Stasis Round preset does.
+Put either key in whichever of the two blocks you prefer.
+
+Preset: "Stasis Round".
+
+
+----------------------------------------------------------------
+ 4j. OVERHEAT / JAM ON SUSTAINED FIRE
+----------------------------------------------------------------
+
+Every shot adds heat. Stop firing and it cools. Hit the ceiling and the
+weapon does whatever "response" says.
+
+  "overheat": {
+    "response": "vent",
+    "max": 100,
+    "perShot": 8,
+    "coolPerSecond": 35,
+    "coolDelay": 0.5,
+    "replacesAmmo": true,
+    "ventShot": true
+  }
+
+PRIMARY AND SECONDARY ONLY. A gadget fires without going through a
+Shooter, and the Shooter is the thing overheat blocks - so heat would
+build with nothing able to act on it. The builder refuses it there rather
+than shipping a feature that looks configured and does nothing.
+
+WHY THIS ONE IS CLEAN
+
+The game supports it almost completely by accident. Shooter.Block(object)
+and Unblock(object) are PUBLIC, and Shooter's update returns immediately
+when anything is blocking - before the warmup tick, before the firing
+sound, before the shot. So a jam is one call and it is total, rather than
+the usual "suppress the shot, then chase down the four other things that
+still happen".
+
+The one thing that early return costs: StopContinousSound lives AFTER it,
+so a weapon already looping its firing sound would loop it forever once
+blocked. The mod stops that sound itself when it jams. Worth knowing if
+you ever block a Shooter for anything else.
+
+THE FOUR RESPONSES
+
+  vent   locked until heat is back to "ventTo" (0 by default). The Halo
+         plasma rifle - the punishment scales with how greedy you were.
+  jam    locked for "jamSeconds" whatever the heat was. More forgiving.
+  slow   never locks; fire rate degrades toward "slowestFireRate" as it
+         heats. Good on a weapon you need under pressure.
+  none   no lockout at all - heat is only a trigger for the extras below.
+
+THE EXTRAS, WHICH COMBINE WITH ANY RESPONSE
+
+  selfDamage    the blowout hurts you. Goes through the normal damage
+                path, so shields and i-frames apply as usual.
+  ventShot      the blowout ARMS A CHARGED SHOT - the reward for riding
+                it to the limit.
+  replacesAmmo  forces "cost" to 0, so heat is the only limit. A true
+                plasma weapon. Off by default, so heat is normally an
+                extra constraint on top of what the weapon already costs.
+
+THE VENT SHOT NEEDS A "charge" BLOCK
+
+It is routed through the existing charge feature rather than growing a
+second set of numbers, so it inherits every multiplier that block
+supports - damage, size, speed, range, knockback, push, explosion, burn,
+spread, cost. Which means the charge block IS the multipliers: without
+one there is nothing to scale by, and the blowout would fire an ordinary
+shot. The builder warns if it is missing.
+
+You do not need a working hold-to-charge trigger for this - the Plasma
+Repeater preset has a charge block that nothing ever charges, purely so
+the vent shot has numbers.
+
+HEAT BUILD AND COOL
+
+  perShot        heat per shot, MULTIPLIED BY burstSize
+  perSecond      heat per second while held - the one for a beam or a
+                 hold-to-fire weapon, where "per shot" is a fiction
+  coolPerSecond  how fast it falls once cooling starts
+  coolDelay      seconds after the last shot before cooling begins
+
+coolDelay is the number that makes trigger discipline a skill. At 0,
+tapping is nearly free and the mechanic barely registers.
+
+DO NOT SET coolPerSecond TO 0 unless response is "jam". With any other
+response, nothing would ever bring the heat down and the weapon is locked
+for the rest of the run. The builder warns.
+
+FEEDBACK
+
+  tintMuzzle   ON BY DEFAULT. The muzzle flash shifts toward "hotColor"
+               as the gun heats, so you can read the heat with no HUD at
+               all. Tints every system in the flash, since a muzzle flash
+               is usually two stacked ones and doing only the first
+               leaves the stock puff showing underneath.
+  overheatSfx  sound on the blowout
+  recoverSfx   sound when it comes back
+  shake        borrow the weapon's own shakePreset for the blowout
+  showHeat     a heat percentage and a JAMMED state on the buff
+               indicator. OFF by default for an honest reason: that
+               indicator is itself globally off unless you switch it on,
+               so it would show nothing on most setups.
+
+WHAT THE LOG TELLS YOU
+
+Three numbers that only mean something together is exactly where a silent
+failure hides, so the builder prints the arithmetic:
+
+    overheat - vent - locked until fully cool. sustained fire overheats
+    it after about 1.56s (64 heat/s against a max of 100), and a full
+    cooldown takes about 2.86s.
+
+It says outright when a setup can NEVER overheat (cooling beats heating
+with no delay) or would lock FOREVER (no cooling, and not a timed jam).
+
+Preset: "Plasma Repeater".
+
+
+WHY YOUR SHOT BURSTS THE WRONG COLOUR - "impactColor"
+-----------------------------------------------------
+
+If your projectiles are green but they explode ORANGE, this is why.
+
+"projectileColor" recolours the bullet. The burst it makes when it lands
+is a completely separate thing - a particle prefab named by the
+template's impactBehaviour.destroyEffect - and nothing used to touch it.
+
+The flamethrower template is the worst offender and the one that got
+noticed. "ImpactParticle Ammo Flame" carries THREE particle systems, and
+each bakes the orange (1, 0.22, 0) straight into its startColor. So a
+BioBlaster built on Weapon Caps Flame fired green and burst orange, and
+no combination of the existing keys could change it.
+
+    "impactColor": "#8cf266"
+
+fixes it, and also colours the out-of-range and end-of-life puffs, since
+a file saying "my impact looks like this" means the shot's death however
+it died.
+
+REPLACE, NOT TINT - and for this key that is not a preference.
+
+The muzzle flash keeps its colour in a FADE RAMP and starts white, so
+tinting it works. The impact puffs are the other way round: the colour
+is in startColor. Multiplying blue over orange gives dark brown, so a
+tint could never fix the very thing this key exists for. Hence
+
+    "impactColorMode": "replace"    (the default)
+    "impactColorMode": "tint"       (multiply, keeps light/dark variation)
+
+"rainbow" works here too, with "impactRgbSpeed".
+
+THE PREFAB IS CLONED FIRST. "ImpactParticle Ammo Flame" is shared by
+five stock weapons and the Popper's by six, so painting the original
+would reskin other people's guns - the same trap as the muzzle prefab
+that 53 weapons share.
+
+A FIX THAT CAME WITH IT: asking only to RESHAPE an impact (impactCount /
+impactSize / impactSpread, with no art and no colour) used to drain the
+stock effect's colour as a side effect, because the hue-neutralising
+step ran unconditionally. It now only runs when something is actually
+being painted over the top.
+
+
+----------------------------------------------------------------
+ 4k. RALLY - REFLECT THE SAME SHOT, BUFFING IT EACH TIME
+----------------------------------------------------------------
+
+Catch a shot, reflect it, then chase it down and get in front of it to
+catch it again. Every catch makes it meaner.
+
+  "shield": { "onBlock": "reflect", "reflectDamage": 1 },
+  "rally": {
+    "damagePerReflect": 1.7,
+    "sizePerReflect": 1.12,
+    "piercePerReflect": 1,
+    "lifePerReflect": 1.6,
+    "maxStacks": 0,
+    "tint": true
+  }
+
+WHERE A REFLECTED SHOT GOES
+
+Three options, on the shield's "onBlock" (and on a catalyst's
+"reflectAim"):
+
+  reflect           straight back THE WAY IT CAME. This reverses the
+                    bullet's velocity and ignores your shield's facing
+                    entirely - a shot from below goes back down however
+                    you were pointing. It is not a bounce off the shield.
+  reflectAtNearest  turned around and sent at the nearest enemy
+  reflectAtCursor   sent WHEREVER YOU ARE AIMING, whatever direction it
+                    arrived from
+  reflectMirror     a TRUE bounce - it leaves at the angle it arrived,
+                    the way light does
+
+reflectAtCursor uses the RAW crosshair, not the assisted firing
+direction. Those are different rays on the ship - aim assist rewrites
+the direction shots leave the barrel along - and a deflection you aimed
+should go where you are looking. With no aimer around (a minion or a
+turret reflecting something) it falls back to straight back.
+
+reflectMirror is the physical one. The arc is centred on your ship, so
+it is a CONVEX mirror - which means WHERE ON THE ARC you catch something
+decides where it goes. Dead centre sends it back at whoever fired it;
+the edge glances it away at a shallow angle. Positioning becomes the
+skill instead of aiming.
+
+All four work on "deflect" too (its "aim" key takes back / nearest /
+cursor / mirror) and on a catalyst node ("reflectAim"). Only "rally" is
+limited to the shield and the catalyst - a deflector's settings live on
+the projectile prefab, and an int serializes there while a config
+reference does not.
+
+It matters most with a rally: being able to PLACE the return means you
+can put the shot somewhere you can reach and catch it again, instead of
+chasing whatever direction the enemy happened to fire from. That is what
+the Rally Shield preset uses.
+
+NEEDS A REFLECTOR TO HANG OFF - a "shield" with onBlock "reflect" (or
+"reflectAtNearest"), or a "catalyst". On its own it does nothing,
+because nothing is doing the catching. The builder says so.
+
+WHY THIS DID NOT ALREADY WORK, WHICH IS THE INTERESTING PART
+
+The buffing was never the hard bit. Reflecting a bullet converts it to
+YOUR layer, YOUR collision mask and YOUR ownership - which is exactly
+right for a one-off deflect and exactly wrong for a rally, because a
+shield only ever looks at ENEMY fire. The moment you reflected a shot it
+stopped being something you could catch, so the same bullet could never
+be caught twice, whatever multiplier anyone hung on it.
+
+Leaving it hostile is not the answer either: faction IS the projectile's
+layer, so a hostile shot cannot damage enemies at all. A rally of those
+would be a hot potato rather than a weapon.
+
+So a rallied shot is marked and kept visible to your own reflectors while
+staying a real player bullet the whole time. It hurts enemies; it is just
+also catchable. Your shield hands back every unmarked shot of yours
+untouched, so it never eats your ordinary fire.
+
+WHAT EACH CATCH CAN DO
+
+  damagePerReflect  compounding damage multiplier. Goes through the
+                    mod's damage stack, so it composes with grow and
+                    damageRamp instead of fighting them
+  speedPerReflect   faster every time - makes a long rally hard to keep up
+  sizePerReflect    grows the REAL hitbox, not just the art
+  piercePerReflect  more enemies punched through per catch
+  lifePerReflect    keeps it alive long enough to be caught again
+
+lifePerReflect defaults above 1 deliberately. Without it a rally ends
+because the shot timed out, which looks exactly like the feature
+failing. It also switches off the template's "slowDown", because that
+brings a shot to a dead stop at its range and a stalled bullet cannot be
+rallied.
+
+Note "piercePerReflect" raises the MOD's pierce cap, not an engine
+field: the game's own piercing is a plain on/off with no count, and a
+pierced shot otherwise passes through everything forever.
+
+THE CAP
+
+"maxStacks": 0 is the default and means NO CAP - it keeps compounding
+for as long as you keep it alive. At 1.7 per catch that is about 14x
+after five reflects and 200x after ten. The log prints those numbers at
+load so it is a choice rather than a surprise. Set a number to cap it,
+and "atCap": "detonate" to have it blow up at the limit instead of just
+levelling off (that uses the weapon's own explosion, so it needs one).
+
+RISK
+
+  "hostile": "never"   once reflected it is yours (default)
+  "hostile": "after"   safe while small, dangerous once charged
+  "hostile": "always"  a pure hot potato - and it cannot hurt enemies
+
+"bounce": true gives the shot terrain ricochet so the room hands it back
+to you instead of you chasing it. Off by default, because the intended
+loop is that you outmanoeuvre it.
+
+NOT ON "deflect" YET
+
+A deflector's settings live on the PROJECTILE PREFAB, and a plain config
+reference on a prefab-attached component arrives null on every clone -
+the trap that once silently disabled the whole of gas and catalyst.
+Supporting it means the int-id route, which is its own change. Your
+deflect still reflects normally; it just will not stack. The log says so
+if you have both.
+
+Preset: "Rally Shield".
 
 ----------------------------------------------------------------
  5. WEAPON FIELDS - ALL WEAPON TYPES
@@ -1026,6 +2523,99 @@ These go inside the "weapon": { } block and work on every type.
                             Needs a muzzleParticlePrefab to exist (the
                             template's own counts); if there is none you
                             get a warning in the log and nothing else.
+
+  *** SHAPING A FLASH OR AN IMPACT ***
+
+  Read this if your imported art comes out as a cloud of tiny puffs, or
+  stays small no matter how you draw it.
+
+  A stock flash is NOT ONE PICTURE, it is a BURST OF PARTICLES.
+  "MuzzleParticle Popper" emits bursts of 30 AND 20 across its two
+  systems - fifty puffs. That is right for smoke and completely wrong
+  for one piece of drawn art. "ImpactParticle Ammo Popper" is the same,
+  30 and 20.
+
+  "muzzleCount": 1          How many particles each burst emits. SET 1
+  "impactCount": 1          for a single drawn flash or impact instead
+                            of a cloud. Applies to every burst on every
+                            system in the prefab; the log says how many
+                            that was.
+
+  "muzzleSize": 2           Particle size in WORLD UNITS. Stock is 1,
+  "impactSize": 2           so 2 is double.
+                            THIS IS THE ONLY SIZE THAT MATTERS.
+                            Particles ignore pixelsPerUnit completely -
+                            the quad is sized by this number, not by
+                            your sprite - which is why redrawing the art
+                            bigger, or changing the sheet's PPU, does
+                            nothing at all here. It is the same trap as
+                            the beam's thickness.
+
+  "muzzleFollow": true      The flash RIDES THE BARREL instead of being
+                            stamped where you last fired.
+                            The game positions the emitter at
+                            barrel + aim x barrelLength on each shot and
+                            then leaves it LOOSE IN THE WORLD - it is
+                            parented to nothing. Every stock prefab uses
+                            local simulation space, so the particles do
+                            travel with the emitter; but the emitter only
+                            moves when you pull the trigger. A fast
+                            weapon re-stamping 30 times a second already
+                            LOOKS welded to the gun; a slow one leaves
+                            its flash hanging in the air the moment you
+                            move.
+                            true parents it to the barrel so it follows
+                            position and aim between shots. It does NOT
+                            change where the flash sits - that is still
+                            "barrelLength".
+                            Sub-emitters and consumables fire through a
+                            FakeBarrel, which has no transform to ride,
+                            so they keep the stamped behaviour.
+
+  "muzzleSpread": 0         How far the puff THROWS ITSELF from the point
+  "impactSpread": 0         it spawned at, as a multiple of the prefab's
+                            own scatter. 0 = ONE PUFF, DEAD ON THE SPOT.
+                            This is the fix for "why will my flash not
+                            stay in one place".
+                            A stock flash scatters TWO ways at once:
+                            every particle gets a random launch speed
+                            (the Popper's are 0-40 and 0-70) AND spawns
+                            anywhere inside a circle (radius 0.68 and
+                            0.49). So even at "muzzleCount": 1 the single
+                            puff flies off somewhere different every
+                            shot. This scales both together.
+                            An IMPACT already spawns at the contact point
+                            - the game puts it there, rotated to the
+                            surface - so its scatter is launch speed
+                            alone (0-30 on the Popper's). 0 leaves the
+                            art sitting exactly where the shot landed.
+                            1 is stock, 0.3 is a tight cluster, 0 pins
+                            it. Neither changes WHERE the effect is
+                            placed; the muzzle is still "barrelLength".
+                            "impactSpread" works on a stock puff without
+                            naming a sprite - "keep the art, just stop it
+                            spraying everywhere".
+
+  "muzzleRotate": true      Whether the particles turn with the emitter.
+  "impactRotate": true      Every stock prefab ships set to FACE THE
+                            CAMERA and ignore the emitter's rotation,
+                            which is why art drawn to point somewhere
+                            never points anywhere.
+                            true aligns them to the emitter instead -
+                            and the game already rotates that to YOUR
+                            AIM for a muzzle (WeaponBase.DoShoot) and to
+                            the SURFACE NORMAL for an impact
+                            (ImpactVisualizer), so directional art
+                            follows the gun, or points away from the
+                            wall it hit, for free.
+                            Both default to ON as soon as you set custom
+                            art: nobody imports a directional sprite
+                            wanting it camera-locked, and a symmetric
+                            puff cannot tell the difference. Set false
+                            for the stock behaviour.
+
+  A good starting point for one piece of drawn flash art:
+      "muzzleSprite": "myFlashAnim", "muzzleCount": 1, "muzzleSize": 1.5
   "reloadParticlePrefab": "reloadParticle_weapon_Popper"
                             Puff when the weapon comes off cooldown.
                             Only 9 stock weapons bother, all with this
@@ -1383,6 +2973,20 @@ These go inside the "weapon": { } block and work on every type.
 
 CUSTOM SOUNDS
 -------------
+SILENCE FIRST, because it is the one that is not obvious: put "none" in
+ANY sound field and that slot goes quiet.
+
+  "shootSfx": "none"
+
+("silent", "off", "mute" and "-" all work too.) It has to be a WORD
+rather than an empty value, because leaving a key out is how you say
+"keep the template's sound" - so until this existed there was no way to
+say "keep the weapon, lose the noise".
+
+Silencing "continousShootSfx" also silences "releaseSfx": the game only
+plays that when it STOPS the loop, and there is no loop left to stop.
+The log says so when it happens.
+
 The sound fields take EITHER a sound id the game already has, OR the
 name of an audio file you supply. Drop a file in a "sounds" folder
 next to the DLL and use its file name without the extension:
@@ -1565,6 +3169,42 @@ PROJECTILE templates also accept:
        "synced"  rapid fire forms ONE continuous ribbon (shared clock).
        "helix"   alternate projectiles start 180 out of phase - the woven
                  "double helix" look (needs 2+ projectiles).
+    "waveShape":              WHAT THE PATH LOOKS LIKE. The feature only
+                              ever rotates the shot's heading by some
+                              angle each frame, so the shape of the PATH
+                              is entirely the shape of that FUNCTION - a
+                              smooth one gives a smooth path, one with
+                              corners gives corners.
+       "sine" (default)  eases from side to side: the rolling S.
+       "zigzag"          SNAPS between the two extremes and HOLDS there,
+                         so the shot flies a straight leg, turns hard,
+                         and flies another. "z" and "v" both work and
+                         mean this - a run of sharp corners IS a row of
+                         Vs, and which letter you see depends only on
+                         where you start looking.
+       "saw"             sweeps one way across the cycle then snaps
+                         back: a repeating hook.
+                              A zigzag swings about 1.5x WIDER than a
+                              sine at the same waveAngle, because it
+                              holds the full angle instead of easing
+                              through it.
+    "waveSharpness": 1        ZIGZAG ONLY. How much of each cycle is a
+                              STRAIGHT LEG rather than a turn, 0-1 - and
+                              it means exactly that: 0.5 is half straight
+                              and half turning, 0.9 is nine tenths
+                              straight. 1 (default) is a true snap with
+                              no turn at all; 0 rounds the corners off
+                              into a triangle wave.
+    "waveFaceTravel": false   Turn the ART to face where the shot is
+                              GOING. The game sets a projectile's
+                              rotation once, when it is fired, and never
+                              again - so a weaving shot's art points
+                              where it was aimed. Nobody notices on a
+                              round bullet; a zigzag with drawn
+                              directional art visibly flies sideways out
+                              of every corner. Off by default so it
+                              cannot change a wave weapon you already
+                              tuned.
    (2) ORGANIC WOBBLE (a random Perlin wander, NOT a clean S) - this is the
        game's own built-in "movementNoiseData" (below). Two easy ways:
     "wobble": true            turns it on with sensible defaults.
@@ -1767,7 +3407,14 @@ PROJECTILE templates also accept:
   own size while the shot balloons. Usually looks right - set the
   trail's own "size" if you want it to match.
 
-  Projectile weapons only, not usePhysics. Preset: "Snowball".
+  LOBBED (usePhysics) WEAPONS WORK TOO. A lobbed shot has no "Radius" -
+  it collides with a REAL Collider2D, and a real collider scales with its
+  transform - so growing the art grows the true hitbox for free, with
+  nothing to keep in sync. The flip side is that "hitbox": false cannot
+  be honoured there (the hitbox comes along whether or not you asked),
+  and the log says so rather than silently doing the opposite.
+
+  Preset: "Snowball".
 
   BOOMERANG (flies out, turns around, comes back) - TOP-LEVEL "boomerang".
 
@@ -1863,8 +3510,47 @@ PROJECTILE templates also accept:
         "scatter": 8,
         "speedMultiplier": 0.85,
         "damageMultiplier": 0.8,
-        "pierceWins": false
+        "pierceWins": false,
+        "explodeOnBounce": true,
+        "dischargeOnBounce": false,
+        "subOnBounce": false,
+        "effectOnBounce": true,
+        "bounceEffectsOn": "terrain"
       }
+
+    EFFECTS ON EVERY BOUNCE, with the shot carrying on afterwards.
+    THE GAME MAKES THESE IMPOSSIBLE: in Projectile.OnObjectHit the
+    bounce branch RETURNS before it ever reaches the impactBehaviour
+    block, so a scripted bounce can never fire an explosion, a discharge
+    or a sub-emitter - you get one or the other. A ricochet that blasts
+    its way around a room only exists from here.
+
+    NOTE WHAT IS NOT IN THAT LIST, because it already works: DAMAGE,
+    BURN and terrain DIGGING all happen on a bounce today. TryHit runs
+    at the top of OnObjectHit, before either branch.
+
+    explodeOnBounce   needs an "explosion" block with a radius and at
+                      least one damage entry, or the builder turns it
+                      back off - an empty explosion THROWS inside the
+                      game, and the symptom is a shot that never dies
+                      and keeps hitting rather than an error.
+    dischargeOnBounce needs a "discharge" with chainLength above 0.
+    subOnBounce       fires the weapon's "subEmitter" at each bounce
+                      instead of only when the shot dies. Watch the
+                      numbers: an unlimited bouncer with a sub-emitter
+                      is a geometric progression.
+    effectOnBounce    spawns impactBehaviour.destroyEffect at each
+                      bounce, oriented along the new heading. Purely
+                      visual, and the cheapest way to make a ricochet
+                      read as HITTING something rather than turning a
+                      corner.
+    bounceEffectsOn   "any" (default), "terrain" or "enemies" - which
+                      surfaces the four above fire on.
+
+    POINT-BLANK BOUNCES ARE EXCLUDED. A weapon with
+    impactBehaviour.safetyDistance bounces instead of exploding when you
+    are too close, precisely so it does not blow up in your face, and
+    "explode on every bounce" would have undone exactly that.
 
     targets     what it bounces off:
                   "terrain" (default)  walls only - the classic bouncer
@@ -1934,6 +3620,1833 @@ PROJECTILE templates also accept:
   consume a bounce too, which is why a point-blank shot can look like it lost
   one early.
 
+  CHAIN JUMP (hops from enemy to enemy) - TOP-LEVEL "chain" block.
+
+  A shot that hits one enemy, TURNS, and flies at the next.
+
+  NOT THE SAME AS DISCHARGE, and this trips people up because the mod now
+  has two things that jump between enemies:
+
+    discharge  ("electricityData" / "dischargeOnFire") spawns a LIGHTNING
+               ARC from the hit point. Instant, its own damage, jumps by
+               conductivity. Nothing travels - the projectile is unaffected.
+    chain      redirects the ACTUAL PROJECTILE. It visibly flies from one
+               enemy to the next carrying its own damage, and it can be
+               dodged, blocked, or simply run out of things to hit.
+
+  Use discharge for lightning. Use chain for a ricocheting knife.
+
+      "chain": true            on, with defaults
+      "chain": {
+        "enabled": true,
+        "jumps": 4,
+        "range": 8,
+        "damageMultiplier": 0.75,
+        "speedMultiplier": 1,
+        "revisit": false,
+        "onEmpty": "continue"
+      }
+
+    jumps      how many redirects. 3 jumps = up to 4 enemies hit.
+    range      how far it looks for the next link, measured from wherever
+               it just hit. THIS is the dial that decides whether a chain
+               feels reliable or lucky - 8 clears a normal cluster, 4
+               makes it hunt.
+    damageMultiplier
+               per jump, MULTIPLYING. 0.75 over four jumps ends at about a
+               third - a chain that fades, which is the usual balance.
+               Above 1 makes it grow instead.
+    speedMultiplier
+               per jump. Under 1 makes the chain visibly run out of steam.
+    revisit    off = never hits the same enemy twice, which is what
+               normally stops a chain ping-ponging until its jumps run
+               out. ON gives you the PING-PONG deliberately: A->B->A->B
+               between two enemies.
+               The enemy just hit is still excluded from the NEXT search
+               only, so the shot cannot pick the body it is currently
+               standing inside and "jump" nowhere - which is why turning
+               this on used to look like it did nothing at all.
+               Pair it with jumpDelay, or the bouncing is too fast to
+               read as anything but a blur.
+    jumpDelay  seconds to keep going after a hit before turning toward
+               the next target. 0 (default) turns immediately, as
+               before. 0.1-0.25 reads as the blade carrying through and
+               then whipping round. Longer means it travels further
+               between hops, so it can overshoot out of "range".
+    hover      needs a jumpDelay to hover FOR. The shot STOPS DEAD in
+               mid-air for the pause, then snaps to the next throat.
+               Not for a weapon whose rangeData has "slowDown" - that
+               rewrites the shot speed every frame and fights it.
+    onEmpty    nothing left in range: "continue" (fly on straight, like a
+               normal piercing round) or "vanish" (stop there and run the
+               weapon's own impact explosion).
+
+  PIERCING IS TURNED ON FOR YOU. The game only keeps a shot alive through
+  a hit when piercing is enabled, so without it a chain weapon would die
+  on its first target and look like the feature did nothing. The log says
+  when it is forced.
+
+  Plain projectiles only - chaining is driven by Projectile.TryHit, which
+  a lobbed shot never reaches. For a lobbed weapon, the game's own
+  discharge gives a similar enemy-to-enemy feel. Preset: "Chain Knife".
+
+  CONVERGING SHOTGUN (pellets that meet at a point) - TOP-LEVEL
+  "converge" block.
+
+  The pellets of one volley curve INWARD and meet at a single point ahead
+  of the muzzle, then cross and fan out again. The shot reads as an
+  hourglass with a real SWEET SPOT at the waist: stand at the right range
+  and the whole volley lands on one enemy, stand too close or too far and
+  it scatters.
+
+  THIS IS NOT "aim every pellet at the same spot" - that is just a weapon
+  with no spread. Each pellet keeps the launch angle "spread" gave it and
+  bends along a smooth arc onto the focal point, so the cone visibly
+  necks down on the way there.
+
+  IT SHAPES A FAN, IT DOES NOT CREATE ONE. You need "projectileCount" of
+  5+ and a "spread" (25-45). With one pellet there is no angle to curve
+  out of and nothing happens - the log says so.
+
+      "converge": true         on, with defaults
+      "converge": {
+        "enabled": true,
+        "focus": "distance",
+        "distance": 9,
+        "range": 14,
+        "width": 0,
+        "after": "spread",
+        "maxTurnRate": 0
+      }
+
+    focus      "cursor" (DEFAULT) puts the meeting point under YOUR
+               CROSSHAIR, so you choose the range every shot by how far
+               out you aim. It is the EXACT mouse position - the point
+               the game reads off the cursor each frame - so aim close
+               and they meet close, aim far and they meet far. It falls
+               back to distance for anything with no crosshair (a
+               sub-emitter, a turret).
+               IF IT SEEMS NOT TO TRACK YOUR CURSOR, CHECK THE LOG.
+               The line for your weapon says either "meet your
+               CROSSHAIR" or "meet N units ahead of the muzzle", and
+               the second means the file is still on
+               "focus": "distance" - a JSON saved before cursor became
+               the default keeps whatever it was written with, and the
+               builder presets changing does not rewrite your files.
+               "distance" pins it a fixed way ahead wherever you point
+               instead, so landing a full volley becomes a POSITIONING
+               problem - the weapon has one sweet spot and you move to
+               it.
+               "target" collapses the volley onto the nearest enemy in
+               front of you: forgiving, and much stronger. Falls back
+               to distance when nothing is in range.
+               "none" is the SPAZER - they do not converge at all. The
+               shots leave abreast across "width" and fly DEAD PARALLEL
+               forever, holding formation the whole way (Super
+               Metroid's spazer beam). It is also the cheapest mode in
+               the block: no steering runs at all, the rank is decided
+               entirely at launch.
+               THE SPAZER IGNORES THE WEAPON'S "spread". Every shot is
+               snapped onto your aim, because a rank that fans out is
+               not a rank; "width" is what separates them. A width is
+               filled in for you if you forget, because a spazer with
+               no width is one bullet fired on top of itself - which
+               does not look broken, it looks like nothing happened.
+               Aliases: "spazer", "rank", "abreast". NOT "parallel" -
+               that already means something different on "after".
+               Preset: "Spazer".
+    distance   how far ahead they meet. THIS IS THE SWEET SPOT, so it is
+               the number that defines the weapon: 6 is a brawler that
+               wants you in their face, 14 rewards holding the line.
+               Also the fallback for "cursor" and "target".
+    loft       LOBBED weapons only - degrees of ARC HEIGHT spread across
+               the volley. Defaults to the weapon's own "spread". See
+               the lobbed section below for why it is not an aim fan.
+    range      "focus": "target" only - how far to look, within 90 degrees
+               of your aim. Every pellet picks the target from the BARREL,
+               so the whole volley agrees on one enemy.
+    width      optional. Launches the pellets ABREAST on a line square to
+               your aim (measured end to end) instead of all from the
+               barrel point, so the silhouette becomes a wall collapsing
+               to a point. Reads best with "spread": 0. Pellets that would
+               spawn inside terrain are pulled back to just short of the
+               wall, so a wide rank does not quietly lose its outer shots
+               in a corridor. Keep it under about 4.
+    after      what happens past the waist. "spread" (default) lets them
+               cross and diverge, which is what makes the sweet spot
+               matter. "parallel" turns them onto your aim so the volley
+               runs on as a tight lane - a shotgun that becomes a lance.
+    maxTurnRate
+               degrees/second ceiling. LEAVE AT 0, which means "turn
+               exactly as hard as the arc needs" - that is the whole
+               feature. Capping it makes the outer pellets under-turn and
+               miss the point on the wide side.
+
+  DO NOT STACK IT WITH "homing". Both steer the same shot every frame and
+  neither reliably goes last, so they fight and the curve comes out
+  half-hearted. If you want the volley to track an enemy, that is exactly
+  what "focus": "target" is for. The log warns if both are set.
+
+  LOBBED (usePhysics) WEAPONS WORK TOO, BY A COMPLETELY DIFFERENT ROUTE.
+  A lobbed shot is a rigidbody falling under gravity and cannot be
+  steered - rewriting its velocity every frame would cancel the fall and
+  turn a grenade into a missile. So each pellet KEEPS its launch angle
+  and has its SPEED solved instead, so that its particular arc comes down
+  on the focal point. The volley leaves as a fan of genuinely different
+  parabolas that all land on one spot, and because a steeper arc takes
+  longer they land STAGGERED - a mortar barrage onto a marked spot rather
+  than a shotgun blast.
+
+    THE SPREAD BECOMES A LOFT, and this is the part worth understanding.
+    A lobbed volley cannot use an angular fan the way a straight one
+    does, because A GRENADE THROWN AT OR BELOW HORIZONTAL NEVER REACHES
+    A LEVEL TARGET AT ANY SPEED. Fan a volley around a level aim and the
+    whole downward half is unsolvable - those grenades get hurled at the
+    speed ceiling and land short while the upward half arrives correctly,
+    which looks like the weapon is broken.
+    So the fan angle is discarded and the LOFT is spread instead: every
+    grenade is aimed at the focal point and given a different launch
+    angle, from the flattest arc that reaches it upward. They all land on
+    the spot; the lofted ones just take longer, which is exactly what
+    makes it read as a barrage. "loft" sets that spread in degrees and
+    defaults to the weapon's own "spread" - 20-40 reads well, 0 gives
+    every grenade the identical arc. "after" and "maxTurnRate" do nothing
+    there and are logged as ignored.
+
+    The speed is solved by simulating the shot against the ACTUAL physics
+    step, so drag and gravity scale are both accounted for. (The game has
+    its own ballistic formula, ProjectileMath.LaunchSpeed, but it assumes
+    no air resistance - against a Derbis it lands between 0.6 and 18
+    units SHORT, so it is not used here.) The solved speed is kept
+    between 0.1x and 4x the weapon's own projectileSpeed, so a distant
+    focal point cannot turn a grenade into a railgun slug. If the point
+    is out of reach at that angle the pellet is thrown as hard as it is
+    allowed and FALLS SHORT - the honest result, not a bug. A pellet
+    thrown AWAY from the point, or a point straight overhead, is left
+    exactly as the weapon aimed it.
+
+  Not hitscan - a beam arrives instantly, so there is no flight to shape.
+  Presets: "Full Choke" (cone to a point), "Rail Rack" (a wall folding
+  into a lane), "Mortar Volley" (lobbed arcs onto one spot).
+
+  DAMAGE RAMP (the railgun) - TOP-LEVEL "damageRamp" block.
+
+  Damage that CHANGES WHILE THE SHOT FLIES - weak up close, devastating
+  across the room. The game only models falloff; this ramps either way,
+  so "from" bigger than "to" gives a shotgun that fades with range
+  instead.
+
+  Values are MULTIPLIERS of the shot's normal damage, so 1 is unchanged
+  and this composes with +damage modules rather than overriding them.
+
+      "damageRamp": true       on, with defaults
+      "damageRamp": {
+        "enabled": true,
+        "from": 1,
+        "to": 6,
+        "over": "distance",
+        "span": 0,
+        "curve": 2,
+        "clamp": true
+      }
+
+    over       "distance" (default), "time", "pierce" (each enemy punched
+               through is one step) or "bounce" (each ricochet is one
+               step). Pierce and bounce turn it into a combo weapon
+               rather than a range weapon.
+    span       how much distance / time / how many events cover the whole
+               ramp. 0 means "borrow the weapon's own range", which is
+               usually what you want - the shot then peaks exactly as it
+               expires.
+    curve      1 is a straight line. Above 1 holds the low value and then
+               spikes at the end, which reads far more dramatically as a
+               railgun. 2 is a good default.
+    clamp      default true. False lets it keep ramping past "to" for as
+               long as the shot lives.
+
+  IT COMPOSES WITH "grow" AND "chain". All three want to change damage in
+  flight, and each publishes a MULTIPLIER into one shared value rather
+  than writing the damage field directly - so a shot that is half-grown,
+  half-ramped and two jumps in gets all three, instead of whichever one
+  happened to run last. That is deliberate; see CLAUDE.md.
+
+  Works on lobbed shots too, for "distance" and "time". Preset:
+  "Railgun".
+
+  MINION WEAPON - TOP-LEVEL "minion" block. MINION SPAWNERS ONLY.
+
+      "minion": { "weapon": "MyOtherWeapon", "faction": "owner" }
+
+  GIVES A SPAWNED DRONE ONE OF YOUR OWN WEAPONS. Name another weapon
+  by its "name" or "displayName", or a stock weapon module. Leave it
+  out and the drone keeps its own gun.
+
+  WHY THIS NEEDED CODE AT ALL, given that grid modules already reach a
+  drone: they do - attach extra projectiles or a health module to a
+  drone gadget's cluster and the drone gets them, which is real and
+  worth knowing. But they arrive through
+  SimpleModuleGrid.InstallAugmentation, which calls AddModule, which is
+  exactly "modules.Add(module)" and NEVER TOUCHES mainModule. And
+  ModuleSlotWeaponHolder builds the weapon from
+  "MainModule as WeaponModule".
+
+  So a weapon module handed to a drone the ordinary way becomes a
+  MODIFIER ON ITS EXISTING GUN, not a replacement. This block sets the
+  cluster's main module instead, which is the thing that actually
+  decides what it fires - and because the setter fires the cluster
+  refresh, the holder rebuilds the weapon by itself.
+
+  The name is resolved WHEN THE FIRST DRONE SPAWNS rather than at load,
+  so file order never decides whether it works. A name that matches
+  nothing warns once and the drone keeps its stock weapon.
+
+  Each drone gets its own DeepCopy of the module, so they do not share
+  level or rolled power.
+
+    faction    WHOSE SIDE THE DRONE FIGHTS ON - the same idea as a
+               weapon's "target".
+                 "owner" (default)  the summoner's side, so it is YOURS
+                 "keep"             the prefab's own side
+                 a faction name     "Cross", "Fly", "Maggot",
+                                    "Crawler", "Player"
+
+               SUMMONING SOMETHING IS NOT THE SAME AS OWNING IT.
+               Unit.SetOwner sets who owns a minion, adds it to your
+               list and counts it against your cap - and does NOT touch
+               its faction.
+
+               The five drones in the picker are player-faction assets
+               despite their "Enemy_" names. But FOUR OF THE ADVANCED
+               SPAWNABLES ARE GENUINELY HOSTILE - the Mine, Cross Pin,
+               OneShot 4 and Queen Child. Before this option, pointing
+               "minionPrefab" at one of those summoned something that
+               counted against your cap and then shot at you.
+
+               Hence "owner" as the default. It only changes behaviour
+               in the case that was a bug. Use "keep" for the old
+               behaviour, or name a faction outright if you actually
+               want something hostile loose in the room.
+
+  ONE MORE THING WORTH KNOWING ABOUT DRONE GADGETS, which is stock
+  behaviour rather than anything this mod does: THE MODULE'S LEVEL IS
+  THE MINION CAP, one for one. Level 3 means three drones. And it is
+  enforced downward as well - if you ever have more minions than the
+  level allows (a BoosterCore comes off, say), the module DESTROYS the
+  excess, oldest first.
+
+  TRACTOR BEAM - TOP-LEVEL "tractor" block. NORMAL WEAPON SLOTS ONLY.
+
+  A HELD BEAM THAT MOVES THINGS INSTEAD OF DAMAGING THEM, and hurts
+  them when they arrive somewhere hard. Hold the trigger and it runs;
+  let go and it stops. Nothing is ever fired.
+
+  IT MUST GO IN A NORMAL WEAPON SLOT, not a gadget. Gadgets bypass
+  Shooter entirely and Shooter's held trigger is the only thing in the
+  game that drives a continuous effect, so a tractor beam in a gadget
+  slot never runs at all. (The builder cannot detect this for you - a
+  gadget HOLDS a weapon rather than being one.)
+
+      "tractor": {
+        "mode": "pull",
+        "range": 14, "cone": 0, "beamWidth": 0.6,
+        "force": 300, "maxSpeed": 26, "maxTargets": 3,
+        "holdDistance": 6, "drainPerSecond": 2,
+        "slam": true, "slamMinSpeed": 10,
+        "slamDamagePerSpeed": 1.5, "slamWindow": 1.5,
+        "slamHitsUnits": true, "slamHitsPlayer": false
+      }
+
+    mode       "pull" (default) drags toward you, "push" shoves away,
+               "hold" parks what it catches at holdDistance in front of
+               you - a real tractor beam holding something in the air,
+               which you can then swing into a wall.
+               "grapple" FLIPS IT: the beam anchors on whatever you point
+               at and reels YOU in. See below.
+
+    -- grapple --
+
+    A RAYCAST rather than the overlap sweep the other modes use,
+    because the natural anchor is terrain and terrain is not a Unit -
+    a sweep would never find a wall.
+
+    Nicely, it needs no separate force tuning. The mass/damping
+    compensation makes the settling speed "force / 30" for ANY body, so
+    the same number that drags a Cross pulls the ship at the same rate.
+
+    grappleToUnits
+               false by default - terrain only. On, a heavy enemy makes
+               a fine anchor; a light one mostly just gets dragged
+               toward you instead, which is why terrain is the reliable
+               version.
+    grappleStopDistance
+               stop reeling once this close, so you ARRIVE rather than
+               grind along the wall. Your momentum carries you the last
+               bit, which is what lets you swing past a corner.
+    grappleSlamsYou
+               THE SWITCH THAT COMPLETES PLAYER SLAM DAMAGE. The grapple
+               is the only thing in the mod that can throw YOU, so it is
+               the only way that half can ever fire.
+               OFF by default: being reeled into a wall and hurt for it
+               makes a grapple miserable, and nothing else in the game
+               hurts you for flying into a wall unless you are
+               sprinting. Turn it on deliberately.
+
+  Preset: "Grapnel" - a movement tool, no gun at all.
+    range      how far the beam reaches.
+    cone       half-angle of the catch cone in degrees. **0 IS A LINE**,
+               and the beam then only catches what it is pointed at
+               (within beamWidth of the ray). Above 0 it widens with
+               distance - far more forgiving, and it catches a group.
+    beamWidth  line mode only: how far off the ray still counts, in
+               world units.
+    force      how hard it pulls. COMPENSATED for mass and damping, so
+               one number behaves the same on a common enemy and on the
+               Queen - without that the same force moves the ship 60x
+               faster than a Cross and 1000x faster than a Queen.
+    maxSpeed   clamp, so a light enemy is not flung across the level.
+    maxTargets how many it holds at once. 0 = unlimited.
+    holdDistance   "hold" only - where it parks them.
+    drainPerSecond
+               what holding the beam costs from the weapon's own
+               resource. A held beam NEVER FIRES A SHOT, so the weapon's
+               "cost" is never taken - this is the only lever, exactly
+               as with a held orbit ring.
+    affectsPlayer  also catch friendly units (co-op, or yourself).
+
+    -- the slam --
+
+    Damage from ARRIVING somewhere hard, not from the beam itself.
+
+    slam       on by default. Anything the beam moves stays "slammable"
+               for slamWindow seconds after it lets go, so letting go at
+               speed still counts as having thrown it.
+    slamMinSpeed
+               closing speed below which nothing happens. Default 10,
+               which is THE GAME'S OWN number: every ship prefab carries
+               ImpactDamage at minVelocity 10, its idea of a hard crash.
+               (That component is normally disabled unless you are
+               sprinting, which is why crashing usually costs you
+               nothing.)
+    slamDamagePerSpeed / slamMaxDamage
+               damage = (closing speed - slamMinSpeed) x this, capped.
+    slamHitsUnits
+               true (default): slamming into ANOTHER UNIT hurts them
+               both, not just terrain.
+    slamHitsPlayer
+               false by default: whether the thing it slams into may be
+               YOUR hull.
+
+    HOW IT DETECTS THE HIT, because the two halves differ: terrain comes
+    from the game's own dispatch - LevelSegmentComponent already tells
+    every unit that touches terrain which cell it hit AND hands over the
+    full collision - while unit-to-unit needs its own collision, since
+    nothing in this game does contact damage between units. Both use the
+    same measure of hardness the rest of the mod uses: the closing speed
+    along the contact normal.
+
+    Only the tractor beam causes slams. The gravity well and the harpoon
+    move things too, but they do not mark anything slammable.
+
+  GRAVITY WELL - TOP-LEVEL "gravity" block. Plain OR lobbed.
+
+  A shot that opens a WELL: everything nearby is dragged toward one
+  point, held there, and then it bursts. The Mass Effect singularity.
+
+  THE GAME HAS NO FIELD FORCES OF ANY KIND. What it does have is the
+  same call pointed the other way - explosions and orbit rings both
+  shove rigidbodies with AddForce - so pulling is that with the sign
+  flipped. That is why this was cheap, and it is the whole trick.
+
+  The two genuinely new parts are the SHAPE of the force (something
+  that pulls equally hard at any range reads as a magnet rather than
+  gravity) and the HOLD RADIUS, which is what stops a captured crowd
+  vibrating on top of the centre.
+
+      "gravity": true           on, with defaults
+      "gravity": {
+        "enabled": true,
+        "where": "impact",
+        "radius": 7,
+        "force": 34,
+        "falloff": "linear",
+        "duration": 2.5,
+        "holdRadius": 0.8,
+        "maxSpeed": 12,
+        "drag": 1.2,
+        "damagePerSecond": 2,
+        "pullShots": true,
+        "pullPlayer": false,
+        "burst": true
+      }
+
+    where      "impact" (default) - the shot parks where it hits and
+               the well opens there. The thrown singularity.
+               "flight" - it opens the moment you fire and TRAVELS with
+               the shot, dragging things along behind it. A vacuum
+               cleaner rather than a trap; pair it with a slow shot.
+    radius     how far the pull reaches.
+    force      pull strength. NEGATIVE DOES NOT PUSH - use the weapon's
+               own "pushForce" or an explosion for that.
+               WITH massCompensated ON (the default), force / 30 is the
+               SPEED it drags everything at, capped by maxSpeed. 300 is a
+               brisk 10 units/second.
+    massCompensated
+               default true, and it is why one number can work at all.
+               PUNK's bodies are wildly different - the ship is mass 1 /
+               damping 0.5, a common Cross enemy is mass 5 / damping 6, a
+               Jock 50, the Queen 200 - and a raw force settles at
+               force / (mass x damping). So the SAME number drags the
+               ship 60x faster than an enemy and over 1000x faster than
+               the Queen. That is why "force: 34" appeared to do nothing
+               to enemies while a well that felt right needed 9000.
+               Off restores the raw behaviour for files tuned the old
+               way.
+    falloff    "linear" (default) strongest at the middle, nothing at
+               the rim - reads most like gravity.
+               "constant" the same everywhere inside the radius. A
+               tractor beam, and much stronger at long range than it
+               sounds.
+               "inverse" vicious close in and weak at the edge. Things
+               drift, then snap.
+    duration   how long it lives, counted from when the well OPENED -
+               which is why lifetimeData gets switched off, since that
+               counts from when the shot was FIRED.
+    holdRadius inside this the pull stops. NOT A NICETY: at 0
+               everything caught piles onto one pixel and JITTERS,
+               because each frame overshoots the centre and gets yanked
+               back. 0.5-1 is what makes a held crowd sit still.
+    maxSpeed   ceiling on how fast the well can fling something. A
+               heavy pull with no cap turns a light enemy into a bullet
+               aimed at whatever is on the far side.
+    drag       per-second velocity damping on anything caught. Makes
+               the well feel THICK rather than like a slope, and it is
+               the cheapest way to stop things slingshotting straight
+               through the middle.
+    damagePerSecond
+               crush damage while held. Applied once a second, not per
+               frame - the damage call drives hit flashes, sounds and
+               the aggro event.
+    burst      default true - explodes when it closes, which is the
+               payoff for having gathered everything into one spot.
+               Needs an "explosion" block; without one the builder
+               turns it off rather than firing an empty blast (which
+               THROWS inside the game).
+    pullShots  the well swallows ENEMY BULLETS as well as enemies,
+               which makes it defensive as well as offensive. It
+               switches the mod's shot tracker on for you, and there is
+               no alternative: enemy shots resolve their collisions by
+               raycast and ship with their Collider2D DISABLED, so no
+               overlap query will ever find one.
+    pullPlayer off by default - a weapon that yanks its own user into
+               the middle of a crowd should be a decision rather than a
+               surprise. On, it is a movement tool as much as a weapon.
+
+  Preset: "Singularity".
+
+  CATALYST - TOP-LEVEL "catalyst" block. Plain OR lobbed.
+
+  A NODE YOU SHOOT INTO. Fire one and it hangs in the air; put another
+  shot through it and that shot is redirected at enemies with more
+  damage. Enemy fire that reaches the node is turned around and sent
+  back buffed. Either use consumes the node.
+
+  THE FACT THAT SHAPED THIS: your own bullets CANNOT COLLIDE WITH EACH
+  OTHER. PlayerProjectiles is absent from its own row in the game's
+  layer matrix, and a plain Projectile ships with its Collider2D
+  DISABLED because it resolves hits by CircleCast. So "my shot reached
+  the node" has no physics event at any radius - the node watches a
+  registry of your shots instead, which this block switches on.
+
+  MOST OF THE REST IS BORROWED, which is why it was affordable: the
+  redirect GRANTS the incoming shot the mod's existing "chain"; the
+  reflect is the same faction-swap "deflect" and the shield arc use;
+  and "which weapon fired that" comes from the same tracking "onKill"
+  needed.
+
+      "catalyst": {
+        "node": "stop",
+        "trigger": "different",
+        "redirect": "chain",
+        "armTime": 0.35, "lifetime": 6, "radius": 1.4,
+        "max": 3, "uses": 1,
+        "targets": 4, "range": 12,
+        "damageMultiplier": 2.5, "speedMultiplier": 1.5,
+        "chainFalloff": 0.9, "chainRevisit": false,
+        "catchEnemyShots": true, "reflectDamage": 2.5,
+        "reflectSpeed": 1.5, "aimReflected": true,
+        "enemyShotsConsume": true,
+        "pulse": true, "armSfx": "", "triggerSfx": ""
+      }
+
+    node       "stop" (default) halts and waits - much the easiest to
+               aim a second shot into, and it makes placing one a
+               tactical act. "travel" keeps flying, so you have to catch
+               it in the air. "drift" halts then wanders. "toss" ARCS
+               UNDER GRAVITY and survives landing - the thrown coin; see
+               the section below.
+    trigger    "different" (default) - only a shot from ANOTHER weapon
+               sets it off, so primary places and secondary detonates.
+               "any" includes this weapon's own shots, which is easier
+               but means a fast gun triggers its own nodes constantly
+               and placement stops mattering.
+    armTime    seconds of flight before a stop/drift node halts - so
+               this is HOW FAR OUT YOU CAN PLACE IT, not a delay. It
+               also halts early if it hits something.
+    lifetime / radius / max / uses
+               how long it waits, how close a shot must pass, how many
+               nodes at once (oldest retired when full), and how many
+               shots one node may pass on.
+
+    -- the redirect --
+
+    redirect   "chain" (default) grants the shot the mod's own chain, so
+               it leaps target to target and inherits the falloff
+               options. "split" bursts it into one copy per target,
+               flying at all of them at once.
+               CHAIN IS PLAIN-PROJECTILE ONLY - the hooks that drive it
+               do not exist for lobbed shots, so a lobbed shot put
+               through a chain node is aimed at one enemy and boosted
+               instead. "split" works on both, and the builder warns if
+               you pair chain with a lobbed weapon.
+    targets    chain jumps, or split copies. Split takes the NEAREST
+               things first and walks outward through the crowd, so each
+               copy gets a target of its own rather than all of them
+               piling onto one.
+    range      how far the node looks for things to send shots at.
+    targetObjects
+               true (default) - CRATES AND BOXES COUNT. The game marks
+               them as legitimate things to shoot at exactly the way it
+               marks enemies, and they are even on the same faction, so
+               a split bursts the crate beside you open along with the
+               enemies. Set false and only things that fight back are
+               picked - useful when a crate keeps stealing shots.
+    lockOn     true (default) - THE REDIRECTED SHOT FOLLOWS ITS TARGET
+               IN. Without it the redirect is an aim and not a hit: the
+               shot is turned toward where the target stood at that
+               instant and then flies dead straight, so anything moving
+               at range is missed. Plain projectiles only, exactly like
+               chain - a lobbed shot is handed the target and tracks
+               only as hard as its own weapon's homing allows.
+    lockOnTurnRate
+               degrees per second it may swing (default 360). High is a
+               hard snap onto the target, low a lazy curve. Capped at
+               540 degrees of turning in total, so a shot that
+               overshoots gives up instead of orbiting the arena.
+    damageMultiplier
+               the "with more damage" part. Applied through the shared
+               damage stack, so it composes with "grow" and "damageRamp"
+               instead of fighting them.
+               SPLIT COPIES INHERIT IT. The boost is applied before the
+               copies are made, so all of them hit at the boosted
+               number - not just the original.
+    speedMultiplier
+               how much faster the redirected shot travels.
+    chainFalloff / chainRevisit
+               chain only - per-jump damage multiplier, and whether it
+               may hop back onto something already hit.
+
+    -- enemy fire --
+
+    catchEnemyShots
+               default true. A reflected shot becomes properly YOURS -
+               right faction, right collisions, kills credited to you.
+    reflectDamage / reflectSpeed
+               multipliers on what comes back. ("Maybe going faster
+               too" - that is reflectSpeed.)
+    aimReflected
+               default true, sends it at an enemy. Off sends it straight
+               back the way it came, which is more literal and usually
+               misses.
+    enemyShotsConsume
+               default true, because the node is meant to destroy itself
+               on enemy bullets. Off makes a node that guards an area
+               until something of yours claims it.
+
+    pulse      the node throbs so it reads as live and armed rather than
+               as a stuck bullet. Worth keeping.
+    armSfx / triggerSfx
+               placed, and passed-a-shot-on. The second one is the
+               moment the combo lands, so it is worth setting.
+
+  A stop/drift node switches "impactBehaviour" OFF for you, or it would
+  explode against the first wall instead of parking there - the same
+  bargain the harpoon and the sticky bombs make. Its "lifetime" is what
+  ends it.
+
+  Preset: "Catalyst" (put it in your SECONDARY and shoot it with your
+  primary).
+
+    -- the thrown coin (the ULTRAKILL Marksman ricoshot) --
+
+    TO BE CLEAR ABOUT WHAT MOVES: the coin does not ricochet. YOUR
+    BULLET does. The coin hangs there and the shot you put through it
+    comes out redirected - which is why every dial below is about the
+    shot rather than about the node.
+
+    "node": "toss" is the one mode that KEEPS ITS GRAVITY. The node
+    arcs, falls, and SURVIVES LANDING, so you can still shoot it where
+    it came down. Every other mode either halts or is meant to be caught
+    in mid-air.
+
+    It wants a LOBBED template (Derbis, Loon, Flame). A plain projectile
+    has no rigidbody and no gravity, so it would fly dead straight - the
+    builder warns if you pair them.
+
+    gravityScale
+               how hard the node falls, and the single dial that turns a
+               lobbed shot into a thrown coin. 1-1.5 gives a readable
+               arc you can shoot near the top of. 0 makes it hang.
+    preferNodes
+               THE RICOSHOT. A redirected shot looks for another NODE
+               before it looks for an enemy, sets that one off too, and
+               carries on - so three coins in the air become a cascade
+               from a single bullet. It cannot loop: each node is
+               consumed the moment it fires.
+    nodeSprite "coin" is a BUILT-IN gold coin, drawn by the mod rather
+               than loaded, so a preset using it works with no art file
+               installed. Or name one of your own sprites.
+    spin / spinSpeed / spinHorizontal / spinThinness
+               a coin turning about its vertical axis is just a disc
+               whose apparent WIDTH oscillates, so this is an animated
+               squash rather than a flipbook - no extra frames, no
+               texture sheet.
+               IT DOES PASS THROUGH THE THIN SIDE: the cycle is
+               face -> narrowing -> EDGE -> opening out, and at the thin
+               point the coin is tinted to its darker MILLED RIM, because
+               edge-on you are looking at the edge rather than at a
+               squashed face.
+               spinThinness is how thin it gets, as a fraction of full
+               width. NEVER ZERO - a coin has thickness, and a true zero
+               reads as a flicker rather than a spin. spinHorizontal
+               flips the same motion end over end.
+
+    For the sound, the game's own money clip is
+    11e8d93f-393e-4958-a468-863166ed6595 - drop that straight into
+    "triggerSfx" and it rings when a shot hits the coin.
+
+    -- and the OTHER version of that gun --
+
+    "redirect": "split" is the one that BREAKS THE BULLET INTO THREE at
+    the coin, each piece flying at something of its own - enemies and
+    crates alike. That is a different thing from chaining, where one
+    bullet visits them in sequence, and it is the better fit for the
+    alt-fire everyone remembers.
+
+    The copies are REAL SHOTS, not decoration: they carry the original's
+    damage, radius, piercing, impact behaviour and lifetime, and they
+    are registered like any other bullet - so a split copy that flies
+    into another coin sets that one off too, and a kill by one pays the
+    weapon that fired it. That is also why "split" needs no preferNodes
+    of its own.
+
+  Preset: "Marksman Coin" - lobbed, spinning, coin-to-coin, in your
+  SECONDARY so your primary is what shoots it.
+
+  Preset: "Sharpshooter Coin" - the same coin, but the shot splits in
+  three instead of chaining.
+
+
+  ON KILL - TOP-LEVEL "onKill" block. Any weapon.
+
+  A weapon that GIVES SOMETHING BACK when it kills.
+
+      "onKill": {
+        "resource": "Resource Fuel",
+        "amount": 4,
+        "asPickup": false,
+        "chance": 1,
+        "maxPerSecond": 6,
+        "clearBurn": 3,
+        "buffDuration": 2.5,
+        "buffFireRate": 0.3,
+        "buffDamage": 0,
+        "buffMaxStacks": 3,
+        "sfx": ""
+      }
+
+  THE GAME CREDITS KILLS FROM EXACTLY THREE PLACES - a projectile hit,
+  a beam hit and an explosion - and it records only WHICH UNIT killed,
+  never which weapon. So the weapon is tracked here: stamped at fire
+  time for bullets, read straight off the beam for hitscan, and taken
+  from the projectile that owns the blast for explosions.
+
+  AND NOTHING ELSE IN THE GAME CREDITS A KILL AT ALL - not Die()
+  itself, not burn ticks, not electricity, and not this mod's own
+  damage. The "ram" and the "gas" cloud now register their kills
+  properly, which is what makes "dash through enemies to win fuel back"
+  actually pay out. That was the case this was asked for.
+
+    resource   which tank the payout goes into. LEAVE IT OUT and it
+               uses the weapon's own "resourceUsed", which makes "pay
+               me back what I spent" a one-field weapon.
+    amount     units granted per kill. Clamped to the tank's capacity,
+               so it can never overfill.
+    asPickup   drops a real resource pickup where the enemy died for
+               you to fly through, instead of granting it instantly.
+               More visible, more skill-testing, and missable.
+    chance     0-1 chance to pay out. Rolled BEFORE the per-second cap,
+               so a failed roll does not consume it.
+    maxPerSecond
+               cap on how much RESOURCE this grants per second, 0 =
+               uncapped. The case this exists for: ONE EXPLOSION CAN
+               KILL A DOZEN ENEMIES in the same frame, and an uncapped
+               payout refills everything instantly.
+               CHANGED 2026-08-18. This used to count PAYOUTS per
+               second, which is not how it reads next to "amount":
+               with "amount": 100 and "maxPerSecond": 300 the obvious
+               meaning is "no more than 300 a second" - three kills'
+               worth - and the old meaning made it 300 KILLS a second,
+               i.e. no cap at all. Amount is the better measure for the
+               explosion case anyway: what hurts is the total granted,
+               not the number of events.
+               If your weapon grants no resource (buff-only or
+               burn-only) this still counts payouts, so it keeps a
+               limiter either way.
+               NOTE this retunes existing files. The Fuel Reaver preset
+               has amount 4 and maxPerSecond 6, which used to mean 6
+               kills a second and now means 6 fuel a second - about
+               1.5 kills. Raise it if that is too tight.
+    buffIndicator
+               SHOWS YOU ON SCREEN WHILE THE BUFF IS UP, wearing this
+               weapon's own module icon and colour. "feed" (the game's
+               own status line - the one that says FUEL LOW), "icons"
+               (a row beside the minion counter), "both", or "off".
+               Leave it out to follow the global default.
+
+               The feed is not a hack: the game already uses that line
+               for PERSISTENT status, not just messages. "Fuel low" is
+               logged with no duration, coloured and flashing, then
+               cleared when it stops applying - which is exactly the
+               shape of a buff. So an indicator lives there natively.
+
+               The global default, and three more choices, live in
+               BepInEx/config/com.sugarheady.weaponforge.cfg:
+                 Style            off / feed / icons / both
+                 Label            effect (FIRE RATE +30%) / seconds /
+                                  stacks / icon
+                 ShowTimedStates  also indicate ongoing states: SHIELD UP,
+                                  ORBIT, TETHERED. Off by default - a
+                                  busy fight would fill the status area.
+                                  A held charge is not reported yet.
+                 ShowDebuffs      also indicate things working AGAINST
+                                  you, shown FLASHING the way the game
+                                  shows "Fuel low". Today that is
+                                  BURNING, read from the game's own
+                                  on-fire flag - so it reports whatever
+                                  set you alight, not just your own
+                                  weapons. Gas slowing you is not
+                                  reported yet.
+
+               These two are POLLED rather than hooked, deliberately. A
+               state is a level, not an event: "the shield is up" is true
+               across many frames, and the honest way to report a level
+               is to read it. Hooking would mean catching every path that
+               raises and drops a shield, every way a tether comes loose
+               and every route a fire goes out by - and missing one
+               leaves an indicator stuck on screen, which is worse than
+               having none. The cost is one pass per frame over two short
+               lists, and only while you have asked for it.
+               "buffIndicator" in a weapon file overrides Style for that
+               weapon in either direction.
+    clearBurn  burn level removed from YOUR OWN ship per kill. The only
+               payout that can save you mid-fire. Your ship sheds burn
+               at 5/second on its own, so 5+ here roughly doubles that
+               per kill.
+    buffDuration / buffFireRate / buffDamage / buffMaxStacks
+               a timed buff. The two bonuses are FRACTIONS (0.25 =
+               +25%) and both need a duration or they do nothing.
+               maxStacks 1 means each kill just refreshes the timer;
+               higher lets a streak build, and at the cap the
+               soonest-expiring stack is refreshed rather than a new
+               one added.
+               Worth knowing: the game REBUILDS a weapon from its
+               template whenever its module cluster changes, so the
+               buff is stored as baseline x multiplier and re-reads the
+               baseline if anything moves it. A rebuild mid-buff costs
+               one frame, not your real stats.
+    sfx        plays on each payout, or "none". Worth having - a reward
+               you cannot hear is a reward you will not notice.
+
+  MODULE FORGE HAS THE SAME THING AS A MODULE, where it works on the
+  ship grid (any weapon's kills count) or inside a weapon's grid (only
+  that weapon's). See HOW TO MAKE MODULES.txt.
+
+  Preset: "Fuel Reaver".
+
+  GAS CLOUDS - TOP-LEVEL "gas" block. Plain OR lobbed.
+
+  A shot that leaves a CLOUD behind, and the cloud is what does the
+  work - burning, poisoning, bogging things down, shoving them about,
+  or PUTTING FIRES OUT.
+
+  NONE OF THIS COULD BE TAKEN FROM THE GAME, and the reason is worth
+  knowing before you tune it.
+
+  PUNK has TWO UNRELATED BURN SYSTEMS. A weapon's "burn" raises a
+  UNIT's burn level - that is the one that hurts things. Separately,
+  any shot that hits terrain sets that CELL alight, and cell fire
+  spreads and eats the level on its own. But nothing reads a burning
+  cell except the flame particles: STANDING IN BURNING GROUND DOES
+  NOTHING TO ANYONE.
+
+  The engine that WOULD do it exists and has never been switched on.
+  CellType.cellBehaviours accepts burn / damage / drag behaviours, read
+  off a poller that knows which cell you are standing in - and not one
+  cell type in the game carries a single behaviour. Worse, only the
+  four SHIP prefabs read them, so a cell-based gas would poison you and
+  nothing else. cellConvertData cannot help either: it only rewrites
+  cells already in its list, so it can scorch ground but never fill
+  empty air.
+
+  So the cloud is the mod's own object. What WAS worth copying is the
+  game's own flamethrower, "Weapon Caps Flame": LOBBED puffs at mass
+  0.1 with linearDamping 1.7 - light and heavily damped, which is what
+  makes a puff STALL IN THE AIR instead of flying away - carrying
+  burn 3 and only 0.5 damage. The payload is the burn, not the hit.
+  Every gas preset here is built on that template for that reason.
+
+      "gas": true               on, with defaults (and no payload)
+      "gas": {
+        "enabled": true,
+        "cloud": "grow",
+        "radius": 1.1,
+        "growTo": 2.4,
+        "growTime": 1,
+        "duration": 3.5,
+        "fade": 0.7,
+        "max": 22,
+        "drift": 1.2,
+        "driftDamping": 0.4,
+        "burnPerSecond": 1.5,
+        "damagePerSecond": 2.5,
+        "slow": 0.35,
+        "push": 0,
+        "extinguish": 0,
+        "extinguishTerrain": 0,
+        "hitEnemies": true,
+        "hitPlayer": false,
+        "tickRate": 0.25,
+        "color": "#8cf26688",
+        "puffs": 5,
+        "swirl": 30,
+        "sprite": "", "sfx": ""
+      }
+
+    cloud      "grow" (default) stall, swell, thin out - reads most
+               like real gas.
+               "hang" stall at one size and sit there. A minefield of
+               gas pockets rather than a cloud.
+               "drift" keeps rolling along the way the puff was going.
+               Flushes things out of cover.
+               "single" ONE burst, ON IMPACT ONLY. A puff that times
+               out in mid-air leaves nothing at all, which makes this
+               a gas grenade rather than a spray - pair it with a slow
+               lobbed shot, never with a flamethrower.
+    radius     starting radius. For every mode except "grow" this is
+               the whole size.
+    growTo / growTime
+               grow only - the radius it swells to, and how long that
+               takes.
+    duration   seconds the cloud lives. This is the real cost of a gas
+               weapon: long clouds plus a fast gun carpet a room.
+    fade       seconds of fade-out at the end so it thins rather than
+               blinking out.
+    max        clouds this weapon may have alive at once. When full the
+               OLDEST is retired rather than refusing to make new ones,
+               so a spray weapon rolls its budget forward. 0 =
+               unlimited, which a spray weapon should not use.
+    drift / driftDamping
+               drift only - units/second, and how fast it settles. 0
+               damping sails away forever.
+
+    -- what being inside it does (any combination) --
+
+    A cloud with none of these is just a coloured puff, and the builder
+    says so in the log.
+
+    burnPerSecond
+               sets things alight using the game's own fire, so it
+               stacks with everything and shows the burning visual for
+               free.
+               READ THIS BEFORE TUNING IT: burn damage in PUNK is FLAT
+               - 1 per second while alight, no matter how high the
+               level goes. So this buys DURATION, NEVER INTENSITY.
+               Enemies shed burn at 1/second (you shed it at 5), so
+               anything much above 1.5 keeps a target alight forever
+               and the rest is wasted. And Enemy_Cross Variant Tablet
+               has a fire threshold of 10000 - it is FIREPROOF, so a
+               burn-only gas does literally nothing to it.
+    damagePerSecond
+               the cloud's own damage, using the weapon's damage type.
+               Unlike burn this scales, works on the fireproof enemy,
+               and is the only payload you can tune upward. Most gas
+               weapons want a little even when burn is the theme.
+    slow       fraction of velocity bled off per second, 0-1. 0.5
+               halves speed every second inside. The game has a
+               DragCellBehaviour for exactly this and never used it.
+    push       outward shove per second. NEGATIVE PULLS INWARD, which
+               herds a group instead of scattering it.
+
+    -- putting fires out --
+
+    extinguish burn level removed per second from UNITS inside. This
+               reaches YOU as well, even when the cloud is otherwise
+               harmless to you - that is the point of an extinguisher.
+               8 puts you out almost instantly.
+    extinguishTerrain
+               burn level removed per second from burning GROUND. This
+               is the separate cell-fire system - the one that spreads
+               across the level and destroys terrain - and nothing else
+               in the mod touches it.
+               CALIBRATION MATTERS AND THE FIRST DEFAULT WAS TOO SMALL.
+               Cell fire thresholds are not normalised:
+                   CellType_Solid (the main terrain)  45
+                   Bark, Gold                         10
+                   Night                               5
+                   Moss                              2.5
+                   Tuff                              1.3
+                   Slime, Blob                          1
+                   Fog Mist/Musk/Steam                100
+                   Hazard, Mud, Obsidian, Panel, Shard  0  (never burn)
+               A burning Solid cell therefore sits above 45 AND is being
+               topped up by every burning neighbour, so 6/second could
+               never win the race. 120+ clears it; the Suppressant preset
+               uses 400. The builder warns below 45.
+
+    igniteTerrain
+               burn level ADDED per second to terrain inside the cloud -
+               the inverse of the field above. The game only sets ground
+               alight when a projectile COLLIDES with it, which is no use
+               to a cloud meant to hang in the air, so this is a cloud's
+               only route to it. Pair with puffPierceTerrain for gas that
+               burns terrain WITHOUT being eaten by it.
+
+    -- the puffs themselves --
+
+    These three reach past the cloud and change the PROJECTILE, because
+    "the gas all falls down and dies on the floor" is a property of the
+    puff, not of the cloud.
+
+    puffGravity
+               rigidbody gravityScale on each puff. 0 MAKES THE GAS
+               FLOAT. The flamethrower template is a lobbed weapon, so
+               its puffs fall and pool on the ground; 0 leaves them where
+               you sprayed them, which is what lets a cloud build up.
+               Negative makes it rise.
+    puffDrag   linear damping on each puff. The flamethrower uses 1.7,
+               which is what makes a puff stall instead of flying away.
+               Lower throws the gas further before it settles.
+    puffPierceTerrain
+               switches the puff's impact behaviour off so walls and
+               floors cannot destroy it. Trade-off: a puff that never
+               touches terrain never sets it alight either - use
+               igniteTerrain for that. The builder switches a lifetime on
+               if the weapon had none, since with impact off nothing else
+               would end the puff.
+
+    -- who it touches --
+
+    hitEnemies default true. Off makes a support-only gas: an
+               extinguisher, or a screen that only ever affects you.
+    hitPlayer  off by default, the same call as the gravity well's
+               pullPlayer - a weapon that can kill its own user should
+               be a decision. On, placement becomes a real risk.
+               Note "extinguish" always reaches you regardless: putting
+               your own fire out is never the dangerous half.
+    tickRate   seconds between applications. Damage calls drive hit
+               flashes, sounds and the aggro event, so this is not free
+               every frame. 0.25 is four a second and looks continuous.
+
+    -- look and sound --
+
+    color      #rrggbb or a name. THE ALPHA MATTERS HERE - gas should
+               be see-through, so "#8cf26688" reads far better than a
+               solid colour.
+    puffs      how many blobs make one cloud, 1-24. More reads as
+               thicker gas and costs more to draw.
+    swirl      degrees/second the puffs churn around each other. 0 is a
+               static blob, high is a vortex.
+    sprite     your own art for the puffs instead of the generated soft
+               blob. Tinted by "color".
+    sfx        plays once when a cloud forms, or "none". Careful with a
+               spray weapon - that is one sound per puff.
+
+  Presets: "BioBlaster", "Smog", "Suppressant", "Gas Grenade".
+
+  GAS TRAILS - gas laid along the FLIGHT PATH
+  -------------------------------------------
+
+  "trail": true (inside the gas block) drops a cloud every so often as the
+  shot flies, instead of only where it ends. A napalm line, an acid
+  stripe, a smoke screen to retreat through.
+
+    "gas": {
+      "damagePerSecond": 5,
+      "trail": true,
+      "trailEvery": 1.6,
+      "trailRadius": 0.8,
+      "trailDuration": 2.5
+    }
+
+  TWO NAMING WARNINGS, because both are easy to trip over:
+
+    * This is "gas": { "trail": true } - NOT the top-level "trail" key,
+      which is the visual particle trail. They are unrelated.
+    * It could not have been built on that one. Our visual trails are a
+      child ParticleSystem emitting by rateOverDistance, and particles
+      are NOT colliders, so there is nothing there to damage with. The
+      gas cloud already does the hard half, which is why this was cheap.
+
+  A TRAIL IS NOT A FIFTH "cloud" MODE, on purpose. "cloud" says how a
+  cloud BEHAVES once it exists (stall, swell, roll); the trail says WHERE
+  clouds get placed. They are orthogonal, so a trail keeps whatever cloud
+  mode you already chose:
+
+    grow   the line thickens behind you - most napalm-like
+    hang   a clean, stable stripe
+    drift  the line rolls outward from itself as it ages
+    single cannot describe a trail, so the TRAIL clouds use "grow"
+           while the end cloud stays one big bloom
+
+  WHERE THE CLOUDS GO
+  -------------------
+
+    trailMode       "distance" (DEFAULT) - a cloud every trailEvery units.
+                      Constant spacing at any speed, so a fast shot and a
+                      slow one leave the same looking line. A stalled shot
+                      stops laying gas.
+                    "time" - a cloud every trailInterval seconds. A slow
+                      or hovering shot keeps pooling gas where it sits.
+                    "both" - distance normally, with the interval as a
+                      FLOOR, so a shot that gets slowed still leaks.
+    trailEvery      units between clouds (distance/both). Minimum 0.3.
+    trailInterval   seconds between clouds (time/both).
+
+  The first cloud lands one spacing OUT rather than at the muzzle, so the
+  line starts ahead of the ship instead of on top of it. That matters
+  because "hitPlayer" is a thing people turn on.
+
+  THE TRAIL'S CLOUDS ARE THEIR OWN THING
+  --------------------------------------
+
+    trailRadius     radius of one trail cloud   (default 0.9)
+    trailDuration   seconds one of them lives   (default 2)
+    trailPuffs      sprites per trail cloud     (default 2)
+    trailMax        live trail clouds allowed   (default 40)
+
+  These are separate numbers rather than reusing radius / duration /
+  puffs because twenty-five FULL-SIZE clouds would fill the room. They
+  also give the trail its OWN budget, so a long line can never starve the
+  bloom at the end.
+
+  trailMax is what sets how LONG the line is. Past the cap the oldest
+  cloud FADES rather than popping, so the tail dissolves behind you on its
+  own - that came free from the spray-weapon budget and is exactly the
+  behaviour you want.
+
+    bloomOnDeath    whether the shot still leaves a cloud where it DIES
+                    (default true). True is the napalm-shell reading: a
+                    line, then a bloom. False makes it a pure trail.
+                    Useful even without a trail - until now there was no
+                    way to suppress the end cloud at all.
+
+  THE ONE BALANCE TRAP: OVERLAP STACKS
+  ------------------------------------
+
+  Every cloud runs its OWN damage tick. Two clouds covering the same enemy
+  therefore hit it twice. With trailEvery below trailRadius the line is
+  continuously double-dipping, and the multiplier is roughly
+
+      2 x trailRadius / trailEvery
+
+  so radius 0.8 at spacing 0.4 is about 4x what one cloud does. That is
+  not visible in game - it just feels wrong - so the builder logs the
+  number when it sees damage AND overlap together.
+
+  Set trailEvery to about 2x trailRadius for an even line that does not
+  stack. The Acid Line preset is deliberately set up that way so you have
+  a clean baseline to judge damage against.
+
+  Overlap is FINE - desirable, even - when there is no damage to stack. A
+  smoke wall wants continuous coverage, which is why Smoke Screen
+  overlaps on purpose and gets no warning.
+
+  COST
+  ----
+
+  Total sprites is roughly trailMax x trailPuffs, and every shot in flight
+  is laying its own. The builder logs the arithmetic for your numbers at
+  load. If it costs frames, lower trailMax first (it shortens the line),
+  then trailPuffs (it thins each cloud).
+
+  THE FOUR PRESETS
+  ----------------
+
+    Napalm Line    burns enemies AND sets the ground alight
+                   (igniteTerrain 60 - the main terrain ignites at 45).
+                   The one thing only a floating cloud can do: the game
+                   itself only ignites ground when a projectile
+                   physically collides with it.
+    Acid Line      pure damage, no fire, spacing at exactly 2x radius so
+                   the clouds sit edge to edge and do NOT stack.
+    Smoke Screen   no damage at all - slows and shoves. The only properly
+                   defensive weapon in the set. Short range and a slow
+                   shot on purpose, so the wall goes up near you.
+    Coolant Line   extinguishes: ground fire, enemy fire, and YOUR fire.
+                   Note hitPlayer stays false and it still saves you -
+                   the cloud always extinguishes its OWNER regardless of
+                   that switch, because an extinguisher you cannot stand
+                   in would be useless. So it can never hurt you and can
+                   always help you.
+
+
+  SHIELD ARC / RAM - TOP-LEVEL "shield" block. Any weapon.
+
+  A held ARC out in front of the ship that catches incoming fire, and a
+  pointed RAM version of the same shape that hurts whatever you charge
+  into. The first weapon here that is not a thing you throw.
+
+  THE GAME'S OWN SHIELDS COULD NOT BE REUSED, and it is worth knowing
+  why before assuming this is a reskin of them. A Shield in PUNK is a
+  damage FILTER, not a barrier: on the player it ships with NO COLLIDER
+  AT ALL, its shader draws a full ring with no angle parameter anywhere
+  in it, and it sits on a layer that enemy bullets do not even collide
+  with. A 40-degree wedge is simply not a configuration of that asset.
+
+  WHAT WAS WORTH TAKING is its pricing idea - "effectiveness", the
+  amount of damage one point of resource will absorb. See below.
+
+  AND NOTHING IN PUNK DOES CONTACT DAMAGE BETWEEN UNITS. There is no
+  melee component and no collision-stay handler anywhere in the game.
+  Flying into an enemy is free, in both directions. That is why the ram
+  has to invent its damage - and why "it protects you on the way in"
+  means one specific thing, described at ramSelfProtect.
+
+      "shield": true            on, with defaults
+      "shield": {
+        "enabled": true,
+        "mode": "arc",
+        "activation": "hold",
+        "facing": "auto",
+        "angle": 40,
+        "radius": 2.2,
+        "thickness": 0.6,
+        "onBlock": "reflect",
+        "reflectDamage": 1.5,
+        "reflectSpeed": 1.2,
+        "aimRange": 25,
+        "blockBeams": true,
+        "maxPerSecond": 0,
+        "drainPerSecond": 1.5,
+        "costPerBlock": 0,
+        "effectiveness": 2,
+        "resource": "",
+        "ramTrigger": "either",
+        "ramDamage": 8,
+        "ramSprintMultiplier": 0.4,
+        "ramKnockback": 30,
+        "ramSpeedThreshold": 6,
+        "ramRepeatDelay": 0.4,
+        "ramSelfProtect": true,
+        "ramIFrames": 0,
+        "ramDashWindow": 0,
+        "color": "#73d9ff",
+        "sprite": "",
+        "appearFade": 0.12,
+        "flashOnBlock": true,
+        "raiseSfx": "", "blockSfx": "", "ramSfx": ""
+      }
+
+    mode       "arc" (default) the reflector - a held shield.
+               "ram" the pointed one. IT DOES NOT EAT THE TRIGGER, so a
+               ram weapon is still a perfectly normal gun that also
+               hurts what you dash into.
+               "both" holds the arc on the trigger AND rams on the dash.
+    activation only "arc" uses this; a ram is driven by your dash.
+               "hold" (default) up while you hold fire.
+               "toggle" tap to raise, tap to drop.
+               "always" permanently up. With no cost that is a free
+               permanent shield - pair it with drainPerSecond or
+               costPerBlock unless that is the point.
+               NONE OF THESE WORK ON A GADGET MODULE. Gadgets bypass
+               the shooter entirely (they call Fire() directly), so
+               there is no held trigger to raise an arc with. The
+               builder says so in the log and falls back to the ram
+               half if the weapon has one.
+    facing     "auto" (default) - crosshair while shielding, movement
+               while ramming. That split is the whole reason it is the
+               default: A DASH FIRES ALONG YOUR MOVEMENT STICK, NOT
+               YOUR AIM, so a ram that tracked the crosshair would
+               swing off the thing you were charging at.
+               "aim" always the crosshair. Worth knowing this is the
+               TRUE mouse position - the game's aim assist moves your
+               firing direction, not your crosshair, so the arc points
+               exactly where you point even when your bullets do not.
+               "travel" always the way you are moving.
+               "frozen" locked in when it goes up.
+               A dash always locks its facing at the moment it starts,
+               whatever this says.
+    angle      degrees of arc. 40 is the sketched one - an angle that
+               would close a circle if nine were joined. 360 is a full
+               bubble.
+    radius     how far out the arc sits. The ship is about 1 unit.
+    thickness  how deep the band is - AND it sets the outer edge. The
+               arc reaches radius + thickness/2, and that is exactly
+               where beams stop and where the ram's damage ends, so the
+               drawn shape and the thing that blocks are never out of
+               step.
+    onBlock    "reflect" (default) straight back the way it came, as
+               YOUR bullet - right faction, right collisions, and kills
+               with it credited to you.
+               "reflectAtNearest" turned around and aimed at an enemy.
+               "destroy" it simply stops.
+               "absorb" eaten, and REFUNDS resource instead of costing
+               it. The shield becomes a battery you charge by standing
+               in the wrong place.
+    reflectDamage / reflectSpeed
+               multipliers on what comes back.
+    aimRange   how far "reflectAtNearest" looks for a target.
+    blockBeams default true. A beam is a raycast that resolves inside
+               one frame, so there is nothing to catch - it is cut
+               short at the source instead. Note the game casts TWICE
+               for a beam, once for damage and once for the visual, and
+               both are clipped; cutting only the first would draw the
+               laser straight through a shield that was stopping it.
+    maxPerSecond
+               cap on shots stopped per second. 0 = unlimited. A low
+               number makes the shield leak under heavy fire, which is
+               the honest way to make an always-on arc affordable.
+    drainPerSecond
+               resource per second while the arc is up. A number, or
+               the word "cost", which means cost x fireRate - exactly
+               what this weapon would spend per second with the trigger
+               simply held down.
+               The tank is clamped at zero and the arc DROPS when it
+               cannot pay, so this is a real cost. (ResourceTank has no
+               floor of its own; left alone it goes negative and the
+               thing being paid for runs free.)
+    costPerBlock
+               flat charge per shot stopped. Ignored when
+               "effectiveness" is set. Under "absorb" this is what each
+               shot pays YOU instead.
+    effectiveness
+               the game's own shield formula: stopping d damage costs
+               d / effectiveness. Higher is more efficient. 0 turns it
+               off and uses the flat costPerBlock.
+               THE DIFFERENCE THAT MATTERS: a flat cost prices SHOTS,
+               this prices DAMAGE - so a swarm of pinpricks is cheap to
+               stand in and one big hit is expensive to eat.
+    resource   which tank pays. Empty uses the weapon's resourceUsed.
+
+    -- the ram half --
+
+    ramTrigger dash and sprint are the same key: a tap dashes, holding
+               it becomes a boost.
+               "either" (default) both.
+               "dash" the tap only - a committed hit with the dash's
+               own cooldown behind it.
+               "sprint" while boosting only - sustained, and scaled by
+               ramSprintMultiplier.
+    ramDamage  damage to each thing inside the wedge, per hit.
+    ramSprintMultiplier
+               ramDamage is multiplied by this while sprinting rather
+               than dashing, because a sustained charge lands over and
+               over where a dash lands once.
+    ramKnockback
+               shove applied to what you hit. 0 = none.
+    ramSpeedThreshold
+               below this speed a ram does nothing, so drifting into
+               something is not an attack.
+    ramRepeatDelay
+               seconds before the SAME target can be rammed again. Per
+               target, so one charge through a crowd hits each of them
+               once instead of hitting one of them sixty times.
+    ramSelfProtect
+               default true, and this is what "it protects you"
+               actually means here. Enemies cannot hurt you by touch -
+               nothing in the game can - but YOUR OWN SHIP DAMAGES
+               ITSELF FOR CRASHING, and the game switches that on for
+               exactly as long as you are sprinting. So without this a
+               sprint-ram costs you health every time it works. It is
+               handed straight back the moment the ram ends.
+    ramIFrames seconds of full invulnerability from the start of a
+               dash. 0 = none, which is the honest default: the game's
+               own dash has no i-frames either. This blocks ALL damage,
+               not just impacts, so keep it short. 0.2 covers a dash
+               through a bullet; 1 is a get-out-of-jail button.
+    ramDashWindow
+               how long a dash counts as a ram. 0 uses the dash's own
+               length.
+
+    -- look and sound --
+
+    color      #rrggbb or a name. Its alpha is the arc's opacity.
+    sprite     your own art instead of the generated arc. It is drawn
+               pointing RIGHT and pivoted on the SHIP, so author it
+               that way. Left empty, the arc is drawn from angle,
+               radius and thickness - which is why it always matches
+               what actually blocks.
+    appearFade seconds to fade in rather than pop. 0 = instant.
+    flashOnBlock
+               default true - brightens on a block so you can see it
+               working.
+    raiseSfx / blockSfx / ramSfx
+               sound names, or "none". Raise plays when the arc goes
+               up, block on each shot stopped, ram when a dash starts.
+
+  Presets: "Reflect Shield", "Ram Shield", "Bulwark", "Absorber".
+
+  HARPOON / TETHER - TOP-LEVEL "tether" block. Plain OR lobbed.
+
+  A shot that LATCHES ONTO WHAT IT HITS and leaves a rope between you
+  and it. Then something gets dragged.
+
+  THE GAME'S OWN HOOK IS NOT A HARPOON, which is worth knowing before
+  assuming this is a reskin of it. It fires nothing - it instantly
+  latches onto the nearest "Grabbable" in a cone in front of the ship -
+  and nothing in the game puts Grabbable on an enemy, so it is for
+  physics junk, not combat.
+
+  WHAT WAS WORTH TAKING is its FORCE MODEL, already tuned to this
+  game's masses: pull only once the line is stretched past its rest
+  length, and stop pulling once the gap is already closing fast enough.
+  Those two rules are what make a rope feel taut instead of magnetic,
+  and this mirrors them exactly.
+
+  IT SWITCHES "impactBehaviour" OFF (and "lifetimeData", and
+  "rangeData.destroyWhenReached") - a harpoon that deletes itself on
+  impact is a bullet.
+
+      "tether": true            on, with defaults
+      "tether": {
+        "enabled": true,
+        "pull": "target",
+        "to": "enemies",
+        "length": 3,
+        "stiffness": 55,
+        "reelSpeed": 1.5,
+        "duration": 3,
+        "breakDistance": 22,
+        "damagePerSecond": 2,
+        "max": 1,
+        "selfPull": 0.4,
+        "maxClosingSpeed": 6,
+        "ropeWidth": 0.11,
+        "ropeColor": "#c8d8e8"
+      }
+
+    pull       WHICH END OF THE ROPE MOVES:
+       "target" (default)  drag THEM to you. Rips things out of cover
+                 and into whatever else you are firing.
+       "self"    drag YOU to them. A traversal tool, and the ONLY mode
+                 that does anything against terrain - a wall has no
+                 rigidbody to drag, so this is the grappling hook.
+       "both"    the game's own hook: an elastic line neither end can
+                 leave. Chaotic, and the most physical-feeling.
+       "anchor"  no pulling at all - the victim simply cannot get
+                 further than "length" from WHERE IT WAS STRUCK. Crowd
+                 control rather than repositioning, and the one mode
+                 where the harpoon head stays put instead of riding its
+                 victim.
+    length     rest length. THERE IS NO FORCE AT ALL INSIDE THIS - that
+               is the whole difference between a tether and a tractor
+               beam.
+    stiffness  how hard it pulls per unit of OVERSTRETCH, so the force
+               grows the further past the rope's length you are. A real
+               spring, not a constant tug.
+    reelSpeed  units/sec the rest length SHRINKS by - an active winch.
+               This is what turns "tethered" into "reeled in".
+    duration   seconds before the rope lets go, counted from when it
+               LANDED. That is why lifetimeData gets switched off: that
+               one counts from when the shot was FIRED.
+    breakDistance
+               snap if stretched past this. Gives a strong enemy a way
+               out, and stops a tether hauling you across the level.
+    missLifetime
+               seconds a harpoon that hit NOTHING stays in the world,
+               default 3. Impact behaviour, lifetime and destroy-at-range
+               are ALL switched off for a tether weapon, because any one
+               of them would delete a harpoon mid-rope. The cost of that
+               is that a MISSED shot had nothing left to end it: it sat
+               where it stopped, indefinitely, and hooked enemies that
+               wandered into it minutes later. This is the replacement
+               timer and it only runs while the shot has hit nothing.
+               0 = never expire (the old behaviour).
+    to         "enemies" (default), "terrain" or "any". Terrain only
+               makes sense with "pull": "self", and the builder warns
+               if you pair it with anything else.
+    selfPull   "both" only - how much of the force comes back onto YOU.
+    maxClosingSpeed
+               stop pulling once the gap is already closing this fast.
+               From the game's own hook; the difference between a rope
+               that settles and one that shudders.
+    damagePerSecond
+               bleed while attached. Applied once a second, not every
+               frame - the game's damage call drives hit flashes, sounds
+               and the aggro event, and running that per frame is a
+               strobe.
+    max        ropes out at once. Above 1 you can harpoon several things
+               and haul them into a pile, which is very silly and worth
+               trying. Oldest is cut first.
+    ropeWidth  0 draws no rope at all, if you want the force without the
+               line.
+    ropeColor  the rope borrows its material from the game's own
+               electricity beam, because a fresh LineRenderer gets
+               Unity's default material and ignores colour - the same
+               trap a fresh ParticleSystem has.
+
+  Preset: "Harpoon".
+
+  STICKY BOMBS - TOP-LEVEL "sticky" block. Plain OR lobbed.
+
+  Shots that STOP WHERE THEY LAND, hang there, and go off TOGETHER on
+  command. The demoman's stickies.
+
+  NOTHING IN THE GAME DOES ANY PART OF THIS. There is no stick, no
+  attach, no joint, and no notion of "set off the ones you already
+  fired" - the closest thing is a grapple hook that pulls with a force
+  and never attaches anything to anything.
+
+  TWO FACTS MADE IT CHEAP, both from reading the collision code:
+    A PLAIN shot with impactBehaviour OFF already survives contact. The
+    game snaps it onto the surface, checks bounce, checks impact, and
+    with both off simply falls out of the routine without destroying
+    anything. So "stick to a wall" is mostly "stop moving".
+    A LOBBED shot is the opposite job: with impact off it keeps bouncing
+    as a real physics body, so sticking one means taking the physics
+    AWAY at the moment it lands.
+
+  IT SWITCHES THREE THINGS OFF FOR YOU: "impactBehaviour",
+  "lifetimeData", and "rangeData.destroyWhenReached". Any of the three
+  would delete a bomb out from under you while it waited. The
+  "explosion" block becomes the bomb's payload, so a sticky weapon MUST
+  have one - the builder refuses it otherwise.
+
+      "sticky": true            on, with defaults
+      "sticky": {
+        "enabled": true,
+        "detonate": "refire",
+        "max": 6,
+        "fuse": 0,
+        "to": "any",
+        "follow": true,
+        "armTime": 0.3,
+        "ripple": 0.08,
+        "proximityRange": 2.5,
+        "damageOnStick": true
+      }
+
+    detonate   what sets a salvo off:
+       "refire" (default)  lay up to "max", and the next shot detonates
+                 the LOT instead of laying another. That is the weapon's
+                 whole rhythm - load, load, load, BANG. It deliberately
+                 does not also fire, or the field would never empty.
+       "fuse"    each bomb goes off "fuse" seconds after IT landed, and
+                 the weapon keeps firing normally. The plasma grenade.
+       "proximity"  goes off when something hostile comes within
+                 "proximityRange". A minefield. It never trips on you or
+                 your friends.
+       "manual"  only the fuse and the max-count cull ever end one.
+    max        most bombs you may have stuck at once. Laying past it
+               DETONATES THE OLDEST rather than refusing the shot - a
+               weapon that silently stops working is worse than one that
+               tidies up after itself. In refire mode this is also the
+               magazine: it is the count that arms the detonator.
+    fuse       seconds from LANDING to going off alone. 0 = waits for
+               you. This is not "lifetimeData", and that is exactly why
+               the builder turns that off: a lifetime counts from when
+               the shot was FIRED, a fuse from when it LANDED, and for a
+               bomb you always mean the second.
+    to         "any" (default) / "terrain" / "enemies". "enemies" sails
+               past scenery and only latches onto something alive.
+    follow     default true - a bomb on an enemy TRAVELS WITH IT. Done
+               by remembering the host and an offset rather than by
+               re-parenting: parenting would inherit the enemy's scale,
+               and a bomb on something that dies would be deleted with
+               it instead of left behind.
+    armTime    a bomb cannot be detonated for this long after landing.
+               Not a nicety - without it a refire weapon fired twice
+               quickly blows a bomb up on your own muzzle, and a
+               proximity mine stuck to the enemy already touching you
+               goes off in your face.
+    ripple     seconds between each bomb when a salvo goes off. 0 is one
+               bang; 0.08 is a RIPPLE down the line, which reads as far
+               bigger for the same damage. Oldest first.
+    damageOnStick
+               PLAIN SHOTS ONLY, and not by choice. A plain shot's hit
+               is applied at the top of the game's collision routine,
+               before any branch, so it has already happened by the time
+               anything of ours runs - "false" therefore works by
+               zeroing the weapon's damage at build time. A LOBBED bomb
+               never damages on landing whatever you put here, because
+               its damage call lives inside the impact block that had to
+               be switched off. Raise the explosion instead. The log
+               says which case applies.
+
+  There is a 60-second backstop on every bomb, so a "refire" weapon you
+  swapped away from does not leave live bombs in the level forever.
+
+  Preset: "Stickies".
+
+  BOUNCING GRENADES - TOP-LEVEL "bounce" block. LOBBED WEAPONS ONLY.
+
+  A lobbed shot that bounces off walls and floors instead of dying on
+  them - and whose bounciness can be driven by HOW FAR IT FELL.
+
+  THIS IS A DIFFERENT MECHANIC FROM "ricochet", which is why it is a
+  different key. Ricochet shapes the game's SCRIPTED bounce: a plain
+  bullet mirroring off a wall, with no gravity anywhere in it. A lobbed
+  shot has no scripted bounce at all - it is a real physics body, and it
+  bounces because the engine bounces it. The two share a word and
+  nothing else.
+
+  WHAT THE GAME ALREADY HAS is almost nothing. Its "bouncing bomb" is
+  just "impactBehaviour" switched OFF so the shot stops destroying
+  itself on contact - eight stock weapons do that (Item Bomb, Item
+  Matchbox, Caps Vial, Purple ClusterCube, Queen Bomb, both Bomber
+  bombs, Fly Alfa) and then rely on a fuse. And because the damage call
+  sits INSIDE that same switch, those eight do NO CONTACT DAMAGE AT ALL.
+  They roll around your feet completely harmlessly until they blow.
+
+  So this block does three things the game cannot: it takes RESTITUTION
+  off the physics engine (the only way to make bounciness depend on
+  anything), it COUNTS bounces, and it fires EFFECTS PER BOUNCE while
+  the shot lives on.
+
+  IT SWITCHES "impactBehaviour" OFF FOR YOU. It has to - the shot dies
+  on contact one otherwise and nothing else here matters. Your settings
+  are not lost: they are replayed on the LAST bounce. So
+  "impactBehaviour" still means "what this shot does when it lands",
+  just at the end of the bouncing rather than the start of it.
+
+      "bounce": true           on, with defaults
+      "bounce": {
+        "enabled": true,
+        "restitution": 0.6,
+        "to": 1.05,
+        "overHeight": 12,
+        "curve": 1,
+        "max": 8,
+        "minSpeed": 1,
+        "friction": 0.4,
+        "scatter": 6,
+        "damageOnBounce": true,
+        "damageFalloff": 0.15,
+        "explodeOnBounce": false,
+        "dischargeOnBounce": false
+      }
+
+    restitution  Fraction of the impact speed that comes back out. 0.3
+                 is the stock grenade, 1 is a perfect arcade bounce,
+                 above 1 is super-elastic. On its own this is a flat
+                 dial; set "to" as well and it becomes the BOTTOM of a
+                 ramp.
+    to           Turns restitution into a HEIGHT RAMP: this is the
+                 bounciness after falling "overHeight" units. Impact
+                 speed and drop height are the same fact, so this is
+                 literally "the further it fell, the bouncier it is" -
+                 and it makes one weapon play two ways. Skipped along a
+                 corridor it dies quickly; dropped down a shaft it comes
+                 back at you.
+    overHeight   World units of FALL that reach "to". Calibrated at
+                 build time against the engine's real step, not the
+                 textbook sqrt(2gh): physics shots have air damping and
+                 the formula overstates the landing speed by up to a
+                 quarter, which would have made this number silently
+                 need a drop nearly twice as big as you asked for. The
+                 log prints the speed it settled on.
+    curve        1 ramps steadily with the fall. Above 1 keeps it dull
+                 until the drop is genuinely big, then snaps to bouncy.
+    max          How many bounces before the shot ends - and ending
+                 means firing your "impactBehaviour". "Bounces three
+                 times then explodes" is this number. 0 is unlimited.
+    minSpeed     Impact speed below which a contact is not a bounce at
+                 all; the shot just settles and rolls. Without it a
+                 grenade coming to rest jitters on micro-contacts,
+                 burning its bounce count and firing per-bounce effects
+                 the whole time. 1 matches the engine's own threshold.
+    friction     Sideways grip - the difference between a grenade that
+                 ROLLS after landing and one that skids to a halt. Left
+                 out it keeps the stock 0.4. 0 is ice.
+    scatter      Degrees of random turn per rebound. Besides looking
+                 less mechanical, this is the escape from a shot trapped
+                 bouncing between two parallel walls forever. It never
+                 turns the shot back into the surface it just left.
+    damageOnBounce
+                 OFF by default, matching the game's own bouncing bombs.
+                 On, it goes through the game's own collision listener,
+                 so terrain digging, cell shake, burn and kill credit
+                 all come along rather than being reimplemented.
+    damageFalloff
+                 Fraction of damage lost PER BOUNCE. 0.2 gives 100%,
+                 80%, 64%... The first bounce is always full. Published
+                 as a multiplier into the same shared value "grow" and
+                 "damageRamp" use, so a shot can be all three at once.
+    explodeOnBounce / dischargeOnBounce
+                 The shot SURVIVES them. The game makes bounce and
+                 explode-on-impact mutually exclusive by design, so a
+                 grenade that blasts its way down a corridor is only
+                 possible from here. Needs an "explosion" block with a
+                 radius and a damage / a "discharge" with chainLength.
+
+  SUPER-ELASTIC DOES NOT RUN AWAY. Restitution above 1 sounds like a
+  shot that climbs out of the level, and it isn't: air damping eats more
+  energy per bounce than a modest overshoot puts in, so it converges on
+  a STEADY bouncing height. Simulated at grenade settings, 1.15 settles
+  around 2 units, 1.3 around 7, 1.5 around 19. Past about 1.5 it is high
+  enough to leave the room, which is what "max" is for.
+
+  NOTHING ELSE STOPS A LOBBED SHOT. "rangeData" does NOT count: on a
+  lobbed weapon the game works out a range at launch and then never
+  reads it again. A bouncing grenade needs a "max", a "lifetimeData"
+  fuse, or both - and the builder warns if it has neither.
+
+  THE BOUNCE SOUND is "impactSfx". There is no separate key: the game
+  plays nothing on impact at all, and the hook that normally makes that
+  noise lives inside the impact path we switched off, so it is fired
+  from the bounce instead. Its "impactSfxOn" filter and rate limit both
+  still apply.
+
+  Preset: "Skipper".
+
+  CHARGE SHOT (hold to build it up, let go to fire) - TOP-LEVEL
+  "charge" block.
+
+  Hold the trigger, let go, one big shot. The Mega Man buster. A quick
+  tap still fires the weapon normally, so the gun is never dead in your
+  hands - you decide per shot whether to spend the time.
+
+  THE GAME HAS NONE OF THIS. Its one held-trigger mechanic,
+  "warmupTime", is a minigun SPIN-UP: it gates firing until a meter
+  fills, then fires normally forever, and it empties the instant you let
+  go. Nothing in PUNK reacts to the trigger coming UP, and no weapon
+  stat is ever scaled by how long it was held.
+
+  Every bonus is a MULTIPLIER of the weapon's own number, so 1 means
+  unchanged and a charge composes with +damage modules instead of
+  overriding them. "count" and "pierce" are the two that ADD instead.
+
+      "charge": true           on, with defaults
+      "charge": {
+        "enabled": true,
+        "mode": "release",
+        "time": 1,
+        "min": 0.3,
+        "scale": true,
+        "curve": 1,
+        "tapFire": true,
+        "holdFire": true,
+
+        "damage": 3,
+        "size": 1.8,
+        "speed": 1,
+        "range": 1,
+        "explosion": 1,
+        "burn": 1,
+        "push": 1,
+        "knockback": 1,
+        "spread": 1,
+        "cost": 1,
+        "count": 0,
+        "pierce": 0,
+
+        "color": "#ffdd55",
+        "meter": true,
+        "meterSprite": null,
+        "meterFrom": 0.2,
+        "meterTo": 1.1,
+        "meterColor": "#ffffff",
+        "chargeSfx": null,
+        "readySfx": null
+      }
+
+    mode       "release" (default) is the buster: holding builds the
+               shot and fires nothing, letting go fires it.
+               "auto" leaves the weapon firing normally the whole time
+               and builds the charge alongside it - every time the meter
+               fills, ONE shot comes out charged and the meter starts
+               again. It costs you no damage-per-second to use, so it is
+               the gentler option on a weapon you want to hold down.
+    time       seconds of holding to reach FULL charge. This is the
+               weapon's whole feel: 0.4 is a snappy tap-charge you use
+               constantly, 2 is a commitment you line up. In "auto" it
+               is how often the big shot comes round.
+    min        fraction of a full charge (0-1) a release needs before it
+               counts as charged AT ALL. Below it you get "tapFire".
+               Keep it above 0 or every twitch is a weak charged shot
+               and the weapon has no tap.
+    scale      default true - every bonus ramps with the meter, so
+               letting go early is a real decision. False makes anything
+               past "min" a FULL charged shot: a threshold weapon.
+    curve      1 fills steadily. Above 1 is slow then a rush at the end
+               (2-3 reads well). Below 1 front-loads it.
+    tapFire    default true. Without it a charge weapon does NOTHING
+               when tapped, which reads as broken rather than as a
+               design.
+    holdFire   "release" mode only, default true. False turns the weapon
+               into "fires as usual, PLUS a bonus shot when you let go",
+               which is strictly better than not charging - fine for a
+               power fantasy, bad for balance.
+    size       grows the art AND the real hitbox together.
+    explosion  scales the blast radius and its damage together. Does
+               nothing unless the weapon already explodes.
+    knockback  the shove the SHOT GIVES YOU. A big number here is a
+               recoil cannon you can ride.
+    spread     below 1 tightens the volley as it charges - a shotgun
+               that turns into a slug.
+    cost       what the charged shot costs, as a multiple of the
+               weapon's normal cost. Charging is always free; you pay on
+               release, and only if you can afford it (an empty tank
+               STALLS the meter rather than letting it fill and then
+               eating the shot).
+    count      ADDED: extra pellets at full charge.
+    pierce     ADDED: extra enemies the charged shot passes through.
+               Turns piercing on for that shot if the weapon has none,
+               and adds to a "pierceLimit" if it has one.
+    color      tints the charged SHOT, and the meter fades into this
+               colour as it fills. It is MULTIPLIED over the shot's own
+               colour, so a strongly coloured "projectileColor" will
+               muddy it - keep the base bullet near-white if the charge
+               tint is the thing you want to see.
+    meter      the growing orb at the muzzle, drawn with THIS WEAPON'S
+               OWN bullet art so it reads as the shot you are building.
+               "meterSprite" names your own art instead.
+    chargeSfx  the looping CHARGING sound. This writes the weapon's own
+               "warmupSfx" slot - they are the same thing, and going
+               through it is what gets 3D position, the volume slider
+               and the mixer for free. A CUSTOM sound is forced to loop;
+               a stock one-shot put here plays once and then stays
+               silent for the rest of the hold. The Laser's warmup
+               (ea8fb19f-4770-4b84-b478-95d30b805d6e) does loop.
+               No stock projectile weapon fills that slot, so a charge
+               weapon is SILENT while charging unless you set it.
+    readySfx   played once the instant the meter fills. This is the cue
+               that actually makes a charge weapon playable - without it
+               you are watching the muzzle instead of the fight.
+
+  TWO THINGS IT CANNOT DO, and the builder refuses them out loud rather
+  than shipping something broken:
+
+    NOT ON A GADGET. The 1/2/3 slots fire their weapon the instant the
+    module activates, without going through the ship's Shooter at all,
+    so there is no trigger to hold. Primary and secondary only.
+
+    NOT "release" ON A BEAM. A beam is drawn only while the trigger is
+    DOWN, so a shot fired the moment you let go would do its damage
+    completely invisibly. Use "mode": "auto" on a beam: it fires
+    normally and one tick in every charge is the big one. ("size" on a
+    beam means how thick the damage cast is, and the beam will not LOOK
+    thicker - the visual is one stretched quad the weapon rebuilds from
+    its own numbers.)
+
+  DO NOT SET "warmupTime" AS WELL. It is the game's own spin-up, a
+  different mechanic, and it drives the same warmupSfx slot the charge
+  loop uses. Stacking them just delays your shots; the builder warns.
+
+  Works on lobbed shots, and a charged grenade is genuinely bigger - a
+  PhysicsProjectile collides with a real collider, so scaling it up
+  scales the hitbox with it. Preset: "Buster".
+
   "projectileBounceData": { "enabled": true }
   "movementNoiseData": { "enabled": true, "angle": 15,
                          "frequency": 6 }
@@ -1999,7 +5512,8 @@ circle-cast every physics step. Stock reference points:
                  speed 100, range 9
 
 EVERYTHING in section 4 and 5 applies, plus every Forge extra (wave,
-orbit, phasing, pierce cap, turret, sub-emitters).
+homing, ricochet, boomerang, grow, chain, converge, damageRamp,
+deflect, orbit, phasing, pierce cap, turret, sub-emitters).
 
 *** SPREAD vs ANGLEVARIANCE - the one that catches everybody ***
 
@@ -2108,15 +5622,29 @@ object that arcs, tumbles and bounces off the world.
                          only ever speeds the shot up.
 
 WHAT WORKS on a lobbed shot:
-  damage & burn, explosion, discharge, impactBehaviour, rangeData,
-  lifetimeData, homingData, pushForce, subEmitter, collidesWithSlime,
-  electricityData, velocityInfluenceData.
+  damage & burn, explosion, discharge, impactBehaviour, lifetimeData,
+  homingData (the GAME's homing - a lobbed shot is the ONE weapon type it
+  works on), pushForce, subEmitter, collidesWithSlime, electricityData,
+  velocityInfluenceData, and the custom "grow", "damageRamp" and
+  "converge" options.
 
-WHAT DOES NOTHING on a lobbed shot (it never spawns the straight-flying
-projectile these belong to):
+  "converge" gets there by a different route from a straight weapon - it
+  solves each pellet's launch SPEED so its arc lands on the focal point,
+  rather than steering it. See the converge section above.
+
+WHAT DOES NOTHING on a lobbed shot:
+  rangeData (the whole block - see the top of this section),
   piercingData / pierceLimit, projectileBounceData (the physics object
   already bounces), movementNoiseData, rotationData, projectileRadius,
-  and the custom "wave", "phasing" and "turret" options.
+  and the custom "wave", "homing", "ricochet", "boomerang", "chain",
+  "deflect", "phasing" and "turret" options.
+
+  Everything in that last list either steers the shot every frame - which
+  fights the physics rather than shaping it - or hooks Projectile, which
+  is a different class from the PhysicsProjectile a lob actually spawns.
+  Each one says so in the log rather than failing silently. Note that the
+  custom "homing" block is the one for STRAIGHT shots; lobbed weapons use
+  the game's own "homingData" instead, which is why one is in each list.
 
 ----------------------------------------------------------------
  6c. MISSILES (homingData) - WHAT APPLIES
@@ -2439,7 +5967,28 @@ grid/inventory UI and what it grants when equipped:
                                      grid). A number = fixed; or a range
                                      { "min": 4, "max": 8 } to roll
                                      randomly. Popper is normally 2-3.
+    "canBeBoosted": true             Whether a green-crate BOOSTERCORE
+                                     next to this weapon raises its
+                                     module LEVEL. See below.
   }
+
+*** IF A BOOSTERCORE SEEMS TO DO NOTHING TO YOUR WEAPON ***
+
+  EVERY stock weapon module in the game ships with "canBeBoosted" OFF -
+  Popper, Bolt, Worm, Blades, all of them - and a Forge weapon is a
+  clone of one of those, so it inherits the same OFF. The game checks
+  that flag BEFORE applying the level bonus at all, so stacking
+  BoosterCores around a weapon changes nothing, while setting
+  "level" by hand works fine. That combination is the giveaway.
+
+  Set "canBeBoosted": true in the module block to allow it.
+
+  It is turned ON for you (with a log line) when the weapon declares
+  something that scales per level, such as
+      "burnTickRate": { "base": 1, "perLevel": 10 }
+  because asking for per-level scaling on a module that can never gain
+  a level is two contradictory requests. Set it to false explicitly if
+  you want the stock behaviour back.
 
 Game ColorAsset names:
   ColorWhite   ColorOrange   ColorPurple   ColorBlue
