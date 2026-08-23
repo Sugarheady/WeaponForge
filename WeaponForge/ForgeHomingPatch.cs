@@ -203,6 +203,96 @@ namespace WeaponForge
         // Public because ricochet's "seek" asks exactly the same question -
         // "what should this shot turn toward from here" - and one
         // implementation means both features agree on what counts as a target.
+        // Nearest legitimate target, skipping any already visited.
+        //
+        // Deliberately NOT the same choice as FindTarget below, which takes
+        // the smallest ANGLE from the current heading - right for a shot
+        // steering toward something ahead of it, wrong for a chain jump,
+        // where the classic behaviour is "hop to whatever is closest" and a
+        // target directly behind is a perfectly good next link.
+        //
+        // Shares FindTarget's rules about what counts: an AimAssistTarget
+        // (the game's own "legitimate thing to shoot at" marker, which also
+        // excludes terrain), and never something friendly to the owner.
+        public static AimAssistTarget FindNearestTarget(
+            Projectile p,
+            Vector2 here,
+            float range,
+            int mask,
+            HashSet<Transform> exclude)
+        {
+            return FindNearestTarget(
+                (p != null) ? p.Owner : null, here, range, mask, exclude, true);
+        }
+
+        // Owner-taking overload, for the same reason FindTarget has one: a
+        // lobbed shot is a PhysicsProjectile and not a Projectile at all.
+        //
+        // `objectsToo` is the one behavioural difference. Crates and boxes are
+        // legitimate AimAssistTargets - verified in the prefabs, all thirteen
+        // Box*/Crate* carry the component - and they are even on the SAME
+        // faction as the enemies (guid 7b5e0303...), so nothing in the friendly
+        // check excludes them. That is usually wanted: a split that also bursts
+        // the crate beside you is the behaviour ULTRAKILL's does. When it is
+        // not, the discriminator is `AIAgent`: all 60 fighting units have one
+        // and none of the 13 containers do.
+        public static AimAssistTarget FindNearestTarget(
+            Unit owner,
+            Vector2 here,
+            float range,
+            int mask,
+            HashSet<Transform> exclude,
+            bool objectsToo)
+        {
+            var filter = new ContactFilter2D();
+            filter.useTriggers = true;
+            filter.SetLayerMask(mask);
+
+            int count = Physics2D.OverlapCircle(here, range, filter, _hits);
+
+            float bestDistance = float.MaxValue;
+            AimAssistTarget best = null;
+
+            for (int i = 0; i < count && i < _hits.Count; i++)
+            {
+                Collider2D col = _hits[i];
+
+                if (col == null)
+                    continue;
+
+                var aimTarget = col.GetComponentInParent<AimAssistTarget>();
+
+                if (aimTarget == null)
+                    continue;
+
+                if (exclude != null && exclude.Contains(aimTarget.transform))
+                    continue;
+
+                if (!objectsToo &&
+                    aimTarget.GetComponentInParent<AIAgent>() == null)
+                    continue;
+
+                if (owner != null)
+                {
+                    var unit = col.GetComponentInParent<Unit>();
+
+                    if (unit != null && owner.IsFriendsWith(unit))
+                        continue;
+                }
+
+                float d =
+                    ((Vector2)aimTarget.transform.position - here).sqrMagnitude;
+
+                if (d < bestDistance)
+                {
+                    bestDistance = d;
+                    best = aimTarget;
+                }
+            }
+
+            return best;
+        }
+
         public static AimAssistTarget FindTarget(
             Projectile p,
             Vector2 here,
@@ -210,6 +300,37 @@ namespace WeaponForge
             float range,
             float cone,
             int mask)
+        {
+            return FindTarget(
+                (p != null) ? p.Owner : null, here, forward, range, cone, mask);
+        }
+
+        // Owner-taking overload, because the game has two unrelated projectile
+        // classes and a lobbed shot is not a Projectile. Without this a
+        // PhysicsProjectile would have to pass null and would then happily
+        // pick a friendly unit to aim at.
+        public static AimAssistTarget FindTarget(
+            Unit owner,
+            Vector2 here,
+            Vector2 forward,
+            float range,
+            float cone,
+            int mask)
+        {
+            return FindTarget(owner, here, forward, range, cone, mask, null);
+        }
+
+        // `exclude` skips targets already chosen, which is how the catalyst's
+        // SPLIT walks outward through a crowd instead of picking the same
+        // nearest enemy N times.
+        public static AimAssistTarget FindTarget(
+            Unit owner,
+            Vector2 here,
+            Vector2 forward,
+            float range,
+            float cone,
+            int mask,
+            System.Collections.Generic.HashSet<Transform> exclude)
         {
             // useTriggers on: an enemy's hurtbox is often a trigger collider,
             // and skipping those would make half the targets invisible here.
@@ -241,12 +362,19 @@ namespace WeaponForge
                 if (aimTarget == null)
                     continue;
 
+                // Already taken by this caller. Without this the catalyst's
+                // SPLIT picks the same nearest enemy for every copy - the
+                // clones all fly at one target and it reads as a single fat
+                // bullet rather than a burst.
+                if (exclude != null && exclude.Contains(aimTarget.transform))
+                    continue;
+
                 // Don't chase our own side.
-                if (p != null && p.Owner != null)
+                if (owner != null)
                 {
                     var unit = col.GetComponentInParent<Unit>();
 
-                    if (unit != null && p.Owner.IsFriendsWith(unit))
+                    if (unit != null && owner.IsFriendsWith(unit))
                         continue;
                 }
 

@@ -41,6 +41,15 @@ namespace WeaponForge
                 g.baseRadius = __instance.Radius;
                 g.baseDamage = __instance.Damage.amount;
 
+                // Lock the pristine damage into the shared stack at Shoot,
+                // not later. A damage RAMP on the same shot also writes
+                // Damage, and Harmony gives no ordering between two Shoot
+                // postfixes - so whichever runs first must be the one that
+                // captures, or the second would record an already-modified
+                // value as "normal". Capture is a no-op after the first call.
+                if (g.damageAtFull != 1f)
+                    ForgeDamageStack.For(__instance).Capture(g.baseDamage);
+
                 g.resolvedSpan = g.span;
 
                 if (g.resolvedSpan <= 0f)
@@ -107,12 +116,25 @@ namespace WeaponForge
                 if (g == null)
                     return;
 
+                // FireSingle calls Shoot() twice on a lobbed shot and the
+                // first one arrives before Damage/RangeData/Velocity are set.
+                // Capturing there would latch a base damage of 0 - and since
+                // the stack only captures once, the shot would end up doing
+                // nothing at all. See ForgePhysicsShot.
+                if (ForgePhysicsShot.NotReady(__instance))
+                    return;
+
                 g.shot = true;
                 g.startTime = Time.time;
                 g.origin = __instance.transform.position;
                 g.baseScale = __instance.transform.localScale;
                 g.baseRadius = 0f;              // no Radius on this class
                 g.baseDamage = __instance.Damage.amount;
+
+                // See the plain-projectile path: capture before anything else
+                // can modify Damage.
+                if (g.damageAtFull != 1f)
+                    ForgeDamageStack.For(__instance).Capture(g.baseDamage);
 
                 g.resolvedSpan = g.span;
 
@@ -169,10 +191,14 @@ namespace WeaponForge
 
             if (g.damageAtFull != 1f)
             {
-                Damage d = p.Damage;
-                d.amount =
-                    g.baseDamage * Mathf.LerpUnclamped(1f, g.damageAtFull, e);
-                p.Damage = d;
+                // Through the stack, not straight onto Damage: a shot can
+                // also carry a damage RAMP, and two features assigning the
+                // same field from their own bases would overwrite each other
+                // in whichever order the patches happened to run.
+                var stack = ForgeDamageStack.For(p);
+                stack.Capture(g.baseDamage);
+                stack.growth = Mathf.LerpUnclamped(1f, g.damageAtFull, e);
+                stack.Apply(p);
             }
         }
 
@@ -188,10 +214,10 @@ namespace WeaponForge
 
             if (g.damageAtFull != 1f)
             {
-                Damage d = p.Damage;
-                d.amount =
-                    g.baseDamage * Mathf.LerpUnclamped(1f, g.damageAtFull, e);
-                p.Damage = d;
+                var stack = ForgeDamageStack.For(p);
+                stack.Capture(g.baseDamage);
+                stack.growth = Mathf.LerpUnclamped(1f, g.damageAtFull, e);
+                stack.Apply(p);
             }
         }
 

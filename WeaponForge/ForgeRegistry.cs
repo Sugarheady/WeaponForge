@@ -187,6 +187,32 @@ namespace WeaponForge
                     "' in ModuleRegistry");
             }
 
+            // Modules that are not weapons anyone can equip, but which DO end
+            // up installed on a unit - the tuned copies of a minion prefab's
+            // own gun. They need registering for the same save-load reason and
+            // no other: a minion is a savable entity, its grid is stored as a
+            // list of module ids, and `Module.Memento.Restore` does
+            // `registry.Get(id).DeepCopy()` with no null check. An unregistered
+            // id is a NullReferenceException inside the game's load path, which
+            // presents as a save that will not open.
+            //
+            // Kept out of _entries deliberately, so these never appear in loot
+            // pools, the shop, or the loadout screen.
+            foreach (ModuleData extra in ForgeMinionArms.Made)
+            {
+                if (extra == null || presentIds.Contains(extra.Id))
+                    continue;
+
+                itemList.Add(extra);
+                presentIds.Add(extra.Id);
+                changed = true;
+
+                Log.LogInfo(
+                    "Registered minion weapon '" + extra.Id +
+                    "' in ModuleRegistry (needed so a save with that minion " +
+                    "alive can be loaded)");
+            }
+
             if (changed)
             {
                 // Rebuild the id -> module dictionary so Get() sees

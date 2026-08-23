@@ -30,6 +30,11 @@ namespace WeaponForge
 
         // Crate Money has no module pool of ANY kind, so there is nothing to
         // revive - we create this one and graft it on.
+        //
+        // *** This name is shared with Module Forge on purpose. *** Both mods
+        // create-or-find a pool by this name, so when both are installed they
+        // fill ONE pool that the crate rolls once. Rename it here and a player
+        // with both mods gets two module drops out of every Money crate.
         public const string Money = "Forge Modules Crate Money";
 
         // Pools the game will not roll by itself, and the DropTable that has to
@@ -50,6 +55,18 @@ namespace WeaponForge
 
             return pool != null &&
                    _graftInto.TryGetValue(pool, out tableName);
+        }
+
+        // Is this a pool that only exists because it was grafted? Such a pool
+        // can legitimately be EMPTY of stock module entries, so the injector
+        // must not mistake it for a resource-only pool and skip it.
+        //
+        // Asked by name rather than "did I create it", because Module Forge
+        // does the same grafting and may have created it first.
+        public static bool IsGraftPool(string poolName)
+        {
+            string ignored;
+            return NeedsGraft(poolName, out ignored);
         }
 
         // Which pool should this table gain, if any weapon asked for it?
@@ -286,6 +303,20 @@ namespace WeaponForge
             if (group == null)
                 return;
 
+            // With Module Forge installed, IT may have grafted this very table
+            // already - both mods target the same pool names on purpose. A
+            // second DropTableItem would make the crate roll modules TWICE,
+            // which reads as a duplicate-drop bug. Share the existing roll
+            // instead; Augment below still adds our weapons to the same pool.
+            if (TableAlreadyRolls(dropTable, group))
+            {
+                Log.LogInfo(
+                    "'" + dropTable.name + "' already has a module roll from '" +
+                    group.name + "' (Module Forge got there first) - sharing it " +
+                    "rather than adding a second one.");
+                return;
+            }
+
             if (!AppendGroupRoll(dropTable, group))
                 return;
 
@@ -300,7 +331,53 @@ namespace WeaponForge
                     : string.Empty));
         }
 
+        // Does this table already roll the given pool? Covers both a stock
+        // entry and one the other mod appended a moment ago.
+        private static bool TableAlreadyRolls(
+            DropTable dropTable, DropTableWeightedGroup group)
+        {
+            if (_groupField == null)
+            {
+                _groupField =
+                    typeof(DropTableItem).GetField(
+                        "group",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+
+                _useGroupField =
+                    typeof(DropTableItem).GetField(
+                        "useGroup",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+
+            if (_groupField == null)
+                return false;
+
+            foreach (DropTableItem item in dropTable.items)
+            {
+                if (_useGroupField != null)
+                {
+                    object flag = _useGroupField.GetValue(item);
+
+                    if (flag is bool && !(bool)flag)
+                        continue;
+                }
+
+                var existing =
+                    _groupField.GetValue(item) as DropTableWeightedGroup;
+
+                if (existing == group)
+                    return true;
+            }
+
+            return false;
+        }
+
         // The existing asset where there is one, otherwise a pool of our own.
+        //
+        // FindObjectsOfTypeAll sees HideAndDontSave objects, so if Module Forge
+        // created the Money pool first this finds THAT instance and both mods
+        // end up filling one pool - which is the whole point of sharing the
+        // name.
         private static DropTableWeightedGroup ResolvePool(string pool)
         {
             var existing =
@@ -409,13 +486,12 @@ namespace WeaponForge
                 }
             }
 
-            // A pool WE created starts empty, so it has no module entry to
-            // recognise yet - it exists precisely to be filled here. Every
-            // other empty-of-modules pool is a resource/prefab one and is left
-            // alone.
-            bool ours = _madePools.ContainsKey(group.name);
-
-            if (!hasModuleEntry && !ours)
+            // A grafted pool starts EMPTY, so it has no module entry to
+            // recognise yet - it exists precisely to be filled here. Asked by
+            // pool name rather than "did I create it", because with both mods
+            // installed Module Forge may have created it. Every other
+            // empty-of-modules pool is a resource/prefab one and is left alone.
+            if (!hasModuleEntry && !ForgeLootPools.IsGraftPool(group.name))
                 return;   // resource/prefab pool - leave it alone
 
             int added = 0;

@@ -44,6 +44,54 @@ namespace WeaponForge
         // 180 = anywhere, including back the way it came.
         public float seekCone = 180f;
 
+        // --- effects on EVERY bounce, with the shot carrying on -----------
+        //
+        // The game makes these mutually exclusive by design: in
+        // Projectile.OnObjectHit the bounce branch RETURNS before it ever
+        // reaches the impactBehaviour block, so a scripted bounce can never
+        // fire an explosion, a discharge or a sub-emitter. A ricochet that
+        // blasts its way around a room only exists from here.
+        //
+        // Note what is NOT in this list, because it already works: DAMAGE,
+        // BURN and terrain DIGGING all happen on a bounce today. TryHit runs
+        // at the top of OnObjectHit, before either branch, so a shot that
+        // ricochets off an enemy has already hurt it and one that bounces off
+        // a wall has already chewed it.
+        public bool explodeOnBounce;
+        public bool dischargeOnBounce;
+        public bool subOnBounce;
+        public bool effectOnBounce;   // the impactBehaviour destroyEffect art
+
+        // Which surfaces the above fire on. A ricochet that detonates off
+        // walls but passes cleanly through enemies (or the reverse) is a real
+        // design rather than a detail.
+        public enum Where { Any, Terrain, Enemy }
+
+        public Where effectsOn = Where.Any;
+
+        // Resolved once at build time - NameToLayer is a string lookup and
+        // this is read inside a collision path.
+        public int groundLayer = -1;
+
+        public bool WantsEffects
+        {
+            get
+            {
+                return explodeOnBounce || dischargeOnBounce ||
+                       subOnBounce || effectOnBounce;
+            }
+        }
+
+        public bool EffectsWant(int layer)
+        {
+            if (effectsOn == Where.Any)
+                return true;
+
+            bool isGround = (groundLayer >= 0 && layer == groundLayer);
+
+            return (effectsOn == Where.Terrain) ? isGround : !isGround;
+        }
+
         // Runtime state.
         [System.NonSerialized] public int used;
 

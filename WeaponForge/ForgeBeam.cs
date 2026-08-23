@@ -80,6 +80,15 @@ namespace WeaponForge
             public float? offset;
             public float? impactFps;
 
+            // Set by ApplyImpact, not by the beam block. A beam has no
+            // projectile to carry an impact sound, so it rides on the beam
+            // VISUAL - and the visual is not cloned until the visual pass, so
+            // the guid has to wait here until there is a private copy to
+            // attach it to. impactSfxName is kept only for the log line.
+            public string impactSfx;
+            public string impactSfxName;
+            public int impactSfxWhere;   // (int)ForgeImpact.Where
+
             // Renderer tint. Left unset, custom art resets it to white so the
             // sprite shows as drawn instead of inheriting the template's
             // element colour. See ApplyTint.
@@ -222,6 +231,33 @@ namespace WeaponForge
             var fire = _fFire.GetValue(visual) as SpriteRenderer;
             var warmup = _fWarmup.GetValue(visual) as SpriteRenderer;
             var impact = _fImpact.GetValue(visual) as ParticleSystem;
+
+            // The impact SOUND attaches to this visual (a beam has no
+            // projectile to hang it on). Done first and outside the fire-
+            // renderer guard below, because a weapon can legitimately want
+            // the sound without touching the beam's art.
+            if (!string.IsNullOrEmpty(spec.impactSfx))
+            {
+                var imp = visual.GetComponent<ForgeImpact>();
+
+                if (imp == null)
+                    imp = visual.gameObject.AddComponent<ForgeImpact>();
+
+                imp.sfx = spec.impactSfx;
+                imp.where = (ForgeImpact.Where)spec.impactSfxWhere;
+                imp.groundLayer = LayerMask.NameToLayer("Ground");
+
+                // A held beam re-fires every frame it is on, so this gap is
+                // what stops the impact sound becoming a buzz. The weapon's
+                // own damageRepeatDelay is the right idea but is not reachable
+                // from here, so use a value in the same ballpark.
+                imp.minInterval = 0.12f;
+
+                Log.LogInfo(
+                    fileName + ": beam impact sound '" +
+                    (spec.impactSfxName ?? spec.impactSfx) +
+                    "' attached (at most one every 0.12s).");
+            }
 
             if (fire == null)
             {

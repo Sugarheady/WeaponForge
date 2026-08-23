@@ -42,6 +42,10 @@ namespace WeaponForge
         // that already works.
         private static MethodInfo _spawnExplosion;
         private static MethodInfo _fireSub;
+
+        // Where the shot was fired from, so a bounce right on top of the player
+        // can be kept quiet. Private on Projectile, hence the FieldInfo.
+        private static FieldInfo _shotPosition;
         private static bool _ready;
 
         private static void Ensure()
@@ -69,6 +73,104 @@ namespace WeaponForge
                 AccessTools.Method(typeof(Projectile), "SpawnExplosion");
 
             _fireSub = AccessTools.Method(typeof(Projectile), "FireSub");
+
+            _shotPosition = AccessTools.Field(typeof(Projectile), "shotPosition");
+        }
+
+        // Is this bounce close enough to the muzzle that its effects would go off
+        // in the player's face?
+        //
+        // THE TRAP THIS FIXES, because it is not obvious from either side.
+        // `impactBehaviour.safetyDistance` exists precisely so a point-blank shot
+        // does not detonate on you - but look at the order in
+        // Projectile.OnObjectHit: the BOUNCE branch runs first and **returns
+        // before the impactBehaviour block is reached at all**. So on a weapon
+        // whose bounce mask covers what it just hit, safetyDistance is never
+        // consulted; every hit is a real bounce, the "point-blank bounces are
+        // excluded" guard never has anything to exclude, and `explodeOnBounce`
+        // happily fires a full explosion one unit from the ship. Firing at a wall
+        // beside you then stacked four blasts on the player in four frames, which
+        // read as a weird white fountain doing enormous damage.
+        //
+        // So the safety radius has to be re-applied here, on our own effects,
+        // using the number the weapon already carries for exactly this purpose.
+        private static bool TooCloseToMuzzle(Projectile p, Vector2 pos)
+        {
+            ProjectileImpactBehaviour ib = p.ImpactBehaviour;
+
+            if (ib.safetyDistance <= 0f || _shotPosition == null)
+                return false;
+
+            try
+            {
+                var origin = (Vector2)_shotPosition.GetValue(p);
+                return Vector2.Distance(pos, origin) < ib.safetyDistance;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // What the shot just ran into. Reflect(normal) is handed a normal and
+        // nothing else, so the per-bounce effects need the collision captured
+        // one level up - in OnObjectHit, which calls Reflect synchronously
+        // further down the same method. Same reasoning as ForgeVolley: one
+        // synchronous window, so a plain static is exactly right, and the
+        // owner check is what stops a stale capture being read by a different
+        // shot on a later frame.
+        private static Projectile _hitOwner;
+        private static int _hitLayer = -1;
+        private static Vector2 _hitPoint;
+        private static bool _realBounce;
+
+        [HarmonyPatch(typeof(Projectile), "OnObjectHit")]
+        public class OnHit
+        {
+            static void Prefix(Projectile __instance, RaycastHit2D hit)
+            {
+                _hitOwner = null;
+
+                try
+                {
+                    var ric = __instance.GetComponent<ForgeRicochet>();
+
+                    if (ric == null || !ric.WantsEffects)
+                        return;
+
+                    if (hit.collider == null)
+                        return;
+
+                    _hitOwner = __instance;
+                    _hitLayer = hit.collider.gameObject.layer;
+                    _hitPoint = hit.point;
+
+                    // Was this going to be a REAL bounce, or the impact
+                    // safety-distance one?
+                    //
+                    // That distinction matters more than it looks. A weapon
+                    // with a safetyDistance bounces instead of exploding when
+                    // you are point-blank, precisely so it does not blow up in
+                    // your face - and "explode on every bounce" would undo
+                    // exactly that. So the same condition the game is about to
+                    // test is tested here, and the effects only fire on a
+                    // genuine bounce.
+                    ProjectileBounceData bd = __instance.ProjectileBounceData;
+
+                    _realBounce =
+                        bd != null && bd.enabled &&
+                        ((bd.layerMask.value & (1 << _hitLayer)) != 0);
+                }
+                catch
+                {
+                    _hitOwner = null;
+                }
+            }
+
+            static void Postfix()
+            {
+                _hitOwner = null;
+            }
         }
 
         [HarmonyPatch(typeof(Projectile), "Reflect")]
@@ -134,6 +236,19 @@ namespace WeaponForge
                 {
                     Log.LogError("Ricochet shaping failed: " + e);
                 }
+
+                // After Shape, so the destroy effect is oriented along the
+                // heading the shot is actually leaving on.
+                try
+                {
+                    BounceEffects(__instance, ric);
+                }
+                catch (Exception e)
+                {
+                    Log.LogError(
+                        "Ricochet bounce effects failed, the shot keeps " +
+                        "bouncing: " + e);
+                }
             }
         }
 
@@ -193,6 +308,56 @@ namespace WeaponForge
                 Quaternion.FromToRotation(Vector3.right, (Vector3)p.Velocity);
         }
 
+        // Everything the game would have fired on a terminal hit, fired on a
+        // bounce instead - with the shot living on afterwards.
+        private static void BounceEffects(Projectile p, ForgeRicochet ric)
+        {
+            if (!ric.WantsEffects)
+                return;
+
+            // No capture means Reflect was reached from somewhere that is not
+            // a collision (the deflector re-aiming an enemy shot, say). Firing
+            // an explosion there would be an explosion from nowhere.
+            if (!ReferenceEquals(_hitOwner, p))
+                return;
+
+            if (!_realBounce || !ric.EffectsWant(_hitLayer))
+                return;
+
+            Vector2 pos = _hitPoint;
+
+            // The shot still bounces - it just does not detonate while it is
+            // this close to you. Mirrors what the game does inside
+            // safetyDistance on a non-bouncing weapon: reflect, no effects.
+            if (TooCloseToMuzzle(p, pos))
+                return;
+
+            if (ric.effectOnBounce)
+            {
+                ProjectileImpactBehaviour ib = p.ImpactBehaviour;
+
+                if (ib.destroyEffect != null)
+                {
+                    UnityEngine.Object.Instantiate(
+                        ib.destroyEffect, pos, p.transform.rotation);
+                }
+            }
+
+            if (ric.explodeOnBounce && _spawnExplosion != null)
+                _spawnExplosion.Invoke(p, new object[] { pos });
+
+            if (ric.subOnBounce && _fireSub != null)
+                _fireSub.Invoke(p, null);
+
+            if (ric.dischargeOnBounce)
+            {
+                ElectricityManager em;
+
+                if (ServiceLocator.TryGet<ElectricityManager>(out em))
+                    em.SpawnDischarge(p.DischargeData, pos);
+            }
+        }
+
         // Out of bounces: run the weapon's own impact behaviour if it has one,
         // then destroy. This is the same set of effects the game fires on a
         // normal terminal hit, so a ricochet weapon's last bounce explodes /
@@ -205,7 +370,11 @@ namespace WeaponForge
             {
                 ProjectileImpactBehaviour ib = p.ImpactBehaviour;
 
-                if (ib.enabled)
+                // Same guard as a bounce: the last bounce can also happen right
+                // beside you, and the game's own terminal hit tests
+                // safetyDistance before it explodes. The shot is still destroyed
+                // below either way.
+                if (ib.enabled && !TooCloseToMuzzle(p, pos))
                 {
                     if (ib.destroyEffect != null)
                     {
