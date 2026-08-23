@@ -271,16 +271,11 @@ namespace WeaponForge
             if (_weapons.TryGetValue(weaponName, out weapon))
                 return weapon;   // may be null = previously failed/refused
 
-            var data = JsonFieldMapper.FindAsset(
-                typeof(WeaponData), weaponName) as WeaponData;
+            WeaponData data = ForgeWeaponLookup.Find(weaponName);
 
             if (data == null)
             {
-                Log.LogWarning(
-                    "Turret: no weapon named '" + weaponName +
-                    "' was found - this turret won't fire. (For a Weapon " +
-                    "Forge weapon the name is \"Forge Weapon \" + its " +
-                    "\"name\" field.)");
+                ForgeWeaponLookup.LogMiss("turret \"turretWeapon\"", weaponName);
                 _weapons[weaponName] = null;
                 return null;
             }

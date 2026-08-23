@@ -55,9 +55,12 @@ namespace WeaponForge
                     Ensure();
                     w.shot = true;
                     w.startTime = Time.time;
+                    // Half a CYCLE, not pi: the shape functions all work in
+                    // cycles now so that one offset means the same thing to a
+                    // sine, a zigzag and a saw.
                     w.phaseOffset =
                         (w.mode == 2 && (_counter++ & 1) == 1)
-                            ? Mathf.PI
+                            ? 0.5f
                             : 0f;
                 }
                 catch (Exception e)
@@ -91,14 +94,22 @@ namespace WeaponForge
                         ? (Time.time - w.startTime)
                         : Time.time;
 
-                    float ang = w.angleDeg *
-                        Mathf.Sin(t * w.frequency * 2f * Mathf.PI + w.phaseOffset);
+                    float ang = w.angleDeg * w.Offset(t);
 
                     Vector3 dir = Quaternion.AngleAxis(ang, Vector3.back) *
                         (Vector3)ideal;
 
                     __instance.Velocity =
                         (Vector2)dir * __instance.Velocity.magnitude;
+
+                    // Projectile only sets its rotation at Shoot, so without
+                    // this a weaving shot with drawn art flies sideways - very
+                    // visible out of a zigzag corner, hence the option.
+                    if (w.faceTravel)
+                    {
+                        __instance.transform.rotation =
+                            Quaternion.FromToRotation(Vector3.right, dir);
+                    }
                 }
                 catch (Exception e)
                 {

@@ -822,7 +822,8 @@ Drop your own art in this folder and reference it from a weapon's JSON:
 
     ""weapon"": { ""projectileSprite"": ""myBullet"" }
 
-The same art can also be a MODULE CARD ICON - see the end of this file.
+The same art can also be a MUZZLE FLASH, an IMPACT PUFF and a MODULE CARD
+ICON - see the end of this file.
 
 TWO WAYS TO DO IT
 -----------------
@@ -919,6 +920,57 @@ THINGS THAT WILL BITE YOU
 
 * Art is uploaded uncompressed, so a few small PNGs are free but a
   hundred large ones cost memory.
+
+MUZZLE FLASHES
+--------------
+
+    ""weapon"": { ""muzzleSprite"": ""myFlashAnim"", ""muzzleSpriteFps"": 50 }
+
+The flash belongs to the WEAPON, not the shot, so this works on every
+weapon type - normal bullets, lobbed grenades, hitscan lasers, minion
+spawners alike.
+
+* AN ANIMATION IS USUALLY WHAT YOU WANT. The stock flash is a 20-frame
+  flipbook, and these particle systems already run in Sprites mode, so
+  naming an ""...Anim"" just swaps one flipbook for another.
+
+* SET THE FPS. A flash lives about 0.4 seconds. A 20-frame animation
+  needs roughly 50 fps to play through once in that time; leave it too
+  slow and you only ever see the first few frames. Blank uses the
+  animation's own fps from the sheet.
+
+* DRAW IT SMALL, like a bullet - 20 pixels per world unit. This is the
+  opposite of icons, which are drawn at 40.
+
+* IT REPLACES BOTH LAYERS. Most muzzle prefabs are two stacked puffs;
+  the art goes on all of them, because doing only the first leaves the
+  stock puff burning through underneath.
+
+* COLOUR. Without ""muzzleColor"" the template's own coloured fade is
+  drained to grey so your art shows its true colours - otherwise a red
+  template would paint your sprite red. The brightness fade is kept, so
+  the flash still fades out. Add ""muzzleColor"" to tint on purpose.
+
+IMPACT PUFFS
+------------
+
+    ""weapon"": { ""impactSprite"": ""mySplatAnim"" }
+
+The puff where a shot lands. Same rules as the muzzle flash - it is a
+particle, so draw it small and square and pixelsPerUnit does not apply.
+
+* IT COVERS THREE SLOTS: the impact effect, the out-of-range effect and
+  the end-of-life effect. One key, because ""my impact looks like this""
+  means the shot's death however it died.
+
+* NOT EVERY TEMPLATE HAS ONE. Popper, Flame and Toroid do; plenty do
+  not. The log says when there was nothing to apply to.
+
+* ON A BEAM it becomes the hit spark, and needs a ""beam"" block.
+
+There is a matching SOUND, which is a different kind of thing entirely -
+the game has no impact sound at all, so ""impactSfx"" is a noise this mod
+plays itself rather than a slot it fills. See HOW TO MAKE WEAPONS.txt.
 
 MODULE CARD ICONS
 -----------------

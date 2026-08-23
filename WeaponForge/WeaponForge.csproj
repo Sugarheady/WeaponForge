@@ -100,6 +100,12 @@
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(PunkManaged)\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
+    <!-- Needed only by ForgeBuffHud's icon row (Image, HorizontalLayoutGroup).
+         The label text is still set by reflection rather than referencing
+         Unity.TextMeshPro, to keep the reference surface small. -->
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(PunkManaged)\UnityEngine.UI.dll</HintPath>
+    </Reference>
     <!-- Texture2D.LoadImage is an extension method that lives here, not on
          Texture2D itself - needed to build a sprite from a PNG on disk. -->
     <Reference Include="UnityEngine.ImageConversionModule">
@@ -127,6 +133,34 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="WeaponForgePlugin.cs" />
+    <Compile Include="ForgeConfigTable.cs" />
+    <Compile Include="ForgeBuffHud.cs" />
+    <Compile Include="ForgeBuffStates.cs" />
+    <Compile Include="ForgeSlam.cs" />
+    <Compile Include="ForgeSplit.cs" />
+    <Compile Include="ForgeWeaponLookup.cs" />
+    <Compile Include="ForgeTractorBeam.cs" />
+    <Compile Include="ForgeDrone.cs" />
+    <Compile Include="ForgeSwarm.cs" />
+    <Compile Include="ForgeMinionLook.cs" />
+    <Compile Include="ForgeSlow.cs" />
+    <Compile Include="ForgeRally.cs" />
+    <Compile Include="ForgeOverheat.cs" />
+    <Compile Include="ForgeOverheatPatch.cs" />
+    <Compile Include="ForgeSlowPatch.cs" />
+    <Compile Include="ForgeMinionStats.cs" />
+    <Compile Include="ForgeMinionArms.cs" />
+    <Compile Include="ForgeMinionRestore.cs" />
+    <Compile Include="ForgeMinionBlast.cs" />
+    <Compile Include="ForgeDronePatch.cs" />
+    <Compile Include="ForgeSplitter.cs" />
+    <Compile Include="ForgeSplitPatch.cs" />
+    <Compile Include="ForgeSlamPatch.cs" />
+    <Compile Include="ForgeTractor.cs" />
+    <Compile Include="ForgeTractorPatch.cs" />
+    <Compile Include="ForgeMinion.cs" />
+    <Compile Include="ForgeMinionPatch.cs" />
+    <Compile Include="ForgeBuffHudPatch.cs" />
     <Compile Include="ForgeStartupPatch.cs" />
     <Compile Include="ForgeLoadoutPatch.cs" />
     <Compile Include="ForgeLootPatch.cs" />
@@ -167,18 +201,66 @@
     <Compile Include="ForgeBeam.cs" />
     <Compile Include="ForgeBoomerang.cs" />
     <Compile Include="ForgeBoomerangPatch.cs" />
+    <Compile Include="ForgeBulletTurn.cs" />
+    <Compile Include="ForgeBounce.cs" />
+    <Compile Include="ForgeBouncePatch.cs" />
     <Compile Include="ForgeHoming.cs" />
+    <Compile Include="ForgeImpactPatch.cs" />
+    <Compile Include="ForgeImpact.cs" />
     <Compile Include="ForgeHomingPatch.cs" />
     <Compile Include="ForgeRicochet.cs" />
     <Compile Include="ForgeRicochetPatch.cs" />
     <Compile Include="ForgeColorLock.cs" />
     <Compile Include="ForgeDeflect.cs" />
     <Compile Include="ForgeDeflectPatch.cs" />
+    <Compile Include="ForgeGravity.cs" />
+    <Compile Include="ForgeGravityController.cs" />
+    <Compile Include="ForgeGravityPatch.cs" />
     <Compile Include="ForgeGrowth.cs" />
+    <Compile Include="ForgeDamageRampPatch.cs" />
+    <Compile Include="ForgeDamageRamp.cs" />
+    <Compile Include="ForgeDamageStack.cs" />
+    <Compile Include="ForgeChainPatch.cs" />
+    <Compile Include="ForgeChain.cs" />
+    <Compile Include="ForgeCharge.cs" />
+    <Compile Include="ForgeChargeMeter.cs" />
+    <Compile Include="ForgeChargePatch.cs" />
+    <Compile Include="ForgeProjectileHit.cs" />
+    <Compile Include="ForgeMuzzleFollow.cs" />
+    <Compile Include="ForgeMuzzleFollowPatch.cs" />
+    <Compile Include="ForgeConvergePatch.cs" />
+    <Compile Include="ForgeConverge.cs" />
+    <Compile Include="ForgeVolley.cs" />
+    <Compile Include="ForgeBallistics.cs" />
+    <Compile Include="ForgePhysicsShot.cs" />
     <Compile Include="ForgeGrowthPatch.cs" />
     <Compile Include="ForgeSfxRegistry.cs" />
+    <Compile Include="ForgeShield.cs" />
+    <Compile Include="ForgeGas.cs" />
+    <Compile Include="ForgeOnKill.cs" />
+    <Compile Include="ForgeCatalyst.cs" />
+    <Compile Include="ForgeCatalystArt.cs" />
+    <Compile Include="ForgeCatalystPatch.cs" />
+    <Compile Include="ForgeCatalystNode.cs" />
+    <Compile Include="ForgeCatalystSplit.cs" />
+    <Compile Include="ForgeSteering.cs" />
+    <Compile Include="ForgeKillsPatch.cs" />
+    <Compile Include="ForgeKillBuff.cs" />
+    <Compile Include="ForgeKillPickup.cs" />
+    <Compile Include="ForgeGasCloud.cs" />
+    <Compile Include="ForgeGasPatch.cs" />
+    <Compile Include="ForgeShieldArt.cs" />
+    <Compile Include="ForgeShieldController.cs" />
+    <Compile Include="ForgeShieldPatch.cs" />
     <Compile Include="ForgeSoundLibrary.cs" />
     <Compile Include="ForgeSoundLoader.cs" />
+    <Compile Include="ForgeSticky.cs" />
+    <Compile Include="ForgeStickyController.cs" />
+    <Compile Include="ForgeStickyPatch.cs" />
+    <Compile Include="ForgeStickySpec.cs" />
+    <Compile Include="ForgeTether.cs" />
+    <Compile Include="ForgeTetherController.cs" />
+    <Compile Include="ForgeTetherPatch.cs" />
     <Compile Include="ForgeSpriteLibrary.cs" />
     <Compile Include="ForgeTrail.cs" />
     <Compile Include="ForgeSpriteAnimation.cs" />

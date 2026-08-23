@@ -297,8 +297,13 @@ namespace WeaponForge
         // curve survives untouched, the color now comes purely from the
         // tint, and a prefab whose ramp is already white/disabled is
         // unaffected. Build-time, on the private clone only.
-        public static void NeutralizeColorRamp(GameObject root)
+        // Returns how many systems actually had a colour ramp to drain, so a
+        // caller can say "your art was going to be painted over" only when it
+        // was true.
+        public static int NeutralizeColorRamp(GameObject root)
         {
+            int drained = 0;
+
             foreach (var ps in
                 root.GetComponentsInChildren<ParticleSystem>(true))
             {
@@ -307,7 +312,99 @@ namespace WeaponForge
                     continue;
 
                 col.color = GreyGradient(col.color);
+                drained++;
             }
+
+            return drained;
+        }
+
+        // Drain the hue from each system's START COLOUR, keeping its
+        // brightness and its random range.
+        //
+        // The companion to NeutralizeColorRamp, and needed for the same reason
+        // from the other direction. That method only touches
+        // colorOverLifetime, on the stated assumption that "every stock muzzle
+        // keeps its colour in the fade ramp and starts white". A census of the
+        // eleven muzzle prefabs says otherwise: **CrawlerLaser and CrossAlpha
+        // carry their colour in startColor** - blue/purple (0.57, 0, 1) and
+        // cyan (0.09, 0.96, 1). Unity multiplies startColor into the particle,
+        // so custom art on those two came out tinted.
+        //
+        // And both are minMaxState RandomColor, which picks a colour per
+        // particle from the gradient - so the art did not come out reliably
+        // blue, it came out blue SOMETIMES. That is the symptom that got
+        // reported, and it is why this was hard to pin down.
+        public static int NeutralizeStartColor(GameObject root)
+        {
+            int drained = 0;
+
+            foreach (var ps in
+                root.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                var main = ps.main;
+
+                if (!HasHue(main.startColor))
+                    continue;
+
+                main.startColor = GreyGradient(main.startColor);
+                drained++;
+            }
+
+            return drained;
+        }
+
+        // Is there any actual colour in here, as opposed to greyscale
+        // brightness? Used so a prefab that was already neutral does not get
+        // reported as having been changed.
+        private static bool HasHue(ParticleSystem.MinMaxGradient g)
+        {
+            switch (g.mode)
+            {
+                case ParticleSystemGradientMode.Color:
+                    return Coloured(g.color);
+
+                case ParticleSystemGradientMode.TwoColors:
+                    return Coloured(g.colorMin) || Coloured(g.colorMax);
+
+                case ParticleSystemGradientMode.Gradient:
+                    return ColouredKeys(g.gradient);
+
+                case ParticleSystemGradientMode.RandomColor:
+                    return ColouredKeys(g.gradientMax);
+
+                case ParticleSystemGradientMode.TwoGradients:
+                    return ColouredKeys(g.gradientMin) ||
+                           ColouredKeys(g.gradientMax);
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool ColouredKeys(Gradient g)
+        {
+            if (g == null)
+                return false;
+
+            GradientColorKey[] keys = g.colorKeys;
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                if (Coloured(keys[i].color))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool Coloured(Color c)
+        {
+            float hi = Mathf.Max(c.r, Mathf.Max(c.g, c.b));
+            float lo = Mathf.Min(c.r, Mathf.Min(c.g, c.b));
+
+            // Saturation, near enough. Grey is r == g == b at any brightness,
+            // so anything with a spread between its channels has a hue.
+            return hi - lo > 0.04f;
         }
 
         private static ParticleSystem.MinMaxGradient GreyGradient(
@@ -534,6 +631,165 @@ namespace WeaponForge
         // fps null = spread the sequence over each particle's lifetime, so it
         // always finishes exactly as the particle dies and stays in step if the
         // lifetime changes later. A value pins it to a fixed frame rate.
+        // How many puffs, how big, and do they turn with the emitter.
+        //
+        // These three answer the whole "my flash looks like a cloud of tiny
+        // clouds" complaint, and each one is a different part of the system:
+        //
+        //  count  - EVERY stock flash and impact puff emits by BURSTS, not by
+        //           rate (rateOverTime is 0 on all of them). MuzzleParticle
+        //           Popper fires bursts of 30 AND 20 across its two systems -
+        //           fifty puffs. That is fine for a smoke puff and terrible
+        //           for one piece of directional art, which wants 1.
+        //  size   - startSize, in WORLD UNITS. Particles ignore pixels-per-unit
+        //           entirely (the quad is sized by startSize, not by the
+        //           sprite), which is why redrawing the art bigger or changing
+        //           the sheet's PPU does nothing at all here. Every stock
+        //           flash ships startSize 1.
+        //  rotate - the renderer's ALIGNMENT. Every stock prefab ships
+        //           m_RenderAlignment: 0 = View, so particles face the camera
+        //           and ignore the emitter's rotation completely. That is why
+        //           art drawn to point somewhere never points anywhere.
+        //           Local aligns them to the emitter's transform instead - and
+        //           the game already rotates that transform to the aim
+        //           direction for a muzzle (WeaponBase.DoShoot) and to the
+        //           surface normal for an impact
+        //           (ImpactVisualizer.VisualizeImpact).
+        //
+        // Returns a short human summary, or null when nothing was asked for.
+        //  spread - how far the puff THROWS ITSELF from the point it was
+        //           spawned at, as a multiple of the prefab's own scatter.
+        //           This is the one that makes drawn art usable, and it is
+        //           two settings rather than one: a stock flash gives every
+        //           particle a random launch speed (Popper: 0-40 on one
+        //           system, 0-70 on the other) AND spawns it anywhere inside
+        //           a circle (radius 0.68 / 0.49). So even at count 1 the
+        //           single puff lands somewhere different every shot, which
+        //           is exactly the "why won't it stay put" complaint.
+        //           0 pins both: one puff, dead on the barrel or dead on the
+        //           hit point. 1 is stock. Impacts scatter by speed alone -
+        //           their spawn radius is already 0.0001.
+        public static string ShapeParticles(
+            GameObject root,
+            int? count,
+            float? size,
+            bool? rotate,
+            float? spread)
+        {
+            if (root == null ||
+                (!count.HasValue && !size.HasValue && !rotate.HasValue &&
+                 !spread.HasValue))
+            {
+                return null;
+            }
+
+            ParticleSystem[] systems =
+                root.GetComponentsInChildren<ParticleSystem>(true);
+
+            if (systems.Length == 0)
+                return null;
+
+            int burstsSet = 0;
+            int noBursts = 0;
+
+            for (int i = 0; i < systems.Length; i++)
+            {
+                ParticleSystem ps = systems[i];
+
+                if (count.HasValue)
+                {
+                    ParticleSystem.EmissionModule em = ps.emission;
+                    int n = em.burstCount;
+
+                    if (n == 0)
+                    {
+                        noBursts++;
+                    }
+                    else
+                    {
+                        for (int b = 0; b < n; b++)
+                        {
+                            ParticleSystem.Burst burst = em.GetBurst(b);
+                            burst.count = (float)count.Value;
+                            em.SetBurst(b, burst);
+                            burstsSet++;
+                        }
+                    }
+                }
+
+                if (size.HasValue)
+                {
+                    ParticleSystem.MainModule main = ps.main;
+                    main.startSize = size.Value;
+                }
+
+                if (rotate.HasValue)
+                {
+                    var r = ps.GetComponent<ParticleSystemRenderer>();
+
+                    if (r != null)
+                    {
+                        r.alignment = rotate.Value
+                            ? ParticleSystemRenderSpace.Local
+                            : ParticleSystemRenderSpace.View;
+                    }
+                }
+
+                if (spread.HasValue)
+                {
+                    float k = Mathf.Max(0f, spread.Value);
+
+                    // startSpeedMultiplier rather than startSpeed: the stock
+                    // value is a RANDOM RANGE (two constants), and assigning a
+                    // plain number would flatten that to a single speed. The
+                    // multiplier scales whatever curve is already there, so
+                    // spread 0.5 keeps the shape of the randomness and halves
+                    // it, and spread 0 zeroes the whole range.
+                    ParticleSystem.MainModule mainSpeed = ps.main;
+                    mainSpeed.startSpeedMultiplier *= k;
+
+                    // And the spawn area, which is the other half of it on a
+                    // muzzle flash.
+                    ParticleSystem.ShapeModule shape = ps.shape;
+
+                    if (shape.enabled)
+                        shape.radius *= k;
+                }
+            }
+
+            var parts = new System.Collections.Generic.List<string>();
+
+            if (count.HasValue)
+            {
+                parts.Add(count.Value + " per burst" +
+                          (noBursts > 0
+                              ? " (" + noBursts + " system(s) emit by rate, " +
+                                "not bursts - unchanged)"
+                              : ""));
+            }
+
+            if (size.HasValue)
+                parts.Add("size " + size.Value);
+
+            if (rotate.HasValue)
+            {
+                parts.Add(rotate.Value
+                    ? "turning with the emitter"
+                    : "camera-facing");
+            }
+
+            if (spread.HasValue)
+            {
+                parts.Add(spread.Value <= 0f
+                    ? "pinned to one spot (no scatter)"
+                    : "scatter x" + spread.Value);
+            }
+
+            return string.Join(", ", parts.ToArray()) +
+                   " across " + systems.Length + " system" +
+                   (systems.Length == 1 ? "" : "s");
+        }
+
         public static void ApplyParticleSprite(
             ParticleSystem ps,
             Sprite[] frames,
