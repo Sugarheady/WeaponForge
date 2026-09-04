@@ -120,6 +120,22 @@ namespace WeaponForge
             if (speed <= 0.0001f)
                 return;
 
+            // TURN FROM THE PUBLISHED HEADING, not from Velocity.
+            //
+            // Velocity is what anything else curving this shot has already
+            // written to - the mod's `wave`, the game's own noise wobble - and
+            // both of them rebuild it each frame by rotating `idealDirection`
+            // without ever reading Velocity back. Measuring the turn off
+            // Velocity therefore folds the other feature's offset into the
+            // pursuit heading and then hands it back for the offset to be
+            // added again next frame, which widens into a spiral instead of
+            // closing on the target. Speed still comes from Velocity: that is
+            // the one thing the other two preserve rather than own.
+            Vector2 heading;
+
+            if (!ForgeSteer.TryGetIdeal(p, out heading))
+                heading = velocity.normalized;
+
             Vector2 here = p.transform.position;
             Vector2 aim = h.target.position;
 
@@ -137,7 +153,7 @@ namespace WeaponForge
                 return;
 
             float current =
-                Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+                Mathf.Atan2(heading.y, heading.x) * Mathf.Rad2Deg;
 
             float desired =
                 Mathf.Atan2(toTarget.y, toTarget.x) * Mathf.Rad2Deg;
@@ -163,12 +179,23 @@ namespace WeaponForge
             // Rotate about +Z so a positive step turns counter-clockwise,
             // matching the sign convention of the angles measured above.
             Vector2 steered =
-                Quaternion.AngleAxis(step, Vector3.forward) * velocity;
+                Quaternion.AngleAxis(step, Vector3.forward) * heading;
 
-            // Re-normalise to the original speed: rotating a vector should not
-            // change its length, but the quaternion round-trip drifts by a hair
-            // and thousands of frames of drift would visibly change the speed.
-            p.Velocity = steered.normalized * speed;
+            // PUBLISH the new heading rather than just flying it.
+            //
+            // This wrote Velocity alone until the steering audit. Everything
+            // that curves a shot rebuilds Velocity from `idealDirection` every
+            // frame, so a turn that only reaches Velocity is erased before it
+            // moves anything - homing did nothing whatever on a shot that also
+            // waved. The build-time guard in `ApplyHoming` hid it for the
+            // game's own noise, by switching that off; nothing hid it for the
+            // mod's own `wave`, which is the same overwriter.
+            //
+            // SetHeading also re-normalises to the original speed. Rotating a
+            // vector should not change its length, but the quaternion
+            // round-trip drifts by a hair and thousands of frames of it would
+            // visibly change the speed.
+            ForgeSteer.SetHeading(p, steered, speed);
 
             if (h.faceTravel)
             {
@@ -181,7 +208,15 @@ namespace WeaponForge
         {
             h.nextScan = Time.time + 0.1f;
 
-            Vector2 forward = p.Velocity;
+            // The published heading, for the same reason the turn uses it: the
+            // cone is measured off "forward", and on a shot that also waves,
+            // Velocity is up to the full wave angle away from where the shot is
+            // actually pointed. A 30-degree cone read off a 30-degree weave can
+            // miss a target dead ahead.
+            Vector2 forward;
+
+            if (!ForgeSteer.TryGetIdeal(p, out forward))
+                forward = p.Velocity;
 
             if (forward.sqrMagnitude <= 0.000001f)
                 forward = p.transform.right;
@@ -221,8 +256,13 @@ namespace WeaponForge
             int mask,
             HashSet<Transform> exclude)
         {
+            // The shot-taking overloads resolve the weapon's priority
+            // THEMSELVES, so chain, ricochet, homing and split inherit it with
+            // no change at their call sites - and a shot from a weapon that did
+            // not opt in resolves to null, which is the old behaviour exactly.
             return FindNearestTarget(
-                (p != null) ? p.Owner : null, here, range, mask, exclude, true);
+                (p != null) ? p.Owner : null, here, range, mask, exclude, true,
+                ForgeTargeting.For(p));
         }
 
         // Owner-taking overload, for the same reason FindTarget has one: a
@@ -242,7 +282,8 @@ namespace WeaponForge
             float range,
             int mask,
             HashSet<Transform> exclude,
-            bool objectsToo)
+            bool objectsToo,
+            ForgeTargeting.Config priority = null)
         {
             var filter = new ContactFilter2D();
             filter.useTriggers = true;
@@ -250,7 +291,11 @@ namespace WeaponForge
 
             int count = Physics2D.OverlapCircle(here, range, filter, _hits);
 
-            float bestDistance = float.MaxValue;
+            // (primary, secondary), compared lexicographically. With no
+            // priority config the primary IS the squared distance and the
+            // secondary is always 0, so this is exactly the old "nearest wins".
+            float bestPrimary = float.MaxValue;
+            float bestSecondary = float.MaxValue;
             AimAssistTarget best = null;
 
             for (int i = 0; i < count && i < _hits.Count; i++)
@@ -272,6 +317,9 @@ namespace WeaponForge
                     aimTarget.GetComponentInParent<AIAgent>() == null)
                     continue;
 
+                if (!ForgeTargeting.Allowed(priority, aimTarget))
+                    continue;
+
                 if (owner != null)
                 {
                     var unit = col.GetComponentInParent<Unit>();
@@ -283,9 +331,15 @@ namespace WeaponForge
                 float d =
                     ((Vector2)aimTarget.transform.position - here).sqrMagnitude;
 
-                if (d < bestDistance)
+                float primary, secondary;
+                ForgeTargeting.Rank(
+                    priority, aimTarget, here, d, out primary, out secondary);
+
+                if (ForgeTargeting.Beats(
+                        primary, secondary, bestPrimary, bestSecondary))
                 {
-                    bestDistance = d;
+                    bestPrimary = primary;
+                    bestSecondary = secondary;
                     best = aimTarget;
                 }
             }
@@ -301,8 +355,11 @@ namespace WeaponForge
             float cone,
             int mask)
         {
+            // Resolves the firing weapon's priority itself - see the note on
+            // the FindNearestTarget overload above.
             return FindTarget(
-                (p != null) ? p.Owner : null, here, forward, range, cone, mask);
+                (p != null) ? p.Owner : null, here, forward, range, cone, mask,
+                null, ForgeTargeting.For(p));
         }
 
         // Owner-taking overload, because the game has two unrelated projectile
@@ -330,7 +387,8 @@ namespace WeaponForge
             float range,
             float cone,
             int mask,
-            System.Collections.Generic.HashSet<Transform> exclude)
+            System.Collections.Generic.HashSet<Transform> exclude,
+            ForgeTargeting.Config priority = null)
         {
             // useTriggers on: an enemy's hurtbox is often a trigger collider,
             // and skipping those would make half the targets invisible here.
@@ -343,7 +401,17 @@ namespace WeaponForge
 
             int count = Physics2D.OverlapCircle(here, range, filter, _hits);
 
-            float bestAngle = cone;
+            // THE CONE IS NOW A HARD FILTER, not the starting best score.
+            //
+            // It used to be both: `bestAngle` started AT `cone`, so
+            // `angle < bestAngle` rejected anything outside the cone and picked
+            // the smallest angle in one comparison. Neat, and it stops working
+            // the moment the score is something other than the angle - a
+            // "lowest health" target 100 degrees off the heading would win on
+            // score and silently escape a 45 degree cone. Splitting them keeps
+            // the cone meaning exactly what it always meant.
+            float bestPrimary = float.MaxValue;
+            float bestSecondary = float.MaxValue;
             AimAssistTarget best = null;
 
             for (int i = 0; i < count && i < _hits.Count; i++)
@@ -369,6 +437,9 @@ namespace WeaponForge
                 if (exclude != null && exclude.Contains(aimTarget.transform))
                     continue;
 
+                if (!ForgeTargeting.Allowed(priority, aimTarget))
+                    continue;
+
                 // Don't chase our own side.
                 if (owner != null)
                 {
@@ -385,9 +456,18 @@ namespace WeaponForge
 
                 float angle = Vector2.Angle(forward, to);
 
-                if (angle < bestAngle)
+                if (angle >= cone)
+                    continue;
+
+                float primary, secondary;
+                ForgeTargeting.Rank(
+                    priority, aimTarget, here, angle, out primary, out secondary);
+
+                if (ForgeTargeting.Beats(
+                        primary, secondary, bestPrimary, bestSecondary))
                 {
-                    bestAngle = angle;
+                    bestPrimary = primary;
+                    bestSecondary = secondary;
                     best = aimTarget;
                 }
             }

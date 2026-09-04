@@ -86,6 +86,51 @@ namespace WeaponForge
             int n = ForgeProjectileTracker.CollectNear(
                 p.transform.position, d.radius, room, _caught);
 
+            // RALLY: also sweep our OWN shots, and this is the whole reason a
+            // rally works at all.
+            //
+            // Reflecting a bullet makes it YOURS - Turn remaps its layer - so
+            // the tracker files it under _mine from then on, and CollectNear
+            // only ever reads the enemy list. Without this a deflector would
+            // buff a shot exactly once and never find it again, which is not a
+            // rally, it is a one-off damage multiplier. (That is precisely the
+            // bug the shield version had before it was fixed the same way.)
+            //
+            // CollectMineInSector with a half-angle of 180 IS a circle - the
+            // cosine limit becomes -1, which nothing fails - so this reuses the
+            // shield's collector rather than duplicating a subtle one.
+            ForgeRally.Config rally = d.Rally;
+
+            if (rally != null && rally.enabled)
+            {
+                int before = _caught.Count;
+
+                ForgeProjectileTracker.CollectMineInSector(
+                    p.transform.position, d.radius, Vector2.right, 180f,
+                    0, _caught);
+
+                // Only MARKED shots. Everything else you have fired is handed
+                // straight back untouched, or a deflector would start eating
+                // your own ordinary fire.
+                for (int i = _caught.Count - 1; i >= before; i--)
+                {
+                    Component mine = _caught[i];
+
+                    if (mine != null &&
+                        mine.GetComponent<ForgeRally.ForgeRallied>() != null)
+                    {
+                        continue;
+                    }
+
+                    if (mine != null)
+                        ForgeProjectileTracker.Register(mine);
+
+                    _caught.RemoveAt(i);
+                }
+
+                n = _caught.Count;
+            }
+
             if (n == 0)
                 return;
 
@@ -98,7 +143,7 @@ namespace WeaponForge
                 if (bullet == null)
                     continue;
 
-                if (d.mode == 0)
+                if (d.mode == ForgeDeflect.ModeDestroy)
                 {
                     UnityEngine.Object.Destroy(bullet.gameObject);
                     continue;
@@ -122,10 +167,14 @@ namespace WeaponForge
         {
             try
             {
-                // `aim` is a plain int, which is why deflect gets the cursor
-                // and mirror modes even though it cannot have a rally: an int
-                // serializes onto a prefab component, a config reference does
-                // not (it would arrive null on every clone).
+                // `aim` is a plain int because this component rides the
+                // projectile PREFAB, where only serialized state survives
+                // Instantiate. `d.Rally` now clears the same bar the same way -
+                // an int id on the prefab, resolved through ForgeConfigTable -
+                // which is what finally lets a deflector rally.
+                //
+                // Null when no rally block was set, which is the old behaviour
+                // exactly: Turn then applies `damageMultiplier` itself.
                 ForgeBulletTurn.Turn(
                     bullet,
                     (source != null) ? source.Owner : null,
@@ -133,7 +182,7 @@ namespace WeaponForge
                     d.aimRange,
                     d.speedMultiplier,
                     d.damageMultiplier,
-                    null,
+                    d.Rally,
                     (source != null)
                         ? (Vector2)source.transform.position
                         : Vector2.zero);

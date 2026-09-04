@@ -99,8 +99,36 @@ namespace WeaponForge
             public Dictionary<Resource, float> resources;
             public Dictionary<Resource, float> regen;
 
+            // The little smear a unit leaves as it moves. Separate from
+            // `color` on purpose - a red drone with a cyan trail is a
+            // perfectly reasonable thing to want, and the body colour was
+            // already right.
+            public Color trailColor = Color.white;
+            public bool hasTrailColor;
+            public bool trailMatchesBody;   // "match" - follow `color`
+
             public Resource shieldResource;
             public float shieldEffectiveness;
+
+            // Whether to DRAW the shield. Three states on purpose, and the
+            // absent one is the default: null leaves the prefab exactly as it
+            // ships, so nothing that already works changes appearance. true
+            // gives the bubble a radius on the 70-odd prefabs that ship 0
+            // (which is why minion shields have always been invisible); false
+            // hides one on the handful that ship a real radius already - the
+            // flying drones and the ships.
+            public bool? shieldShow;
+
+            // The shader's _Radius. Ships and drones use 4, Fly Zapper 8,
+            // Turret_Seeker 15, everything else 0 - so 4 is "looks like the
+            // one you have already seen".
+            public float shieldSize = 4f;
+
+            // Four of the eight resources ship shieldColor rgba(0,0,0,0) -
+            // White, Fuel, Health and Money - because the game has no shield
+            // module for them. This paints over that.
+            public Color shieldColor = Color.white;
+            public bool hasShieldColor;
             public bool hasShield;
 
             // Three of the weapon-path prefabs burn a fuel resource and die
@@ -132,12 +160,105 @@ namespace WeaponForge
             [NonSerialized] public WeaponModuleData defaultWeaponModule;
             [NonSerialized] public bool defaultWeaponFailed;
 
-            // Whether this minion's explosions can hurt the player who summoned
-            // it, and its siblings. Both default to TRUE, which is simply what
-            // the game does - explosions in PUNK have no owner filter anywhere.
-            // Turning either off engages a filter of our own.
-            public bool hurtsOwner = true;
-            public bool hurtsAllies = true;
+            // Whether this minion's explosions can hurt the player who
+            // summoned it, and its siblings.
+            //
+            // BOTH DEFAULTED TO TRUE UNTIL 2026-09-02, on the reasoning that
+            // matching the engine is easier to reason about than quietly
+            // differing from it. That reasoning does not survive contact: the
+            // opt-out **could not work at all** on a death explosion, because
+            // ExplosionComponent never gives its blast an owner and the filter
+            // bails on a null one (see ForgeMinionBlast). So "your own kamikaze
+            // swarm blows you up" was not a default anybody chose - it was the
+            // only available behaviour, and it was reported as a bug.
+            //
+            // Now FALSE by default: your own minions do not blow you or each
+            // other up. Nothing can have been relying on the old opt-out
+            // because the old opt-out did nothing. Set either to true for the
+            // risky version, which is a real design (a swarm you have to keep
+            // your distance from) and is now genuinely selectable.
+            public bool hurtsOwner;
+            public bool hurtsAllies;
+
+            // Whether this minion's COLLIDER still collides with the ship's.
+            // Nothing to do with damage: `hurtsOwner` covers the explosion and
+            // the ram guard covers the headbutt, but a fast swarm shoves the
+            // ship around by pure physics and no damage flag can reach that.
+            // Defaults TRUE, which is what the game does. See ForgeMinionSolid.
+            public bool solidToOwner = true;
+
+            // ---- being able to FIGHT for the side it is on ---------------
+            //
+            // All three default ON, and all three are fixing a bug rather than
+            // adding a behaviour - see ForgeMinionAllegiance and
+            // ForgeMinionEscort for what each one is worth. They are switches
+            // only so a deliberately blind, harmless or stationary minion is
+            // still possible.
+
+            // Widen its Vision to cover Player AND Entities. A prefab watches
+            // exactly one of those, which is why a minion on any side but its
+            // original could never see a target.
+            public bool seeEverything = true;
+
+            // Move its own gun's ammo onto the player's projectile layer, so
+            // its shots hurt what it is aiming at instead of only you.
+            public bool friendlyShots = true;
+
+            // Lean it toward its owner when it has nothing to fight. Only the
+            // five drone prefabs have a follow AI state at all; every other
+            // spawnable simply cannot come back to you without this.
+            //
+            // THREE-STATE, and the middle one is the default. Unset means
+            // "escort it only if its prefab cannot do this itself" - detected
+            // by looking for the MoveAroundOwnerAction that a Regroup state
+            // carries. That matters: on a drone that ALREADY regroups, adding a
+            // force on top of its own movement would make it overshoot and
+            // orbit, so the sane default is to leave the five prefabs the game
+            // built for this job alone. Saying `"follow": true` forces it on
+            // anyway; false forces it off.
+            public bool follow = true;
+            public bool followSet;
+
+            // Cruise speed of that lean, and how long after spawn to leave it
+            // alone (so the spawner's throw is not cancelled).
+            public float followSpeed;
+            public float followDelay = 0.6f;
+
+            // ---- or HOLD GROUND instead --------------------------------
+            //
+            // The opposite stance, and OPT-IN: "spawn a bunch in a spot and run
+            // away". A held minion keeps to a post rather than to you.
+            //
+            // MUTUALLY EXCLUSIVE WITH `follow`, and the exclusion is enforced in
+            // ForgeMinionEscort.Attach rather than here, so it covers the drone
+            // gadget and the spawner weapon in one place. They are opposite
+            // answers to one question; running both would pull one body toward
+            // two points.
+            //
+            // Default off for the obvious reason and one less obvious one:
+            // every minion weapon already written expects the escort, and a
+            // stance is exactly the kind of thing that must not change under a
+            // file nobody edited. See ForgeMinionHold.
+            public bool hold;
+            public bool holdSet;
+
+            // How far from the post it may roam. Inside this it behaves
+            // completely normally; outside, its own steering is suspended and it
+            // walks back. Clamped to a floor of 1 by the builder - a post
+            // narrower than the creature is a unit vibrating on a point.
+            public float holdRadius = 8f;
+
+            // When the post is stamped, in seconds after spawn. Same default and
+            // the same reason as `followDelay`: a spawner THROWS its minions at
+            // `projectileSpeed`, so the post the player meant is where the throw
+            // lands, not the barrel it left.
+            public float holdDelay = 0.6f;
+
+            // Only used on a minion with no mover of its own to walk home with -
+            // a unit in a `Wait` sub-state, or a prefab with no movement
+            // components at all. Everything else walks back under its own power
+            // at its own speed, which is the whole point of the design.
+            public float holdSpeed;
 
             // ---- the SWARM cap (spawner WEAPONS only) -------------------
             //
@@ -168,6 +289,10 @@ namespace WeaponForge
 
             // So a bad name warns once rather than on every drone spawned.
             [NonSerialized] public bool resolveFailed;
+
+            // Once per config: a swarm equips one weapon per spawn, and
+            // this warning is about the FILE, not about the creature.
+            [NonSerialized] public bool warnedNoAmmo;
 
             [NonSerialized] public Faction factionAsset;
             [NonSerialized] public bool factionFailed;
@@ -306,6 +431,46 @@ namespace WeaponForge
             }
         }
 
+        // PUBLIC ACCESS TO THE FACTION FIELD, so charm does not grow a second
+        // copy of this reflection. Same reasoning as ForgeSteer owning
+        // idealDirection: three copies of one private-field lookup is how they
+        // drift apart.
+        public static Faction GetFaction(Unit unit)
+        {
+            FieldInfo f = FactionField;
+
+            return (unit == null || f == null) ? null : f.GetValue(unit) as Faction;
+        }
+
+        public static bool SetFaction(Unit unit, Faction side)
+        {
+            FieldInfo f = FactionField;
+
+            if (unit == null || f == null || side == null)
+                return false;
+
+            f.SetValue(unit, side);
+            return true;
+        }
+
+        // Will this minion end up on the summoner's side?
+        //
+        // Needed at BUILD time, before any minion exists, because retargeting
+        // its ammo means cloning a prefab and that has to happen once - not per
+        // spawn. "owner" is the default, so the answer is normally yes.
+        public static bool SidesWithOwner(Config cfg)
+        {
+            if (cfg == null)
+                return false;
+
+            string want = (cfg.faction ?? "owner").Trim();
+
+            return want.Length == 0 ||
+                   want.Equals("owner", StringComparison.OrdinalIgnoreCase) ||
+                   want.Equals("player", StringComparison.OrdinalIgnoreCase) ||
+                   want.Equals("friendly", StringComparison.OrdinalIgnoreCase);
+        }
+
         // Put the minion on the right side.
         public static void SetSide(Unit minion, Unit owner, Config cfg)
         {
@@ -427,10 +592,97 @@ namespace WeaponForge
                 // the setter also fires the cluster's refresh - so the holder
                 // rebuilds the weapon on its own.
                 simple.MainModule = module;
+
+                WarnIfItCannotPayForItsGun(minion, cfg);
             }
             catch (Exception e)
             {
                 Log.LogError("Equipping a minion failed: " + e);
+            }
+        }
+
+        // "IT STOPS FIRING AFTER ATTACKING A BIT" - and he had to work that out
+        // himself.
+        //
+        // R13 test 150, on the picket drone: *"I think i forgot to add white
+        // regen to the drone so it stops firing after attacking a bit."* Right
+        // diagnosis, entirely unaided - a drone carrying one of his weapons
+        // spends that weapon's `cost` per shot out of its own tank, and a
+        // minion whose stats give it no regen for that resource fires until the
+        // tank empties and then goes quiet forever.
+        //
+        // Nothing said so anywhere. `Shooter.Update` gates every shot on
+        // `OwnerHasResource` and simply does not fire - no log, no sound, no
+        // tell. A drone that shoots for four seconds and then sits there is
+        // indistinguishable from a broken feature.
+        //
+        // This is checked at EQUIP rather than at build time on purpose: a
+        // carried weapon is resolved on first spawn (it may not exist yet when
+        // the file is read), and the minion's tanks are rebuilt from module
+        // effects, so the unit is the only place both facts are true at once.
+        // Once per config, because a swarm equips one of these per spawn.
+        private static void WarnIfItCannotPayForItsGun(Unit minion, Config cfg)
+        {
+            if (cfg == null || cfg.warnedNoAmmo || cfg.weaponModule == null)
+                return;
+
+            try
+            {
+                WeaponData wd = cfg.weaponModule.weapon;
+
+                if (wd == null || wd.cost <= 0f || wd.resourceUsed == null)
+                    return;
+
+                cfg.warnedNoAmmo = true;
+
+                bool hasTank = minion.HasTank(wd.resourceUsed);
+
+                // The minion's own regen for that resource, as this mod set it.
+                // `regen` is what `ForgeMinionStats` writes, so an author who
+                // scaled it has already thought about this.
+                bool hasRegen =
+                    cfg.regen != null && cfg.regen.ContainsKey(wd.resourceUsed);
+
+                // A capacity the author set counts as having thought about it -
+                // a big enough tank is a legitimate answer to "how does it pay
+                // for its gun", it just runs out eventually.
+                bool hasPool =
+                    cfg.resources != null &&
+                    cfg.resources.ContainsKey(wd.resourceUsed);
+
+                if (!hasTank)
+                {
+                    Log.LogWarning(
+                        "minion \"weapon\": '" + cfg.weapon + "' costs " +
+                        wd.cost.ToString("0.##") + " " +
+                        wd.resourceUsed.name + " a shot and this minion has " +
+                        "NO TANK of that resource at all - so it will never " +
+                        "fire, silently. The game checks the tank before every " +
+                        "shot and just does not shoot. Give the minion that " +
+                        "resource in its \"stats\", or set the weapon's " +
+                        "\"cost\": 0.");
+                    return;
+                }
+
+                if (!hasRegen && !hasPool)
+                {
+                    Log.LogWarning(
+                        "minion \"weapon\": '" + cfg.weapon + "' costs " +
+                        wd.cost.ToString("0.##") + " " +
+                        wd.resourceUsed.name + " a shot and this minion has " +
+                        "NO REGEN for it - so it fires until its tank runs dry " +
+                        "and then goes QUIET, with nothing in the log to say " +
+                        "so. That reads exactly like the weapon breaking. Add " +
+                        "a regen for " + wd.resourceUsed.name + " in the " +
+                        "minion's \"stats\", raise its capacity, or set the " +
+                        "weapon's \"cost\": 0 (a summoned drone paying your " +
+                        "resource prices is usually not the intent).");
+                }
+            }
+            catch (Exception)
+            {
+                // Advisory only - see the standing rule about validation being
+                // the most defensive code in a file.
             }
         }
 

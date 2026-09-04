@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
@@ -105,6 +106,20 @@ namespace WeaponForge
         // born mid-flight - a catalyst split copy is created from Update, with
         // no weapon anywhere near the stack. Without this a split kill would
         // pay nothing while the original's kill paid normally.
+        // ALSO TELL MODULE FORGE, and this was a real gap. That mod keeps its
+        // own shot->weapon map (deliberately - each mod must work with the
+        // other absent) and stamps it from its own `Projectile.Shoot` patch,
+        // which has the same DoShoot-scoped limitation for the same reason. So
+        // a shot this mod created mid-flight was attributed HERE and nowhere
+        // else, and a Module Forge on-kill module sitting on the weapon's grid
+        // never matched the weapon and never paid out. In play: "the damage is
+        // being passed on from the flechette weapon but the onkill effects are
+        // not."
+        //
+        // One reflected call fixes it for every mid-flight shot at once -
+        // split, chain, rally, bounce and the catalyst - rather than per
+        // feature. Type name only, per the cross-mod rules; absent means a
+        // no-op forever after the first lookup.
         public static void Attribute(Component shot, WeaponBase weapon)
         {
             if (shot == null || weapon == null)
@@ -114,6 +129,68 @@ namespace WeaponForge
                 Prune();
 
             _shots[shot] = weapon;
+
+            Mirror(shot, weapon);
+        }
+
+        private static MethodInfo _mfAttribute;
+        private static bool _mfLooked;
+        private static readonly object[] _mfArgs = new object[2];
+
+        private static void Mirror(Component shot, WeaponBase weapon)
+        {
+            if (!_mfLooked)
+            {
+                _mfLooked = true;
+
+                try
+                {
+                    // Scanned rather than asked for by name: AccessTools
+                    // logs a warning for a type that is not there, and
+                    // "Module Forge is not installed" is an entirely normal
+                    // state.
+                    foreach (Assembly a in
+                             AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        Type t = a.GetType("ModuleForge.ModuleForgeKills", false);
+
+                        if (t == null)
+                            continue;
+
+                        _mfAttribute = t.GetMethod(
+                            "Attribute",
+                            BindingFlags.Public | BindingFlags.Static,
+                            null,
+                            new Type[]
+                            {
+                                typeof(Component), typeof(WeaponBase)
+                            },
+                            null);
+
+                        break;
+                    }
+                }
+                catch (Exception)
+                {
+                    _mfAttribute = null;
+                }
+            }
+
+            if (_mfAttribute == null)
+                return;
+
+            try
+            {
+                _mfArgs[0] = shot;
+                _mfArgs[1] = weapon;
+                _mfAttribute.Invoke(null, _mfArgs);
+            }
+            catch (Exception)
+            {
+                // One failure is enough - never let a courtesy call to the
+                // other mod cost anything on every shot.
+                _mfAttribute = null;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -148,18 +225,23 @@ namespace WeaponForge
         {
             if (cfg.amount > 0f && cfg.resourceAsset != null)
             {
-                if (cfg.asPickup)
-                {
+                // A pickup that cannot be dropped falls through to paying the
+                // tank, rather than paying nothing. The reward the file asked
+                // for is "this much of this resource per kill"; the pickup is
+                // how it arrives, and a missing prefab should cost the flourish
+                // and not the payout. This used to just call `Drop` and stop,
+                // so `asPickup` with no usable template paid zero and said so
+                // nowhere.
+                bool dropped =
+                    cfg.asPickup &&
                     ForgeKillPickup.Drop(
                         victim != null
                             ? (Vector2)victim.transform.position
                             : (Vector2)killer.transform.position,
                         cfg.resourceAsset, cfg.amount);
-                }
-                else if (killer.HasTank(cfg.resourceAsset))
-                {
+
+                if (!dropped && killer.HasTank(cfg.resourceAsset))
                     Grant(killer.GetTank(cfg.resourceAsset), cfg.amount);
-                }
             }
 
             if (cfg.clearBurn > 0f)

@@ -234,10 +234,12 @@ namespace WeaponForge
                 if (src == null || src.cfg == null)
                     return;
 
-                // Only the grenade-shaped mode blooms here. The others bloom
-                // when the shot dies, which happens a moment later anyway and
-                // covers the far more common case of timing out in the air.
-                if (!src.cfg.ImpactOnly)
+                // The grenade-shaped mode always blooms here, and anything
+                // else does when the file asked for it. Otherwise a cloud
+                // arrives when the shot dies, which for an ordinary shot is a
+                // moment later anyway and covers the far more common case of
+                // timing out in the air.
+                if (!src.cfg.ImpactOnly && !src.cfg.bloomOnImpact)
                     return;
 
                 src.Bloom();

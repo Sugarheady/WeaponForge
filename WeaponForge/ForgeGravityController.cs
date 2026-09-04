@@ -1,6 +1,6 @@
+using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
-using HarmonyLib;
 using UnityEngine;
 
 namespace WeaponForge
@@ -14,9 +14,6 @@ namespace WeaponForge
     {
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Gravity");
-
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
-        private static bool _ready;
 
         private ForgeGravity g;
         private ContactFilter2D filter;
@@ -32,32 +29,12 @@ namespace WeaponForge
 
         private const float HardLife = 20f;
 
-        private static void Ensure()
-        {
-            if (_ready)
-                return;
-
-            _ready = true;
-
-            try
-            {
-                _idealRef = AccessTools.FieldRefAccess<Projectile, Vector2>(
-                    "idealDirection");
-            }
-            catch
-            {
-                _idealRef = null;
-            }
-        }
-
         public void Begin(ForgeGravity well, Unit owner)
         {
             g = well;
             g.open = true;
             g.openedAt = Time.time;
             g.owner = owner;
-
-            Ensure();
         }
 
         private void EnsureFilters()
@@ -147,15 +124,18 @@ namespace WeaponForge
 
                 Vector2 dir = to.normalized;
 
-                p.Velocity = dir * speed;
-
                 // idealDirection too, not just Velocity: the game's own wobble
                 // rebuilds Velocity from that field every frame and would drag
-                // the shot straight back onto its original heading.
+                // the shot straight back onto its original heading. A well
+                // catches ENEMY fire, and the four stock weapons that ship the
+                // wobble on are all enemy weapons, so this is the likely case
+                // here rather than the unlikely one.
                 var plain = c as Projectile;
 
-                if (plain != null && _idealRef != null)
-                    _idealRef(plain) = dir;
+                if (plain != null)
+                    ForgeSteer.SetHeading(plain, dir, speed);
+                else
+                    p.Velocity = dir * speed;
             }
         }
 
@@ -270,6 +250,53 @@ namespace WeaponForge
             return (mass * damping) / 30f;
         }
 
+        // Marks a hauled body slammable, if the weapon that made this well
+        // asked for it. Cheap enough to call per body per frame: TryGet is one
+        // dictionary lookup against a table that is almost always empty, and
+        // Mark refreshes an existing component rather than adding one.
+        private void Slam(Rigidbody2D rb)
+        {
+            if (!ForgeSlam.Any || rb == null)
+                return;
+
+            try
+            {
+                // The controller rides the projectile that spawned the well, so
+                // the same lookup that credits the well's kills finds its
+                // weapon.
+                Component shot = (Component)GetComponent<Projectile>() ??
+                                 (Component)GetComponent<PhysicsProjectile>();
+
+                if (shot == null)
+                    return;
+
+                WeaponBase weapon = ForgeKillsPatch.WeaponOf(shot);
+
+                if (weapon == null || weapon.TemplateData == null)
+                    return;
+
+                ForgeSlam.Spec spec;
+
+                if (!ForgeSlam.TryGet(weapon.TemplateData, out spec))
+                    return;
+
+                Unit target = rb.GetComponentInParent<Unit>();
+
+                if (target == null || ReferenceEquals(target, g.owner))
+                    return;
+
+                var ip = shot as IProjectile;
+
+                ForgeSlam.Mark(
+                    target, spec, g.owner, weapon,
+                    (ip != null) ? ip.Damage.damageType : null);
+            }
+            catch (Exception)
+            {
+                // Never let a per-body courtesy call break the well itself.
+            }
+        }
+
         private void Haul()
         {
             EnsureFilters();
@@ -311,6 +338,17 @@ namespace WeaponForge
                 }
 
                 rb.AddForce(to / d * g.ForceAt(d) * Compensation(rb));
+
+                // A WELL IS A SHOVE TOO, so if this weapon carries a "slam"
+                // block, everything the well is dragging is slammable while it
+                // is being dragged.
+                //
+                // Worth wiring explicitly rather than leaving to the hit hooks:
+                // a well does not "hit" anything - it applies force from a
+                // distance and may do no damage at all - so nothing else would
+                // ever mark these. And "a well that flings them into walls" is
+                // the first thing anyone tries once `slam` exists.
+                Slam(rb);
 
                 if (g.drag > 0f)
                 {

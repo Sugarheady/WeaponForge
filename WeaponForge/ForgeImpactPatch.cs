@@ -136,6 +136,16 @@ namespace WeaponForge
                     if (visual == null)
                         return;
 
+                    // A CURVE BEAM plays this itself, at the end of the actual
+                    // curve. This postfix finds its position by re-casting the
+                    // straight ray, which on a bent beam is a point the beam
+                    // never visited - so the sound would land through a wall
+                    // the beam went around. Note the prefix that suppresses the
+                    // straight cast does NOT stop this method running: a
+                    // Harmony postfix still runs when a prefix returns false.
+                    if (ForgeCurveBeam.Owns(__instance.TemplateData))
+                        return;
+
                     var impact = visual.GetComponent<ForgeImpact>();
 
                     if (impact == null)

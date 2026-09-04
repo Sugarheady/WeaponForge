@@ -14,21 +14,35 @@ namespace WeaponForge
     // the buff, and restoring the remembered value afterwards writes back a
     // number that is no longer the baseline.
     //
-    // So a buff is always expressed as baseline x multiplier, and the baseline is
-    // re-captured whenever the weapon moves underneath us. A rebuild then costs
-    // at most one frame of buff and can never corrupt the real stats.
+    // So a buff is always expressed as baseline x multiplier, and the baseline
+    // is owned by `ForgeWeaponStats`.
+    //
+    // IT USED TO OWN THAT BASELINE ITSELF, AND THAT WAS A REAL BUG. This class
+    // captured `baseFireRate` / `baseDamage` and re-captured them whenever it
+    // noticed the weapon had "moved underneath us" - a heuristic that works
+    // against another one-shot writer and fails completely against a per-frame
+    // one. `overheat` with `response: slow` rewrites `FireRate` every frame
+    // while any heat remains, so:
+    //
+    //   - the buff's write was overwritten on the very next frame, meaning
+    //     **the onKill fire-rate bonus did nothing whatsoever on an
+    //     overheating weapon**;
+    //   - "something else moved it" was true every frame, so the re-capture
+    //     adopted overheat's degraded rate as the weapon's own, and on expiry
+    //     this class wrote that degraded number back as the baseline.
+    //
+    // Both features logged exactly what they intended. Publishing a named
+    // multiplier instead has no ordering to get wrong: see ForgeWeaponStats.
     public static class ForgeKillBuff
     {
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge.KillBuff");
 
+        public const string Key = "onKill";
+
         private class State
         {
             public WeaponBase weapon;
-            public float baseFireRate;
-            public float baseDamage;
-            public float appliedFireRate;
-            public float appliedDamage;
             public readonly List<float> fire = new List<float>();
             public readonly List<float> dmg = new List<float>();
             public readonly List<float> expiry = new List<float>();
@@ -67,7 +81,6 @@ namespace WeaponForge
             {
                 s = new State();
                 s.weapon = weapon;
-                Rebase(s);
                 _live.Add(s);
             }
 
@@ -109,27 +122,10 @@ namespace WeaponForge
             return null;
         }
 
-        private static void Rebase(State s)
-        {
-            s.baseFireRate = s.weapon.FireRate;
-            s.baseDamage = s.weapon.Damage.amount;
-            s.appliedFireRate = s.baseFireRate;
-            s.appliedDamage = s.baseDamage;
-        }
-
         private static void Push(State s)
         {
             if (s.weapon == null)
                 return;
-
-            // Something else moved the weapon since we last wrote - a rebuild,
-            // or another feature. Treat what is there now as the baseline; it is
-            // the only correct reading of it.
-            if (!Nearly(s.weapon.FireRate, s.appliedFireRate) ||
-                !Nearly(s.weapon.Damage.amount, s.appliedDamage))
-            {
-                Rebase(s);
-            }
 
             float fire = 0f;
             float dmg = 0f;
@@ -140,16 +136,25 @@ namespace WeaponForge
                 dmg += s.dmg[i];
             }
 
-            s.weapon.FireRate = s.baseFireRate * (1f + fire);
-
-            Damage d = s.weapon.Damage;
-            d.amount = s.baseDamage * (1f + dmg);
-            s.weapon.Damage = d;
-
-            s.appliedFireRate = s.weapon.FireRate;
-            s.appliedDamage = s.weapon.Damage.amount;
+            // Stacks ADD and the total is applied as one multiplier, which is
+            // what it always did - three 20% stacks are +60%, not 1.2 cubed.
+            // What changed is where the baseline lives.
+            Apply(s.weapon, ForgeWeaponStats.FireRate, fire);
+            Apply(s.weapon, ForgeWeaponStats.Damage, dmg);
 
             Indicate(s, fire, dmg);
+        }
+
+        // A bonus of 0 WITHDRAWS rather than publishing a multiplier of 1, so
+        // the stack forgets its captured base and a legitimate change to the
+        // weapon - a module augmentation, a cluster rebuild - is picked up
+        // instead of being held down by a contribution that does nothing.
+        private static void Apply(WeaponBase weapon, int stat, float bonus)
+        {
+            if (Mathf.Abs(bonus) > 0.0001f)
+                ForgeWeaponStats.Set(weapon, stat, Key, 1f + bonus);
+            else
+                ForgeWeaponStats.Clear(weapon, stat, Key);
         }
 
         // The on-screen half. Keyed on the State, so one weapon owns exactly one
@@ -176,11 +181,6 @@ namespace WeaponForge
             ForgeBuffHud.Show(
                 s, s.icon, s.color, effect, amount,
                 s.expiry.Count, latest, ForgeBuffHud.Kind.Buff);
-        }
-
-        private static bool Nearly(float a, float b)
-        {
-            return Mathf.Abs(a - b) < 0.0001f;
         }
 
         private static float Total(List<float> values)
@@ -232,11 +232,9 @@ namespace WeaponForge
                 if (s.expiry.Count == 0)
                 {
                     // Fully expired: hand the weapon back exactly as found.
-                    s.weapon.FireRate = s.baseFireRate;
-
-                    Damage d = s.weapon.Damage;
-                    d.amount = s.baseDamage;
-                    s.weapon.Damage = d;
+                    // One call covers every stat this feature can touch, so a
+                    // bonus added here later cannot be left behind.
+                    ForgeWeaponStats.Clear(s.weapon, Key);
 
                     ForgeBuffHud.Clear(s);
                     _live.RemoveAt(i);

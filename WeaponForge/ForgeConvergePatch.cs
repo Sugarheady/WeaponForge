@@ -40,7 +40,6 @@ namespace WeaponForge
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Converge");
 
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
         private static bool _ready;
         private static int _groundMask = -1;
 
@@ -51,19 +50,15 @@ namespace WeaponForge
 
             _ready = true;
 
-            try
-            {
-                _idealRef =
-                    AccessTools.FieldRefAccess<Projectile, Vector2>(
-                        "idealDirection");
-            }
-            catch (Exception e)
+            // Reflection owned by ForgeSteer; only the converge-specific
+            // consequence is worded here.
+            if (!ForgeSteer.Available)
             {
                 Log.LogWarning(
-                    "Could not reach Projectile.idealDirection (" + e.Message +
-                    ") - pellets will still converge, but a converging weapon " +
-                    "that also uses wave or movementNoise will drift back " +
-                    "onto its launch heading.");
+                    "Could not reach Projectile.idealDirection - pellets will " +
+                    "still converge, but a converging weapon that also uses " +
+                    "wave or movementNoise will drift back onto its launch " +
+                    "heading.");
             }
 
             int ground = LayerMask.NameToLayer("Ground");
@@ -180,7 +175,7 @@ namespace WeaponForge
 
             Resolve(
                 p.transform, c, v / speed, p.gameObject.layer, p.Owner,
-                out slot, out count);
+                ForgeTargeting.For(p), out slot, out count);
 
             var rb = p.GetComponent<Rigidbody2D>();
 
@@ -314,7 +309,7 @@ namespace WeaponForge
 
             Resolve(
                 p.transform, c, heading, p.gameObject.layer, p.Owner,
-                out slot, out count);
+                ForgeTargeting.For(p), out slot, out count);
 
             // Spazer: no focal point, no steering. Resolve has already slid
             // this shot out to its place in the rank; all that is left is to
@@ -336,9 +331,15 @@ namespace WeaponForge
         // decide where this volley is meant to meet. Shared, because a lobbed
         // shot answers those three questions identically and only differs in
         // what it does with the answer.
+        // `priority` is the firing weapon's target priority, or null for the
+        // original behaviour. Passed IN rather than stamped on `c`, because
+        // ForgeConverge is a MonoBehaviour riding the projectile PREFAB - a
+        // config-class reference on one of those arrives null on every clone,
+        // the trap that once silently disabled the whole of gas and catalyst.
         private static void Resolve(
             Transform t, ForgeConverge c, Vector2 heading, int layer,
-            Unit owner, out int slot, out int count)
+            Unit owner, ForgeTargeting.Config priority,
+            out int slot, out int count)
         {
             c.target = null;
             slot = 0;
@@ -402,7 +403,8 @@ namespace WeaponForge
 
                 AimAssistTarget found =
                     ForgeHomingPatch.FindTarget(
-                        owner, origin, c.axis, c.range, 90f, mask);
+                        owner, origin, c.axis, c.range, 90f, mask,
+                        null, priority);
 
                 if (found != null)
                     c.target = found.transform;
@@ -448,11 +450,22 @@ namespace WeaponForge
 
         private static void Steer(Projectile p, ForgeConverge c)
         {
-            Vector2 v = p.Velocity;
-            float speed = v.magnitude;
+            float speed = p.Velocity.magnitude;
 
             if (speed <= 0.0001f)
                 return;
+
+            // Heading from the published field, speed from Velocity - the same
+            // split `Face` below writes, and for the same reason. This read was
+            // off Velocity until the steering audit: `Face` was already
+            // publishing correctly, so the write half was right and the read
+            // half quietly folded any wave offset back into the solve every
+            // frame. Only the ANGLE of this is ever used, so a unit vector is
+            // all it needs to be.
+            Vector2 v;
+
+            if (!ForgeSteer.TryGetIdeal(p, out v))
+                v = p.Velocity.normalized;
 
             Vector2 here = p.transform.position;
 
@@ -556,10 +569,10 @@ namespace WeaponForge
         {
             Vector2 n = dir.normalized;
 
-            p.Velocity = n * speed;
-
-            if (_idealRef != null)
-                _idealRef(p) = n;
+            // Both writes in one call rather than side by side, so a converging
+            // volley also gets ForgeSteer's rule about who owns the direction
+            // when the shot is waving as well.
+            ForgeSteer.SetHeading(p, n, speed);
 
             if (c.faceTravel)
             {

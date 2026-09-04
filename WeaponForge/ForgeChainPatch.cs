@@ -24,7 +24,6 @@ namespace WeaponForge
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
 
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
         private static MethodInfo _spawnExplosion;
         private static bool _ready;
 
@@ -35,19 +34,14 @@ namespace WeaponForge
 
             _ready = true;
 
-            try
-            {
-                _idealRef =
-                    AccessTools.FieldRefAccess<Projectile, Vector2>(
-                        "idealDirection");
-            }
-            catch (Exception e)
+            // Reflection owned by ForgeSteer; only the chain-specific
+            // consequence is worded here.
+            if (!ForgeSteer.Available)
             {
                 Log.LogWarning(
-                    "Could not reach Projectile.idealDirection (" +
-                    e.Message + ") - chained shots will still turn, but a " +
-                    "chain weapon that also uses wave will drift back onto " +
-                    "its old heading.");
+                    "Could not reach Projectile.idealDirection - chained " +
+                    "shots will still turn, but a chain weapon that also uses " +
+                    "wave will drift back onto its old heading.");
             }
 
             _spawnExplosion =
@@ -217,10 +211,7 @@ namespace WeaponForge
             if (chain.speedMultiplier != 1f)
                 speed *= chain.speedMultiplier;
 
-            p.Velocity = dir * speed;
-
-            if (_idealRef != null)
-                _idealRef(p) = dir;
+            ForgeSteer.SetHeading(p, dir, speed);
 
             // Projectile only sets its rotation at Shoot, so without this a
             // chained shot flies sideways for the rest of its life.

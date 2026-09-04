@@ -67,29 +67,57 @@ namespace WeaponForge
             var zap = minionJson["lightning"] as JObject;
             JToken burnTok = minionJson["burn"];
 
-            if (stats == null && boom == null && zap == null && burnTok == null)
+            // A FIFTH reason to clone, and the file need not ask for it: a
+            // minion on your side firing its own stock gun fires ENEMY
+            // projectiles, which the layer matrix lets hit you and not the
+            // things it is aiming at. Retargeting that ammo means owning a copy
+            // of the prefab, so it belongs here with the rest of the cloning.
+            // See ForgeMinionAllegiance.
+            bool retargetAmmo =
+                cfg.friendlyShots && ForgeMinion.SidesWithOwner(cfg);
+
+            // Did the FILE ask for any of this, or are we only here for the
+            // ammo? Every refusal below is worth saying out loud when the
+            // author asked for something and did not get it, and is pure noise
+            // when they did not - and after the ammo retarget this method runs
+            // for nearly every minion weapon, so the difference matters.
+            bool asked =
+                stats != null || boom != null || zap != null || burnTok != null;
+
+            if (!asked && !retargetAmmo)
                 return;
 
             // A named weapon is the author's deliberate choice, and their
             // tweaks belong on it - but that is the ordinary weapon-building
-            // path, not this one. Say so rather than doing nothing.
+            // path, not this one. Say so rather than doing nothing. (Nor does
+            // it need the ammo retarget: a Forge weapon is already a player
+            // weapon, firing on the player's projectile layer.)
             if (!string.IsNullOrEmpty(cfg.weapon))
             {
-                Log.LogWarning(
-                    fileName + ": minion - \"weaponStats\" / \"explosion\" / " +
-                    "\"lightning\" / \"burn\" tune the gun THE PREFAB comes " +
-                    "with, and this minion was given \"" + cfg.weapon +
-                    "\" instead. Put those settings in that weapon's own file. " +
-                    "Ignored here.");
+                if (asked)
+                {
+                    Log.LogWarning(
+                        fileName + ": minion - \"weaponStats\" / \"explosion\" " +
+                        "/ \"lightning\" / \"burn\" tune the gun THE PREFAB " +
+                        "comes with, and this minion was given \"" + cfg.weapon +
+                        "\" instead. Put those settings in that weapon's own " +
+                        "file. Ignored here.");
+                }
+
                 return;
             }
 
             if (minionPrefab == null)
             {
-                Log.LogWarning(
-                    fileName + ": minion - cannot tune the prefab's weapon " +
-                    "because the minion prefab itself could not be resolved.");
-                cfg.defaultWeaponFailed = true;
+                if (asked)
+                {
+                    Log.LogWarning(
+                        fileName + ": minion - cannot tune the prefab's weapon " +
+                        "because the minion prefab itself could not be " +
+                        "resolved.");
+                    cfg.defaultWeaponFailed = true;
+                }
+
                 return;
             }
 
@@ -97,41 +125,55 @@ namespace WeaponForge
 
             if (enemy == null || enemy.primaryWeapon == null)
             {
-                Log.LogWarning(
-                    fileName + ": minion - '" + minionPrefab.name + "' names " +
-                    "no primary weapon, so there is nothing to tune. Some " +
-                    "spawnables build their guns a different way (the Queen " +
-                    "and the mines carry theirs as fixed turrets) and a few " +
-                    "carry none at all. Every other minion setting still " +
-                    "applies.");
-                cfg.defaultWeaponFailed = true;
+                if (asked)
+                {
+                    Log.LogWarning(
+                        fileName + ": minion - '" + minionPrefab.name +
+                        "' names no primary weapon, so there is nothing to " +
+                        "tune. Some spawnables build their guns a different " +
+                        "way (the Queen and the mines carry theirs as fixed " +
+                        "turrets) and a few carry none at all. Every other " +
+                        "minion setting still applies.");
+                    cfg.defaultWeaponFailed = true;
+                }
+
                 return;
             }
 
             if (minionPrefab.GetComponentInChildren<ModuleSlotWeaponHolder>(true)
                 == null)
             {
-                Log.LogWarning(
-                    fileName + ": minion - '" + minionPrefab.name + "' has no " +
-                    "module-driven weapon holder, so a replacement weapon would " +
-                    "never be picked up. Refusing to tune it rather than " +
-                    "pretending. Every other minion setting still applies.");
-                cfg.defaultWeaponFailed = true;
+                if (asked)
+                {
+                    Log.LogWarning(
+                        fileName + ": minion - '" + minionPrefab.name +
+                        "' has no module-driven weapon holder, so a " +
+                        "replacement weapon would never be picked up. Refusing " +
+                        "to tune it rather than pretending. Every other minion " +
+                        "setting still applies.");
+                    cfg.defaultWeaponFailed = true;
+                }
+
                 return;
             }
 
             if (enemy.primaryWeapon.weapon == null)
             {
-                Log.LogWarning(
-                    fileName + ": minion - '" + minionPrefab.name + "' has a " +
-                    "weapon module with no weapon in it. Nothing to tune.");
-                cfg.defaultWeaponFailed = true;
+                if (asked)
+                {
+                    Log.LogWarning(
+                        fileName + ": minion - '" + minionPrefab.name +
+                        "' has a weapon module with no weapon in it. Nothing " +
+                        "to tune.");
+                    cfg.defaultWeaponFailed = true;
+                }
+
                 return;
             }
 
             try
             {
-                Clone(enemy, minionPrefab, cfg, fileName);
+                Clone(enemy, minionPrefab, cfg, fileName, asked);
 
                 if (cfg.defaultWeaponModule == null)
                     return;
@@ -149,6 +191,20 @@ namespace WeaponForge
 
                 if (burnTok != null)
                     Burn(wd, burnTok, cfg, fileName);
+
+                if (retargetAmmo &&
+                    ForgeMinionAllegiance.Ammo(wd, cfg, fileName))
+                {
+                    Log.LogInfo(
+                        fileName + ": minion shots retargeted to the player's " +
+                        "projectile layer, so they hurt what the minion is " +
+                        "aiming at. A shot's faction IS the layer of the prefab " +
+                        "it came from, and this gun's ammo was on the enemy " +
+                        "layer - which the collision matrix lets hit YOU and " +
+                        "not the Entities layer everything it fights is on. " +
+                        "Set \"friendlyShots\": false to leave it as the enemy " +
+                        "built it.");
+                }
 
                 Safety(wd, fileName);
             }
@@ -168,7 +224,8 @@ namespace WeaponForge
             Enemy enemy,
             Unit minionPrefab,
             ForgeMinion.Config cfg,
-            string fileName)
+            string fileName,
+            bool asked)
         {
             WeaponModuleData module =
                 ScriptableObject.Instantiate(enemy.primaryWeapon);
@@ -213,8 +270,11 @@ namespace WeaponForge
 
             Log.LogInfo(
                 fileName + ": minion - cloned '" + minionPrefab.name +
-                "'s own weapon as \"" + id + "\". The stock asset is untouched, " +
-                "which matters: that gun is shared with the enemies you fight.");
+                "'s own weapon as \"" + id + "\"." +
+                (asked
+                    ? " The stock asset is untouched, which matters: that gun " +
+                      "is shared with the enemies you fight."
+                    : ""));
         }
 
         // ---- the twelve weapon numbers -----------------------------------

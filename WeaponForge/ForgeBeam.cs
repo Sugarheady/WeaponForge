@@ -18,9 +18,12 @@ namespace WeaponForge
     //   `start`, rotates it to face `end`, and sets ONE SpriteRenderer's
     //   size.x to the whole distance. The beam is a single stretched quad, so
     //   there is no place for a curve to live. A bending beam needs a CHAIN of
-    //   short quads, which is a separate feature that sits on top of this one -
-    //   and it will need exactly the segment art this layer teaches the mod to
-    //   load.
+    //   short quads - which is now ForgeCurveBeam, built on top of this one and
+    //   using exactly the segment art this layer teaches the mod to load.
+    //
+    // The two blocks divide cleanly: `curveBeam` owns the FIRE beam and how it
+    // is routed, `beam` still owns the warm-up beam, the material, the impact
+    // sprite and the impact sound. A weapon can use both.
     //
     // What the game's own beams do, verified across all four LaserVisual
     // prefabs:
@@ -64,6 +67,34 @@ namespace WeaponForge
         // becomes one extra Sprite rather than five.
         private static readonly Dictionary<Sprite, Sprite> _leftPivot =
             new Dictionary<Sprite, Sprite>();
+
+        // The three private [SerializeField]s the curve beam also needs. Kept
+        // here rather than re-resolved there so there is one place that knows
+        // HitscanWeaponVisual's private field names - if a game update renames
+        // one, exactly one file breaks.
+        public static SpriteRenderer FireOf(HitscanWeaponVisual visual)
+        {
+            if (visual == null || _fFire == null)
+                return null;
+
+            return _fFire.GetValue(visual) as SpriteRenderer;
+        }
+
+        public static SpriteRenderer WarmupOf(HitscanWeaponVisual visual)
+        {
+            if (visual == null || _fWarmup == null)
+                return null;
+
+            return _fWarmup.GetValue(visual) as SpriteRenderer;
+        }
+
+        public static ParticleSystem ImpactOf(HitscanWeaponVisual visual)
+        {
+            if (visual == null || _fImpact == null)
+                return null;
+
+            return _fImpact.GetValue(visual) as ParticleSystem;
+        }
 
         public class Spec
         {
@@ -354,14 +385,22 @@ namespace WeaponForge
 
             if (impact != null && !string.IsNullOrEmpty(spec.impactSprite))
             {
+                ForgeSpriteLibrary.Art art;
                 Sprite[] frames =
                     ForgeTrail.ResolveFrames(
-                        spec.impactSprite, fileName, "beam impactSprite");
+                        spec.impactSprite, fileName, "beam impactSprite",
+                        out art);
 
                 if (frames != null && frames.Length > 0)
                 {
+                    // Fallback NULL: the beam's spark is a particle system whose
+                    // lifetime the beam owns, so fitting the frames to it is the
+                    // right default here, and it is what this key already did.
                     VisualCustomizer.ApplyParticleSprite(
-                        impact, frames, spec.impactFps);
+                        impact, frames,
+                        ForgeSpriteLibrary.ParticleFps(
+                            art, spec.impactFps, null,
+                            "beam impactSprite", fileName));
                 }
             }
 
@@ -393,7 +432,10 @@ namespace WeaponForge
                     "ANIMATION, and a beam is one stretched quad with no " +
                     "flipbook of its own - only the first frame is used. To " +
                     "make a beam look like it is moving, use " +
-                    "\"tiling\": \"repeat\" with a seamless sprite instead.");
+                    "\"tiling\": \"repeat\" with a seamless sprite instead - " +
+                    "or add a \"curveBeam\" block, which draws the beam as a " +
+                    "chain and puts one frame of your animation on each link " +
+                    "so the pattern travels along it.");
             }
 
             renderer.sprite = LeftPivot(frames[0]);

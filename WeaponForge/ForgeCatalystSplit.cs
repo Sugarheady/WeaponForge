@@ -73,7 +73,7 @@ namespace WeaponForge
 
             AimAssistTarget found = ForgeHomingPatch.FindNearestTarget(
                 owner, shot.transform.position, cfg.range, mask, null,
-                cfg.targetObjects);
+                cfg.targetObjects, cfg.targeting);
 
             if (found == null)
                 return;
@@ -117,7 +117,7 @@ namespace WeaponForge
             var plain = shot as Projectile;
 
             if (plain != null)
-                ForgeSteering.SetHeading(plain, dir, speed);
+                ForgeSteer.SetHeading(plain, dir, speed);
         }
 
         // Make the aim STICK.
@@ -206,7 +206,8 @@ namespace WeaponForge
             for (int i = 0; i < want; i++)
             {
                 AimAssistTarget t = ForgeHomingPatch.FindNearestTarget(
-                    node.owner, here, cfg.range, mask, seen, cfg.targetObjects);
+                    node.owner, here, cfg.range, mask, seen, cfg.targetObjects,
+                    cfg.targeting);
 
                 if (t == null)
                     break;

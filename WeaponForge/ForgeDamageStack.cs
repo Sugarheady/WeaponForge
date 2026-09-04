@@ -24,9 +24,9 @@ namespace WeaponForge
         [System.NonSerialized] public float baseAmount;
         [System.NonSerialized] public bool captured;
 
-        // One slot per contributing feature. Named rather than a list
-        // because there are exactly two and a list would allocate on a path
-        // that runs every FixedUpdate for every shot in flight.
+        // One slot per contributing feature. Named fields rather than a list
+        // or a dictionary because this is read every FixedUpdate for every
+        // shot in flight, and either would allocate there.
         [System.NonSerialized] public float growth = 1f;
         [System.NonSerialized] public float ramp = 1f;
         [System.NonSerialized] public float chain = 1f;
@@ -34,6 +34,17 @@ namespace WeaponForge
         [System.NonSerialized] public float catalyst = 1f;
         [System.NonSerialized] public float split = 1f;
         [System.NonSerialized] public float rally = 1f;
+
+        // These two arrived late, and both were writing Damage directly until
+        // 2026-08-25 - which is invisible on their own and silently wrong the
+        // moment the same shot also grows or ramps, because Apply() rebuilds
+        // the amount from baseAmount and erases anything written behind its
+        // back. `bounce` is the lobbed twin of `ricochet`; they never share a
+        // shot (one is PhysicsProjectile, the other plain), but they get their
+        // own slots anyway rather than one "bounce-ish" slot that would need a
+        // comment explaining why it is safe.
+        [System.NonSerialized] public float ricochet = 1f;
+        [System.NonSerialized] public float boomerang = 1f;
 
         public void Capture(float amount)
         {
@@ -49,7 +60,7 @@ namespace WeaponForge
             get
             {
                 return baseAmount * growth * ramp * chain * bounce *
-                       catalyst * split * rally;
+                       catalyst * split * rally * ricochet * boomerang;
             }
         }
 

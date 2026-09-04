@@ -32,6 +32,18 @@ namespace WeaponForge
     public static class ForgeGas
     {
         // What the cloud does once it is there.
+        //
+        // KEPT AS A NAME, BUT NO LONGER AS THE THING THE CODE READS. The four
+        // words each set a combination of three INDEPENDENT switches below, and
+        // the code branches on those. That is the whole of "I would love an
+        // option for Grow and Drive, as well as Single and Drift": the four
+        // modes were never four kinds of cloud, they were four points in a cube
+        // - does it swell, does it roll, does it only appear on impact - and
+        // three of the eight corners had no name.
+        //
+        // So `"cloud": "grow"` still means exactly what it did, and
+        // `"cloud": "grow drift"` or `"grow": true, "drift": true` reaches a
+        // corner that used to be unreachable.
         public enum Cloud
         {
             Grow,   // stall, swell, thin out - reads most like real gas
@@ -47,7 +59,15 @@ namespace WeaponForge
 
         public class Config
         {
+            // Kept for the log line and for DeriveTrail's readability. Nothing
+            // branches on it any more - see the three switches below.
             public Cloud cloud = Cloud.Grow;
+
+            // The three things a "cloud mode" actually decided, now separately
+            // settable. Defaults match Cloud.Grow, which is the default mode.
+            public bool grows = true;    // radius climbs to growTo
+            public bool drifts;          // keeps rolling across the room
+            public bool impactOnly;      // one cloud, where the shot LANDS
 
             // ---- shape and life -----------------------------------------
             public float radius = 1.6f;      // starting radius
@@ -181,6 +201,20 @@ namespace WeaponForge
             // was no way to suppress the end cloud at all.
             public bool bloomOnDeath = true;
 
+            // ALSO leave a cloud where the shot HITS something, not only where
+            // it dies. For a normal shot those are the same instant, so this is
+            // for the two cases where they are not: a puff with impact switched
+            // off (which is what `puffPierceTerrain` does) flies THROUGH a wall
+            // and dies somewhere else entirely, and a piercing shot passes
+            // through an enemy and carries on.
+            //
+            // Off by default - the trail plus the death bloom is the shape the
+            // gas weapons were tuned around, and this adds a cloud rather than
+            // moving one. `bloomed` still caps it at one cloud per shot, so
+            // switching this on means the cloud lands at the FIRST thing hit
+            // instead of at the end of the flight.
+            public bool bloomOnImpact;
+
             // Built at load time: the derived Config that trail clouds actually
             // use. A separate instance rather than overrides threaded through
             // ForgeGasCloud, which keeps proven code untouched AND gives the
@@ -202,6 +236,12 @@ namespace WeaponForge
 
             // ---- resolved at build time ---------------------------------
             [System.NonSerialized] public Sprite art;
+
+            // Opt-in animation: set only when the sprite NAME asked for frames
+            // or a speed, so an existing gas weapon keeps its still puff.
+            // ForgeSpriteLibrary.OptInFrames owns that rule.
+            [System.NonSerialized] public Sprite[] artFrames;
+            [System.NonSerialized] public float artFps;
             [System.NonSerialized] public Material material;
             [System.NonSerialized] public int sortingLayerId;
             [System.NonSerialized] public int sortingOrder;
@@ -222,16 +262,33 @@ namespace WeaponForge
             // a puff that simply times out in mid-air leaves nothing.
             public bool ImpactOnly
             {
-                get { return cloud == Cloud.Single; }
+                get { return impactOnly; }
             }
 
             public float MaxRadius
             {
                 get
                 {
-                    return cloud == Cloud.Grow
-                        ? Mathf.Max(radius, growTo)
-                        : radius;
+                    return grows ? Mathf.Max(radius, growTo) : radius;
+                }
+            }
+
+            // What to call this in the log, now that it is a combination
+            // rather than one of four words.
+            public string ModeWords
+            {
+                get
+                {
+                    string s =
+                        (impactOnly ? "Single" : "") +
+                        (grows ? (impactOnly ? " growing" : "Grow") : "") +
+                        (drifts ? ((impactOnly || grows) ? " drifting" : "Drift")
+                                : "");
+
+                    if (s.Length == 0)
+                        return "Hang";
+
+                    return s.Trim();
                 }
             }
 
@@ -249,8 +306,19 @@ namespace WeaponForge
                 // describe a trail. Everything else carries over: a trail of
                 // Drift clouds rolls outward from the line, a trail of Grow
                 // clouds thickens behind you.
-                if (t.cloud == Cloud.Single)
+                //
+                // Note this now drops ONLY the impact-only half. Before the
+                // three switches existed, "Single" also implied "not drifting",
+                // so a drifting grenade turned its trail clouds static; now a
+                // "single drift" weapon keeps the drift in its trail too.
+                if (t.impactOnly)
+                {
+                    t.impactOnly = false;
                     t.cloud = Cloud.Grow;
+
+                    if (!t.grows && !t.drifts)
+                        t.grows = true;
+                }
 
                 // Keep the weapon's own grow PROPORTION rather than its
                 // absolute growTo, so a trail cloud swells by the same ratio

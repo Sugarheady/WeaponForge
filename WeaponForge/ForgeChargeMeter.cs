@@ -24,6 +24,9 @@ namespace WeaponForge
             meter._sr = go.AddComponent<SpriteRenderer>();
             meter._sr.sprite = cfg.meterArt;
 
+            VisualCustomizer.AnimateRenderer(
+                meter._sr, cfg.meterFrames, cfg.meterFps, false);
+
             if (cfg.meterMaterial != null)
                 meter._sr.sharedMaterial = cfg.meterMaterial;
 

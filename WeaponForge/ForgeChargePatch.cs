@@ -125,26 +125,59 @@ namespace WeaponForge
         //
         // Returns false when the weapon has no `charge` block, because the
         // multipliers ARE that block - there is nothing to scale by without it.
-        public static bool ArmExternally(Shooter shooter, float level)
+        // FIRE a charged shot on somebody else's behalf, right now.
+        //
+        // Used by overheat's `ventShot`. It used to only ARM one and that was
+        // the bug: arming marks the NEXT shot as charged, and the caller then
+        // locked the weapon for seconds while the arming expires in 0.35s - so
+        // nothing ever claimed it. See ForgeHeat.Blow.
+        //
+        // Three things this has to do that a bare `shooter.Shoot()` would not:
+        //
+        //   * `_firing` - a release-mode weapon with `holdFire` prefixes Shoot
+        //     and returns false, so without this the charge block swallows the
+        //     very shot it is sizing.
+        //   * Cost 0 - a vent is the gun discharging itself, not a shot the
+        //     player bought. `Shooter.Shoot` subtracts Cost with no check at
+        //     all (the check lives in Update), so leaving it would quietly
+        //     drive the tank negative.
+        //   * restore both in a `finally`, because Cost lives on the shared
+        //     WeaponBase.
+        public static bool FireExternally(Shooter shooter, float level)
         {
             if (shooter == null || shooter.Weapon == null)
                 return false;
 
             try
             {
+                WeaponBase weapon = shooter.Weapon;
                 ForgeCharge.Config cfg;
 
-                if (!ForgeCharge.TryGet(shooter.Weapon.TemplateData, out cfg))
+                if (!ForgeCharge.TryGet(weapon.TemplateData, out cfg))
                     return false;
 
-                Arm(Get(shooter, shooter.Weapon), shooter.Weapon,
-                    Mathf.Clamp01(level));
+                Arm(Get(shooter, weapon), weapon, Mathf.Clamp01(level));
+
+                float cost = weapon.Cost;
+
+                _firing = true;
+                weapon.Cost = 0f;
+
+                try
+                {
+                    shooter.Shoot();
+                }
+                finally
+                {
+                    _firing = false;
+                    weapon.Cost = cost;
+                }
 
                 return true;
             }
             catch (Exception e)
             {
-                Log.LogError("Arming an external charged shot failed: " + e);
+                Log.LogError("Firing an external charged shot failed: " + e);
                 return false;
             }
         }
@@ -330,6 +363,15 @@ namespace WeaponForge
 
             float t = ForgeCharge.Level(s.held, cfg);
 
+            // THE LUNGE'S WIND-UP. Slowing the ship while the meter fills is
+            // the Maggot's telegraph - it charges by almost stopping, not by
+            // running a timer. Renewed every frame on purpose: the controller
+            // gives the speed back on its own if this stops arriving, so none
+            // of the several ways a charge can be abandoned needs to know
+            // about it.
+            if (ForgeLunge.Any)
+                ForgeLungeController.Wind(shooter, weapon, t);
+
             if (t >= 1f && !s.readyPlayed)
             {
                 s.readyPlayed = true;
@@ -392,6 +434,15 @@ namespace WeaponForge
             // Auto mode never fires on release - it has been firing all along.
             if (cfg.mode == ForgeCharge.Mode.Auto)
                 return;
+
+            // THE LAUNCH. Deliberately after the Auto check: an Auto weapon
+            // has no release to launch on, so a lunge on one would fire at
+            // some arbitrary moment. Placed before the fire-rate gate below so
+            // the movement always happens even when the shot itself is
+            // refused - a lunge that silently did nothing because the weapon
+            // was still on cooldown would be maddening to diagnose.
+            if (ForgeLunge.Any)
+                ForgeLungeController.Launch(shooter, weapon, t);
 
             // The weapon's own cadence still applies. A charge that took
             // longer than one shot's worth of time has already passed this;
@@ -730,7 +781,22 @@ namespace WeaponForge
             // next frame the trigger is down.
             int extra = ForgeCharge.Add(cfg.count, t, cfg);
 
-            if (extra != 0 && hw == null)
+            // A WEAPON AT projectileCount 0 FIRES NOTHING BY DESIGN, and a
+            // charge must not resurrect it.
+            //
+            // Round 11 test 80: *"when i hold the fire button and let go it
+            // shoots out more projectiles ... between 3 to 5 bullets"* on BULL
+            // RUSH, which is `"projectileCount": 0` with `"lunge"` and
+            // `"charge": { "count": 4 }`. `Max(1f, 0 + 4)` is 4, so the release
+            // fired a four-pellet shotgun blast out of a weapon whose whole
+            // point is that it fires no bullets at all. `projectileCount: 0` is
+            // this mod's own spelling for a pure melee or lunge-only gun - the
+            // swipe block documents it as `pureMelee` - so it has to survive a
+            // charge, and the `Max(1f, ...)` floor was fighting it too.
+            //
+            // Reported at BUILD time as well (see ApplyCharge), because a
+            // runtime-only guard leaves the file looking correct.
+            if (extra != 0 && hw == null && sc.count > 0f)
                 w.ProjectileCount = Mathf.Max(1f, w.ProjectileCount + extra);
 
             var pw = w as ProjectileWeapon;

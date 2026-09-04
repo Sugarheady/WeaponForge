@@ -97,6 +97,13 @@ namespace WeaponForge
             // and "the meter does not work" is indistinguishable from "the
             // meter is drawing in the wrong layer".
             public Sprite meterArt;
+
+            // Opt-in animation - see ForgeSpriteLibrary.OptInFrames. Only a
+            // named "meterSprite" can animate; the borrowed bullet sprite is
+            // one frame off the weapon's own prefab.
+            public Sprite[] meterFrames;
+            public float meterFps;
+
             public Material meterMaterial;
             public int meterSortingLayerId;
             public int meterSortingOrder;

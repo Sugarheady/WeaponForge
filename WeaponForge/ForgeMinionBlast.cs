@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
@@ -73,6 +74,142 @@ namespace WeaponForge
             catch (Exception e)
             {
                 Log.LogError("Tagging a minion for blast safety failed: " + e);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // THE FILTER ABOVE COULD NEVER RUN ON A MINION'S DEATH EXPLOSION, AND
+        // THAT IS THE BUG BEHIND "MY OWN KAMIKAZES BLOW ME UP".
+        //
+        // `Protected` starts `Unit blamed = explosion.Owner; if (blamed ==
+        // null) return false;` - correct, and unreachable, because:
+        //
+        //   * `DamagableResource.Die` spawns `spawnOnDeath` with a bare
+        //     `Instantiate` and threads no owner through it at all;
+        //   * the prefab it spawns carries an `ExplosionComponent`, whose
+        //     `Start` builds a fresh `Explosion` struct out of its own fields
+        //     and **never copies its own `Owner` property into it** - the
+        //     property is public, settable, and read by nothing.
+        //
+        // So all thirteen prefabs using that component explode ownerless, and
+        // `"hurtsOwner": false` was a switch that could not do anything on the
+        // one minion whose entire attack is a death explosion. It parsed, it
+        // logged, and it filtered nothing. Exactly the silent-fallback shape
+        // this project keeps paying for: a guard that bails on a null and
+        // reports success.
+        //
+        // THE FIX IS IN TWO HALVES, and the ordering is what makes it exact:
+        //
+        //   1. a scope around `Die` naming the unit that is dying;
+        //   2. `ExplosionComponent.Awake`, which Unity runs SYNCHRONOUSLY
+        //      inside `Instantiate` - therefore still inside `Die` - stamps
+        //      `Owner` from that scope.
+        //
+        // No position matching, no frame guessing. `Start` runs a frame later
+        // and by then the component carries a real owner.
+        // ------------------------------------------------------------------
+        private static Unit _dying;
+
+        [HarmonyPatch(typeof(DamagableResource), "Die")]
+        public class OnDie
+        {
+            static void Prefix(DamagableResource __instance)
+            {
+                if (!Any || __instance == null)
+                    return;
+
+                try
+                {
+                    Unit unit = __instance.GetComponentInParent<Unit>();
+
+                    // Only a tagged minion of ours. Everything else keeps the
+                    // game's own ownerless behaviour untouched.
+                    if (unit != null && unit.GetComponent<Tag>() != null)
+                        _dying = unit;
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            // A finalizer, not a postfix: `Die` fires `onDeath` and can enter
+            // a corpse state, so an exception anywhere in there must not leave
+            // the next explosion in the level wearing a dead minion's owner.
+            static void Finalizer()
+            {
+                _dying = null;
+            }
+        }
+
+        [HarmonyPatch(typeof(ExplosionComponent), "Awake")]
+        public class OnExplosionComponentAwake
+        {
+            static void Postfix(ExplosionComponent __instance)
+            {
+                if (_dying == null || __instance == null)
+                    return;
+
+                try
+                {
+                    __instance.Owner = _dying;
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+
+        // And now make `Owner` actually reach the explosion.
+        //
+        // `Start` builds the struct locally, so there is no argument to edit -
+        // the only ways in are a transpiler or doing the ten lines ourselves.
+        // This does the latter, and ONLY when we have an owner to stamp: with
+        // no owner it returns true and the game's own code runs untouched, so
+        // every stock explosion in the level behaves exactly as it always did
+        // and this can never be the reason one stops working.
+        [HarmonyPatch(typeof(ExplosionComponent), "Start")]
+        public class OnExplosionComponentStart
+        {
+            static bool Prefix(ExplosionComponent __instance)
+            {
+                if (__instance == null || __instance.Owner == null)
+                    return true;
+
+                try
+                {
+                    ExplosionManager manager;
+
+                    if (!ServiceLocator.TryGet<ExplosionManager>(out manager) ||
+                        manager == null)
+                    {
+                        return true;
+                    }
+
+                    var explosion = new Explosion
+                    {
+                        Burn = __instance.burn,
+                        damages = new List<Damage> { __instance.damage },
+                        Position = __instance.transform.position,
+                        PushForce = __instance.force,
+                        radius = __instance.range,
+                        skipCamShake = __instance.skipCamShake,
+                        Owner = __instance.Owner,
+                    };
+
+                    manager.SpawnExplosion(
+                        (Vector2)__instance.transform.position, explosion);
+
+                    return false;
+                }
+                catch (Exception e)
+                {
+                    // Falling through to the original is the safe failure: the
+                    // blast still happens, it just is not filtered.
+                    Log.LogError(
+                        "Could not give a minion's death explosion an owner, " +
+                        "so it will not be filtered: " + e);
+                    return true;
+                }
             }
         }
 

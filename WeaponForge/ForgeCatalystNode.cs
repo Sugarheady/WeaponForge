@@ -161,6 +161,11 @@ namespace WeaponForge
                 // White, so the drawn gold shows through instead of being
                 // tinted by whatever projectileColor the template carried.
                 sr.color = Color.white;
+
+                // Lock-step on purpose: these are the FACES of one object, not
+                // a crowd of separate puffs, so they should agree.
+                VisualCustomizer.AnimateRenderer(
+                    sr, cfg.nodeFrames, cfg.nodeFps, false);
             }
 
             faces = GetComponentsInChildren<SpriteRenderer>(true);

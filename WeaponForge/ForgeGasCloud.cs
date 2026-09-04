@@ -93,7 +93,7 @@ namespace WeaponForge
             var cloud = go.AddComponent<ForgeGasCloud>();
             cloud.cfg = c;
             cloud.owner = owner;
-            cloud.velocity = (c.cloud == ForgeGas.Cloud.Drift)
+            cloud.velocity = c.drifts
                 ? inherited.normalized * c.drift
                 : Vector2.zero;
 
@@ -161,7 +161,7 @@ namespace WeaponForge
         {
             get
             {
-                if (cfg.cloud != ForgeGas.Cloud.Grow)
+                if (!cfg.grows)
                     return cfg.radius;
 
                 float t = (cfg.growTime <= 0f)
@@ -201,7 +201,7 @@ namespace WeaponForge
                 return;
             }
 
-            if (cfg.cloud == ForgeGas.Cloud.Drift)
+            if (cfg.drifts)
             {
                 transform.position +=
                     (Vector3)(velocity * Time.deltaTime);
@@ -232,6 +232,99 @@ namespace WeaponForge
         // ------------------------------------------------------------------
         // What being inside it does
         // ------------------------------------------------------------------
+
+        // ------------------------------------------------------------------
+        // ONE TICK PER TARGET PER WEAPON, however many puffs cover it
+        // ------------------------------------------------------------------
+        //
+        // `damagePerSecond` did not mean damage per second. Every cloud is its
+        // own component with its own `nextTick`, so a target standing where six
+        // puffs overlap took SIX ticks of `damagePerSecond * dt` every tickRate
+        // - six times the damage the file asked for, and six separate damage
+        // events, each firing the victim's own hit sound. With `trailMax: 40`
+        // and puffs dropped every 1.6 units that is easy to arrange by accident.
+        //
+        // Reported as *"the projectile that continuously hit the target... this
+        // bullet will hit over and over again"*. The count was right even if the
+        // culprit was the cloud rather than the bullet.
+        //
+        // NOTE FOR ANYONE RE-READING THE OLD FIX: the earlier attempt set
+        // `piercingData.damageRepeatDelay` to 0.25s on the theory that the
+        // game's re-hit gate was being skipped. **That theory was wrong** -
+        // `Projectile.CanDamage` reads `damageRepeatDelay` WITHOUT testing
+        // `PiercingData.enabled`, so the delay was applying all along. It gates
+        // one PROJECTILE against one target, which is the wrong axis: the
+        // multiplier here is the number of clouds, and each of those is a
+        // separate object the game has no reason to relate.
+        //
+        // Keyed by weapon as well as target so two different gas guns still
+        // stack with each other, which is a deliberate difference from one gun's
+        // own overlapping puffs.
+        private struct Claim
+        {
+            public WeaponBase weapon;
+            public float until;
+        }
+
+        private static readonly Dictionary<HealthBase, Claim> _claims =
+            new Dictionary<HealthBase, Claim>();
+
+        private static float _nextSweep;
+
+        private bool ClaimTick(HealthBase hb, float dt)
+        {
+            if (hb == null)
+                return false;
+
+            Sweep();
+
+            Claim had;
+
+            if (_claims.TryGetValue(hb, out had) &&
+                ReferenceEquals(had.weapon, _weapon) &&
+                Time.time < had.until)
+            {
+                return false;
+            }
+
+            _claims[hb] = new Claim
+            {
+                weapon = _weapon,
+                until = Time.time + dt
+            };
+
+            return true;
+        }
+
+        // A destroyed Unity object compares equal to null but is still a
+        // perfectly good dictionary key, so entries have to be swept or the
+        // table grows for the whole run. Same trap the pickup cache had.
+        private static void Sweep()
+        {
+            if (Time.time < _nextSweep)
+                return;
+
+            _nextSweep = Time.time + 5f;
+
+            List<HealthBase> dead = null;
+
+            foreach (var pair in _claims)
+            {
+                if (pair.Key == null || Time.time > pair.Value.until + 5f)
+                {
+                    if (dead == null)
+                        dead = new List<HealthBase>();
+
+                    dead.Add(pair.Key);
+                }
+            }
+
+            if (dead == null)
+                return;
+
+            for (int i = 0; i < dead.Count; i++)
+                _claims.Remove(dead[i]);
+        }
 
         private void Affect(float dt)
         {
@@ -272,14 +365,25 @@ namespace WeaponForge
                 // coloured like the gun that made it - and skipped entirely
                 // when there is none, because the resource comparisons
                 // downstream have no null branch.
-                if (cfg.damagePerSecond > 0f && _damageType != null)
+                if (cfg.damagePerSecond > 0f && _damageType != null &&
+                    ClaimTick(hb, dt))
                 {
                     Damage dmg = new Damage(
                         cfg.damagePerSecond * dt, _damageType);
 
                     if (dmg.amount > 0f)
                     {
-                        hb.TakeDamage(dmg);
+                        // Opt this damage into crit. Off unless the weapon's file says
+                        // "crit": { "onExtras": true } - see ForgeCrit.
+                        WeaponBase critPrev = ForgeCrit.Begin(_weapon);
+                        try
+                        {
+                            hb.TakeDamage(dmg);
+                        }
+                        finally
+                        {
+                            ForgeCrit.End(critPrev);
+                        }
 
                         if (_weapon != null && ForgeKillsPatch.JustDied(hb))
                         {
@@ -437,6 +541,13 @@ namespace WeaponForge
                     sr.sortingLayerID = cfg.sortingLayerId;
 
                 sr.sortingOrder = cfg.sortingOrder;
+
+                // randomStart TRUE, and it is doing real work here: up to 24
+                // puffs flipping in lock-step reads as one strobing blob, while
+                // out of phase they read as a churning cloud. Same reason a
+                // shotgun's pellets need it.
+                VisualCustomizer.AnimateRenderer(
+                    sr, cfg.artFrames, cfg.artFps, true);
 
                 puffs.Add(go.transform);
                 puffArt.Add(sr);

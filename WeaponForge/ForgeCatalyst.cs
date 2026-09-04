@@ -113,6 +113,12 @@ namespace WeaponForge
             // reflectors, so one block covers whichever you use.
             [NonSerialized] public ForgeRally.Config rally;
 
+            // Stamped by ApplyTargeting. A node has no back-reference to the
+            // weapon that threw it, and its splits pick targets from the NODE
+            // rather than from a shot - so the priority rides the Config,
+            // which is already per-WeaponData. Same carrier `rally` uses.
+            [NonSerialized] public ForgeTargeting.Config targeting;
+
             // Where a reflected shot is sent. `aimReflected` is the older
             // boolean and still works; this is the fuller answer.
             public int aimMode = ForgeBulletTurn.AimBack;
@@ -149,6 +155,11 @@ namespace WeaponForge
             public float spinThinness = 0.12f;
 
             [System.NonSerialized] public Sprite nodeArt;
+
+            // Opt-in animation - see ForgeSpriteLibrary.OptInFrames. Only a
+            // NAMED nodeSprite can animate; the drawn coin is one built sprite.
+            [System.NonSerialized] public Sprite[] nodeFrames;
+            [System.NonSerialized] public float nodeFps;
             public string triggerSfx = "";
             public string armSfx = "";
 

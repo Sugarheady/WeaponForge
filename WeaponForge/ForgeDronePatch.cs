@@ -97,6 +97,15 @@ namespace WeaponForge
             // path uses, so a friendly-fire check inside weapon setup sees the
             // final faction rather than the prefab's.
             ForgeMinion.SetSide(minion, owner, cfg);
+
+            // The eyes, for the same reason as the spawner path - and it is not
+            // only a friendly-minion fix. A drone prefab's Vision watches
+            // Entities ONLY, so `"faction": "keep"` on one produced a hostile
+            // drone that could not see the player at all: it never attacked,
+            // which read as the faction being ignored.
+            ForgeMinionAllegiance.Eyes(minion, cfg);
+            ForgeMinionAllegiance.Ram(minion, cfg);
+
             ForgeMinion.Equip(minion, cfg);
             ForgeMinion.EquipDefault(minion, cfg);
 
@@ -113,6 +122,26 @@ namespace WeaponForge
             // writing the tanks.
             ForgeMinionStats.Apply(minion, owner, cfg, spawner.Level);
             ForgeMinionBlast.Attach(minion, owner, cfg);
+            // And stop it holding a grudge against you: your own
+            // explosions carry no owner filter, so one stray blast
+            // would otherwise make it hunt you for life. See
+            // ForgeMinionGrudge.
+            ForgeMinionGrudge.Attach(minion, owner);
+            ForgeMinionEscort.Attach(minion, owner, cfg);
+
+            // The opposite stance, and the one place it is most useful: a drone
+            // gadget is the only minion the game itself makes follow you, so
+            // "leave these here and run" is a bigger change here than on a
+            // spawner weapon. Only one of the two ever acts - the escort stands
+            // down when `hold` is on.
+            ForgeMinionHold.Attach(minion, cfg);
+
+            // A drone gadget gets this too. The shoving is worse here if
+            // anything - a gadget drone hovers around you by design, so it is
+            // the one kind of minion that is permanently in your way.
+            ForgeMinionSolid.Apply(
+                minion, owner, cfg,
+                (spawner.Data != null) ? spawner.Data.name : "(drone)");
         }
 
         // The same mapping SpawnMinionModule.GetConnectionType uses. Mirrored

@@ -289,6 +289,31 @@ namespace WeaponForge
 
                 ip.Velocity = dir * speed;
 
+                // PUBLISH THE HEADING, or the aim above is undone within a
+                // frame - and this is the one feature where that is not a
+                // hypothetical.
+                //
+                // `Projectile.FixedUpdate` rebuilds Velocity from the private
+                // `idealDirection` whenever `movementNoiseData` is on, so a
+                // shot redirected by Velocity alone wanders straight back onto
+                // the heading it arrived on. Every other steering feature in
+                // the mod dodges this by turning the noise OFF at build time -
+                // but a deflected bullet is not ours to build. It belongs to
+                // whoever fired it, and the four stock weapons that ship the
+                // noise enabled are all ENEMY weapons (Soldier, Floater,
+                // Floater Officer, Cross Small - purple), at 60 degrees and
+                // 2 Hz. Enemy fire is the only thing there is to deflect, so
+                // the one slot this could break in is exactly the one it is
+                // for. Runtime is therefore the only place to fix it.
+                //
+                // `dir` is still measured off the wobbled Velocity above,
+                // deliberately: a reflection should answer the travel the
+                // player can see, not a hidden base heading.
+                var plain = bullet as Projectile;
+
+                if (plain != null)
+                    ForgeSteer.SetIdeal(plain, dir);
+
                 bullet.transform.rotation =
                     Quaternion.FromToRotation(Vector3.right, (Vector3)dir);
 
@@ -343,6 +368,67 @@ namespace WeaponForge
                 if (bullet != null)
                     UnityEngine.Object.Destroy(bullet.gameObject);
 
+                return false;
+            }
+        }
+
+        // SWAP A BULLET'S SIDE WITHOUT TOUCHING WHERE IT IS GOING.
+        //
+        // `Turn` above is the full operation for CATCHING incoming fire: it
+        // reverses or re-aims the shot as well as changing sides. Charm needs
+        // only half of that - a charmed enemy's bullets should keep flying
+        // exactly where it aimed them, they just need to belong to your side so
+        // they can reach other enemies.
+        //
+        // WHY THIS IS THE FIX FOR "A CHARMED ENEMY CANNOT SHOOT ANYTHING".
+        // A projectile's faction IS its GameObject layer, and EnemyProjectiles
+        // does not collide with Entities at all - so flipping a unit's faction
+        // leaves its bullets physically unable to touch another enemy. Two of
+        // the four changes in `Turn` fix exactly that, and this is them.
+        //
+        // AND WHY IT IS DONE AT RUNTIME, on the real bullet, rather than on a
+        // prefab at build time: the build-time route is what the minion ammo
+        // retarget already tries, and it demonstrably does not work (R10 test 6
+        // - the retarget logs success and minion shots still hit the player).
+        // Whatever the cause there - a shared weapon asset, a clone that is not
+        // the one actually fired - acting on the projectile that exists cannot
+        // miss it.
+        //
+        // Owner is deliberately NOT changed. The charmed unit stays the owner,
+        // its faction has already been flipped, and the game's friendly-fire
+        // check is faction-based through that owner - so it is already correct,
+        // and kills credit the charmed unit exactly as a minion's would.
+        public static bool Adopt(Component bullet)
+        {
+            if (bullet == null)
+                return false;
+
+            try
+            {
+                EnsureLayers();
+
+                if (_playerLayer < 0 || _enemyLayer < 0)
+                    return false;
+
+                VisualCustomizer.RemapLayer(
+                    bullet.gameObject, _enemyLayer, _playerLayer);
+
+                // Projectile ONLY. A PhysicsProjectile collides through real
+                // colliders and Unity's own matrix, so remapping the layer is
+                // the whole job there and reaching for a mask would throw.
+                var plain = bullet as Projectile;
+
+                if (plain != null)
+                {
+                    SetMask(
+                        plain, Physics2D.GetLayerCollisionMask(_playerLayer));
+                }
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogError("Adopting a bullet failed: " + e);
                 return false;
             }
         }

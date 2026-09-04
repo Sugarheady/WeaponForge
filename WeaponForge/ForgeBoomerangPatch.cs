@@ -34,9 +34,11 @@ namespace WeaponForge
         // the return heading here instead makes the two compose: wave
         // oscillates around wherever the boomerang currently points, and the
         // shot waves its way home.
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
         private static bool _ready;
 
+        // The reflection itself lives in ForgeSteer - one owner for a field
+        // four features write. This keeps only the boomerang-specific warning,
+        // because what breaks differs per feature.
         private static void Ensure()
         {
             if (_ready)
@@ -44,19 +46,12 @@ namespace WeaponForge
 
             _ready = true;
 
-            try
+            if (!ForgeSteer.Available)
             {
-                _idealRef = AccessTools.FieldRefAccess<Projectile, Vector2>(
-                    "idealDirection");
-            }
-            catch (Exception e)
-            {
-                _idealRef = null;
                 Log.LogWarning(
                     "Could not reach Projectile.idealDirection - a boomerang " +
                     "combined with wave motion will fly off along its " +
-                    "original heading. Boomerang on its own is unaffected. " +
-                    e.Message);
+                    "original heading. Boomerang on its own is unaffected.");
             }
         }
 
@@ -72,10 +67,7 @@ namespace WeaponForge
 
             Ensure();
 
-            if (_idealRef != null)
-                _idealRef(p) = unit;
-
-            p.Velocity = unit * speed;
+            ForgeSteer.SetHeading(p, unit, speed);
         }
 
         // The boomerang's own heading, free of whatever wave motion did to
@@ -85,13 +77,10 @@ namespace WeaponForge
         {
             Ensure();
 
-            if (_idealRef != null)
-            {
-                Vector2 ideal = _idealRef(p);
+            Vector2 ideal;
 
-                if (ideal.sqrMagnitude > 0.000001f)
-                    return ideal.normalized;
-            }
+            if (ForgeSteer.TryGetIdeal(p, out ideal))
+                return ideal.normalized;
 
             return (p.Velocity.sqrMagnitude > 0.0001f)
                 ? p.Velocity.normalized
@@ -118,6 +107,17 @@ namespace WeaponForge
                 b.damageApplied = false;
                 b.nextSample = 0f;
                 b.crumbIndex = 0;
+
+                // Record the damage as fired, so the turn can publish
+                // returnDamage as a multiplier instead of writing Damage
+                // directly. See the note at the turn itself. Gated on the key
+                // being set, because the capture allocates a component and
+                // most boomerangs come back at the same damage they left at.
+                if (b.returnDamage != 1f)
+                {
+                    ForgeDamageStack.For(__instance)
+                        .Capture(__instance.Damage.amount);
+                }
 
                 if (b.retrace)
                 {
@@ -285,9 +285,22 @@ namespace WeaponForge
             if (!b.damageApplied && b.returnDamage != 1f)
             {
                 b.damageApplied = true;
-                Damage d = p.Damage;
-                d.amount *= b.returnDamage;
-                p.Damage = d;
+
+                // Through the shared stack rather than straight onto Damage.
+                // This is a one-shot rather than the per-bounce compounding
+                // ricochet does, but it failed the same way: growth and the
+                // ramp rebuild the amount from their captured base every
+                // FixedUpdate, so the trip home was back at full damage one
+                // frame later on any boomerang that also grew.
+                //
+                // The slot is set rather than multiplied, so the guard above
+                // is now belt-and-braces rather than load-bearing - setting it
+                // twice would be harmless.
+                var stack = ForgeDamageStack.For(p);
+
+                stack.Capture(p.Damage.amount);
+                stack.boomerang = b.returnDamage;
+                stack.Apply(p);
             }
 
             // Point it home immediately so the pivot reads as a turn rather
