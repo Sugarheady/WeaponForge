@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Module Icons</title>
+<style>
+  :root {
+    --bg:#14161a; --panel:#1c2026; --line:#2c323b; --ink:#e6e9ee;
+    --dim:#98a2b3; --acc:#7fd4ff; --ok:#9ad14a;
+    --scale:3; --atlas:none; --aw:1024px; --ah:512px;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.5 "Segoe UI",system-ui,sans-serif; }
+  header { padding:22px 24px 14px; border-bottom:1px solid var(--line); }
+  h1 { margin:0 0 6px; font-size:20px; letter-spacing:.02em; }
+  header p { margin:6px 0 0; color:var(--dim); max-width:74ch; }
+  code { background:#0f1114; border:1px solid var(--line); border-radius:4px;
+         padding:1px 5px; font-size:.92em; color:var(--acc);
+         font-family:ui-monospace,Consolas,monospace; }
+  #load { margin:14px 24px 0; padding:14px 16px; background:var(--panel);
+          border:1px solid var(--line); border-left:3px solid var(--acc);
+          border-radius:6px; max-width:90ch; }
+  #load.ok { border-left-color:var(--ok); }
+  #load b { color:var(--acc); }
+  #load.ok b { color:var(--ok); }
+  #drop { margin-top:10px; padding:16px; border:1px dashed var(--line);
+          border-radius:6px; text-align:center; color:var(--dim); cursor:pointer; }
+  #drop.over { border-color:var(--acc); color:var(--ink); }
+  #bar { position:sticky; top:0; z-index:5; display:flex; gap:10px;
+         align-items:center; flex-wrap:wrap; padding:12px 24px; margin-top:16px;
+         background:var(--bg); border-top:1px solid var(--line);
+         border-bottom:1px solid var(--line); }
+  input[type=search], select {
+    background:var(--panel); color:var(--ink); border:1px solid var(--line);
+    border-radius:6px; padding:7px 10px; font:inherit; }
+  input[type=search] { min-width:260px; }
+  button.t { background:var(--panel); color:var(--ink); border:1px solid var(--line);
+             border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; }
+  button.t:hover { border-color:var(--acc); }
+  #count { color:var(--dim); margin-left:auto; }
+  #grid { display:grid; gap:12px; padding:20px 24px 40px;
+          grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); }
+  .ic { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+        padding:12px 10px 10px; display:flex; flex-direction:column;
+        align-items:center; gap:8px; cursor:pointer; color:inherit;
+        font:inherit; text-align:center; }
+  .ic:hover { border-color:var(--acc); }
+  .ic.copied { border-color:var(--ok); }
+  .art { width:calc(var(--w) * var(--scale) * 1px);
+         height:calc(var(--h) * var(--scale) * 1px);
+         background-image:var(--atlas);
+         background-size:calc(var(--aw) * var(--scale)) calc(var(--ah) * var(--scale));
+         background-position:calc(var(--x) * var(--scale) * -1px)
+                             calc(var(--y) * var(--scale) * -1px);
+         background-repeat:no-repeat; image-rendering:pixelated; flex:0 0 auto; }
+  body.noatlas .art { outline:1px dashed var(--line); opacity:.3; }
+  .nm { font-family:ui-monospace,Consolas,monospace; font-size:12px;
+        word-break:break-all; }
+  .us { color:var(--dim); font-size:11px; min-height:1.4em; }
+  .ic[data-used="0"] .us { color:#5b6472; font-style:italic; }
+  .hide { display:none !important; }
+  footer { padding:0 24px 48px; color:var(--dim); max-width:82ch; }
+  footer p { margin:0 0 10px; }
+</style>
+</head>
+<body class="noatlas">
+
+<header>
+  <h1>MODULE ICONS &mdash; all 81 of them</h1>
+  <p>Every icon a Forge module can name. Both mods share one icon namespace, so this covers Weapon
+     Forge's <code>module.icon</code> and Module Forge's <code>icon</code> alike.
+     <b>Click any icon to copy its name.</b></p>
+</header>
+
+<div id="load">
+  <b>The art is not in this file.</b> These icons belong to the game, and these repos are public, so
+  this page ships no copies of them &mdash; it draws them out of your own atlas instead. Point it at:
+  <div style="margin:8px 0 0"><code>sactx-0-1024x512-Uncompressed-Atlas UI-9d06dca2.png</code></div>
+  <div style="margin:6px 0 0;color:var(--dim)">
+    found in <code>EXPORT/ExportedProject/Assets/Texture2D/</code>. Nothing leaves your machine and
+    this page makes no network requests of any kind. The names and the usage list below work with or
+    without it. Tip: copy that PNG next to this file as <code>atlas.png</code> and it loads by itself
+    every time.
+  </div>
+  <div id="drop">
+    <b>Drop the atlas PNG here</b>, or click to browse.
+    <input type="file" id="file" accept="image/png" hidden>
+  </div>
+</div>
+
+<div id="bar">
+  <input type="search" id="q" placeholder="filter by icon name or module...">
+  <select id="scope">
+    <option value="all">all icons</option>
+    <option value="used">used by a stock module</option>
+    <option value="free">not used by anything</option>
+  </select>
+  <select id="fam">
+    <option value="">both families</option>
+    <option value="HUD_GridTiles">HUD_GridTiles only</option>
+    <option value="HUD_Modules">HUD_Modules only</option>
+  </select>
+  <button class="t" id="zoom">zoom 3x</button>
+  <span id="count"></span>
+</div>
+
+<div id="grid">
+  <button class="ic" data-name="HUD_GridTiles_0" data-users="worm" data-used="1" style="--x:377;--y:45;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_0</span><span class="us">WORM</span></button>
+  <button class="ic" data-name="HUD_GridTiles_1" data-users="bolt" data-used="1" style="--x:211;--y:22;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_1</span><span class="us">BOLT</span></button>
+  <button class="ic" data-name="HUD_GridTiles_2" data-users="disc gun" data-used="1" style="--x:476;--y:160;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_2</span><span class="us">DISC GUN</span></button>
+  <button class="ic" data-name="HUD_GridTiles_3" data-users="shard" data-used="1" style="--x:475;--y:187;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_3</span><span class="us">SHARD</span></button>
+  <button class="ic" data-name="HUD_GridTiles_4" data-users="+ firerate" data-used="1" style="--x:418;--y:142;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_4</span><span class="us">+ FIRERATE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_5" data-users="'- spread'" data-used="1" style="--x:422;--y:168;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_5</span><span class="us">'- SPREAD'</span></button>
+  <button class="ic" data-name="HUD_GridTiles_6" data-users="" data-used="0" style="--x:350;--y:46;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_6</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_GridTiles_7" data-users="shotgun" data-used="1" style="--x:323;--y:56;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_7</span><span class="us">SHOTGUN</span></button>
+  <button class="ic" data-name="HUD_GridTiles_8" data-users="laser" data-used="1" style="--x:411;--y:62;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_8</span><span class="us">LASER</span></button>
+  <button class="ic" data-name="HUD_GridTiles_9" data-users="marbles" data-used="1" style="--x:427;--y:115;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_9</span><span class="us">MARBLES</span></button>
+  <button class="ic" data-name="HUD_GridTiles_10" data-users="extra projectile" data-used="1" style="--x:464;--y:81;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_10</span><span class="us">EXTRA PROJECTILE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_11" data-users="+ range" data-used="1" style="--x:404;--y:36;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_11</span><span class="us">+ RANGE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_12" data-users="caps up / electron up / fuel up / gel up / health up / stamina up / tech up" data-used="1" style="--x:454;--y:275;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_12</span><span class="us">CAPS UP / ELECTRON UP / FUEL UP / GEL UP / HEALTH UP / STAMINA UP / TECH UP</span></button>
+  <button class="ic" data-name="HUD_GridTiles_13" data-users="popper" data-used="1" style="--x:346;--y:20;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_13</span><span class="us">POPPER</span></button>
+  <button class="ic" data-name="HUD_GridTiles_14" data-users="ship" data-used="1" style="--x:472;--y:134;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_14</span><span class="us">SHIP</span></button>
+  <button class="ic" data-name="HUD_GridTiles_15" data-users="+ projectile speed" data-used="1" style="--x:463;--y:108;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_15</span><span class="us">+ PROJECTILE SPEED</span></button>
+  <button class="ic" data-name="HUD_GridTiles_16" data-users="cluster cube" data-used="1" style="--x:238;--y:21;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_16</span><span class="us">CLUSTER CUBE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_17" data-users="caps regen / gel regen / health regen / stamina regen / tech regen" data-used="1" style="--x:319;--y:30;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_17</span><span class="us">CAPS REGEN / GEL REGEN / HEALTH REGEN / STAMINA REGEN / TECH REGEN</span></button>
+  <button class="ic" data-name="HUD_GridTiles_18" data-users="power core" data-used="1" style="--x:437;--y:88;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_18</span><span class="us">POWER CORE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_19" data-users="combat drone / electric drone / misille drone / suicide drone" data-used="1" style="--x:438;--y:61;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_19</span><span class="us">COMBAT DRONE / ELECTRIC DRONE / MISILLE DRONE / SUICIDE DRONE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_20" data-users="booster core" data-used="1" style="--x:441;--y:451;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_20</span><span class="us">BOOSTER CORE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_21" data-users="teardrop" data-used="1" style="--x:440;--y:241;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_21</span><span class="us">TEARDROP</span></button>
+  <button class="ic" data-name="HUD_GridTiles_22" data-users="field generator" data-used="1" style="--x:157;--y:23;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_22</span><span class="us">FIELD GENERATOR</span></button>
+  <button class="ic" data-name="HUD_GridTiles_23" data-users="" data-used="0" style="--x:468;--y:451;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_23</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_GridTiles_24" data-users="debris / flame" data-used="1" style="--x:211;--y:49;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_24</span><span class="us">DEBRIS / FLAME</span></button>
+  <button class="ic" data-name="HUD_GridTiles_25" data-users="air mine / igniter" data-used="1" style="--x:330;--y:83;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_25</span><span class="us">AIR MINE / IGNITER</span></button>
+  <button class="ic" data-name="HUD_GridTiles_26" data-users="phantom drone" data-used="1" style="--x:357;--y:72;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_26</span><span class="us">PHANTOM DRONE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_27" data-users="dandelion" data-used="1" style="--x:373;--y:98;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_27</span><span class="us">DANDELION</span></button>
+  <button class="ic" data-name="HUD_GridTiles_28" data-users="vial" data-used="1" style="--x:464;--y:302;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_28</span><span class="us">VIAL</span></button>
+  <button class="ic" data-name="HUD_GridTiles_29" data-users="dart / electron missile / fire missile / gel missile" data-used="1" style="--x:384;--y:71;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_29</span><span class="us">DART / Electron Missile / FIRE MISSILE / GEL MISSILE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_30" data-users="toroid" data-used="1" style="--x:449;--y:214;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_30</span><span class="us">TOROID</span></button>
+  <button class="ic" data-name="HUD_GridTiles_31" data-users="zapper" data-used="1" style="--x:449;--y:168;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_31</span><span class="us">ZAPPER</span></button>
+  <button class="ic" data-name="HUD_GridTiles_32" data-users="circuit" data-used="1" style="--x:184;--y:23;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_32</span><span class="us">CIRCUIT</span></button>
+  <button class="ic" data-name="HUD_GridTiles_33" data-users="blades" data-used="1" style="--x:469;--y:424;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_33</span><span class="us">BLADES</span></button>
+  <button class="ic" data-name="HUD_GridTiles_34" data-users="caps shield / electron shield / gel shield / tech shield" data-used="1" style="--x:265;--y:48;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_34</span><span class="us">CAPS SHIELD / ELECTRON SHIELD / GEL SHIELD / TECH SHIELD</span></button>
+  <button class="ic" data-name="HUD_GridTiles_35" data-users="missile surge" data-used="1" style="--x:292;--y:31;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_35</span><span class="us">MISSILE SURGE</span></button>
+  <button class="ic" data-name="HUD_GridTiles_36" data-users="loon" data-used="1" style="--x:400;--y:116;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_36</span><span class="us">LOON</span></button>
+  <button class="ic" data-name="HUD_GridTiles_37" data-users="can" data-used="1" style="--x:238;--y:48;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_37</span><span class="us">CAN</span></button>
+  <button class="ic" data-name="HUD_GridTiles_38" data-users="flack" data-used="1" style="--x:445;--y:141;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_38</span><span class="us">FLACK</span></button>
+  <button class="ic" data-name="HUD_GridTiles_39" data-users="add explosion / add fire explosion / add gel explosion / add tech explosion" data-used="1" style="--x:410;--y:89;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_39</span><span class="us">ADD EXPLOSION / ADD FIRE EXPLOSION / ADD GEL EXPLOSION / ADD TECH EXPLOSION</span></button>
+  <button class="ic" data-name="HUD_GridTiles_40" data-users="add burn" data-used="1" style="--x:104;--y:23;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_40</span><span class="us">ADD BURN</span></button>
+  <button class="ic" data-name="HUD_GridTiles_41" data-users="add spark" data-used="1" style="--x:296;--y:57;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_41</span><span class="us">Add Spark</span></button>
+  <button class="ic" data-name="HUD_GridTiles_42" data-users="" data-used="0" style="--x:437;--y:302;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_42</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_GridTiles_43" data-users="" data-used="0" style="--x:184;--y:50;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_43</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_GridTiles_44" data-users="" data-used="0" style="--x:130;--y:25;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_GridTiles_44</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_0" data-users="" data-used="0" style="--x:495;--y:434;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_0</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_1" data-users="" data-used="0" style="--x:640;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_1</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_2" data-users="" data-used="0" style="--x:521;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_2</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_3" data-users="" data-used="0" style="--x:498;--y:407;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_3</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_4" data-users="" data-used="0" style="--x:525;--y:409;--w:22;--h:22"><span class="art"></span><span class="nm">HUD_Modules_4</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_5" data-users="" data-used="0" style="--x:499;--y:380;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_5</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_6" data-users="" data-used="0" style="--x:721;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_6</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_7" data-users="" data-used="0" style="--x:575;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_7</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_8" data-users="" data-used="0" style="--x:494;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_8</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_9" data-users="" data-used="0" style="--x:613;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_9</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_10" data-users="" data-used="0" style="--x:458;--y:28;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_10</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_11" data-users="" data-used="0" style="--x:485;--y:27;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_11</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_12" data-users="" data-used="0" style="--x:472;--y:397;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_12</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_13" data-users="" data-used="0" style="--x:579;--y:436;--w:22;--h:22"><span class="art"></span><span class="nm">HUD_Modules_13</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_14" data-users="" data-used="0" style="--x:373;--y:19;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_14</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_15" data-users="" data-used="0" style="--x:400;--y:10;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_15</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_16" data-users="" data-used="0" style="--x:466;--y:248;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_16</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_17" data-users="+1 burst" data-used="1" style="--x:473;--y:370;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_17</span><span class="us">+1 BURST</span></button>
+  <button class="ic" data-name="HUD_Modules_18" data-users="" data-used="0" style="--x:431;--y:35;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_18</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_19" data-users="" data-used="0" style="--x:465;--y:54;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_19</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_20" data-users="" data-used="0" style="--x:37;--y:10;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_20</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_21" data-users="" data-used="0" style="--x:469;--y:337;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_21</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_22" data-users="" data-used="0" style="--x:454;--y:2;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_22</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_23" data-users="" data-used="0" style="--x:427;--y:9;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_23</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_24" data-users="" data-used="0" style="--x:478;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_24</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_25" data-users="" data-used="0" style="--x:481;--y:1;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_25</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_26" data-users="" data-used="0" style="--x:532;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_26</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_27" data-users="" data-used="0" style="--x:505;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_27</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_28" data-users="" data-used="0" style="--x:586;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_28</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_29" data-users="" data-used="0" style="--x:559;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_29</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_30" data-users="" data-used="0" style="--x:522;--y:434;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_30</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_31" data-users="" data-used="0" style="--x:629;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_31</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_32" data-users="" data-used="0" style="--x:694;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_32</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_33" data-users="" data-used="0" style="--x:602;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_33</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_34" data-users="" data-used="0" style="--x:548;--y:461;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_34</span><span class="us">&mdash;</span></button>
+  <button class="ic" data-name="HUD_Modules_35" data-users="" data-used="0" style="--x:667;--y:488;--w:24;--h:24"><span class="art"></span><span class="nm">HUD_Modules_35</span><span class="us">&mdash;</span></button>
+</div>
+
+<footer>
+  <p><b>Draw your own square.</b> Stock icons are 24&times;24 at 40 pixels per unit &mdash; not the 20
+  the rest of the game uses. Any size works (it is rebuilt to the stock footprint for you), but the
+  module card stretches art to a square without preserving aspect, while the pickup on the ground
+  keeps its shape.</p>
+  <p><b>Icons are tinted by the module's colour</b> in both places they are drawn, so draw white or grey
+  and let <code>color</code> do the work &mdash; or set the colour to <code>#ffffff</code> to see your
+  art's own colours.</p>
+  <p><b>An icon cannot animate</b> &mdash; nothing ever ticks it. You can still choose which frame of a
+  run it shows: <code>HUD_GridTiles_4:2</code> takes frame 2.</p>
+  <p>The icon&rarr;module mapping is read out of the game's own assets rather than guessed, so it is
+  regenerable when the game updates. <code>MODULE ICONS.txt</code> beside this file has the same list
+  in plain text.</p>
+</footer>
+
+<script>
+(function () {
+  var body = document.body, grid = document.getElementById("grid");
+  var q = document.getElementById("q"), scope = document.getElementById("scope");
+  var fam = document.getElementById("fam"), count = document.getElementById("count");
+  var all = [].slice.call(grid.querySelectorAll(".ic"));
+
+  function useAtlas(url, how) {
+    document.documentElement.style.setProperty("--atlas", "url(" + JSON.stringify(url) + ")");
+    body.classList.remove("noatlas");
+    var box = document.getElementById("load");
+    box.classList.add("ok");
+    box.innerHTML = "<b>Atlas loaded" + (how ? " (" + how + ")" : "") + ".</b> All " + all.length +
+      " icons are drawn from your own copy. Nothing was uploaded anywhere.";
+  }
+
+  // A sibling atlas.png loads with no clicks. Absent, the probe just fails and
+  // the picker below stays. Deliberately silent - a missing file is the normal case.
+  var probe = new Image();
+  probe.onload = function () { useAtlas("atlas.png", "found atlas.png beside this file"); };
+  probe.src = "atlas.png";
+
+  var file = document.getElementById("file"), drop = document.getElementById("drop");
+  function take(f) {
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { useAtlas(r.result, "from " + f.name); };
+    r.readAsDataURL(f);
+  }
+  drop.addEventListener("click", function () { file.click(); });
+  file.addEventListener("change", function () { take(file.files[0]); });
+  ["dragenter", "dragover"].forEach(function (e) {
+    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (e) {
+    drop.addEventListener(e, function (ev) { ev.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (ev) {
+    take(ev.dataTransfer && ev.dataTransfer.files[0]);
+  });
+
+  function paint() {
+    var t = q.value.trim().toLowerCase(), sc = scope.value, fm = fam.value.toLowerCase(), shown = 0;
+    for (var k = 0; k < all.length; k++) {
+      var el = all[k];
+      var nm = el.getAttribute("data-name").toLowerCase();
+      var us = el.getAttribute("data-users");
+      var okText = !t || nm.indexOf(t) >= 0 || us.indexOf(t) >= 0;
+      var u = el.getAttribute("data-used");
+      var okScope = sc === "all" || (sc === "used" && u === "1") || (sc === "free" && u === "0");
+      var okFam = !fm || nm.indexOf(fm) === 0;
+      var on = okText && okScope && okFam;
+      if (on) { el.classList.remove("hide"); shown++; } else { el.classList.add("hide"); }
+    }
+    count.textContent = shown + " of " + all.length + " shown";
+  }
+  q.addEventListener("input", paint);
+  scope.addEventListener("change", paint);
+  fam.addEventListener("change", paint);
+
+  grid.addEventListener("click", function (ev) {
+    var el = ev.target;
+    while (el && el !== grid && !(el.classList && el.classList.contains("ic"))) el = el.parentNode;
+    if (!el || el === grid) return;
+    var name = el.getAttribute("data-name");
+    function done() {
+      for (var k = 0; k < all.length; k++) all[k].classList.remove("copied");
+      el.classList.add("copied");
+      var n = el.querySelector(".nm"), old = n.textContent;
+      n.textContent = "copied!";
+      setTimeout(function () { n.textContent = old; }, 900);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(name).then(done, done);
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = name; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta); done();
+    }
+  });
+
+  var steps = [2, 3, 4, 6], zi = 1, zoom = document.getElementById("zoom");
+  zoom.addEventListener("click", function () {
+    zi = (zi + 1) % steps.length;
+    document.documentElement.style.setProperty("--scale", steps[zi]);
+    zoom.textContent = "zoom " + steps[zi] + "x";
+  });
+
+  paint();
+})();
+</script>
+</body>
+</html>

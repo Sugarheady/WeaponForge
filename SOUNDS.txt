@@ -1,0 +1,1250 @@
+==============================================================================
+PUNK - EVERY SOUND IN THE GAME
+==============================================================================
+
+Generated from the game's own Audio Database for Weapon Forge and Module
+Forge. Names and ids only - no audio is copied here.
+
+  259 sounds declared
+  189 have at least one clip and will actually play
+  70 ARE DECLARED AND EMPTY - naming one gives you SILENCE
+
+------------------------------------------------------------------------------
+HOW TO USE ONE
+------------------------------------------------------------------------------
+
+Put the NAME, with its slashes, in any sound field:
+
+    "weapon": { "shootSfx": "Weapons/Shotgun/Shoot" }
+    "impactSfx": "Cells/Tuff"
+    "charm": { "sfx": "Enemies/Cross/Death" }
+
+Matching is case-insensitive. A raw id still works if you have one.
+
+The lookup order is CUSTOM FIRST, then the game: a file of your own in the
+'sounds' folder with the same name wins. That is the same order every
+sprite key uses.
+
+EVERY SLOT THAT TAKES A SOUND. Read out of the builder rather than
+remembered, because the list had two mistakes in it when I wrote it from
+memory:
+
+  in "weapon":   shootSfx    reloadSfx    startSfx    releaseSfx
+                 warmupSfx   continousShootSfx
+
+  top level:     impactSfx
+
+  "sfx" inside:  crit    leech    lunge    hitSound    swipe    rally
+                 charm   execute  tractor  onKill      gas
+
+  named slots:   charge.chargeSfx      charge.readySfx
+                 overheat.overheatSfx  overheat.recoverSfx
+                 catalyst.triggerSfx   catalyst.armSfx
+                 shield.raiseSfx       shield.ramSfx
+                 shield.blockSfx
+
+Use "none" - or silent / silence / off / mute / "-" - in any of them to
+switch a sound OFF.
+
+------------------------------------------------------------------------------
+READ THIS BEFORE PICKING ONE
+------------------------------------------------------------------------------
+
+EMPTY ENTRIES ARE THE TRAP. 70 of the 259 are declared in the database with
+no clip attached. They resolve perfectly and play nothing, so the weapon
+looks broken rather than misconfigured. They are marked EMPTY below and the
+build log warns if you name one.
+
+MULTI-CLIP ENTRIES PICK ONE AT RANDOM. A sound with 10 clips sounds
+different every time it plays, which is what makes terrain and pickups feel
+alive. A weapon firing 8 times a second on a 1-clip sound sounds like a
+machine; on a 10-clip one it sounds like a gun. Clip counts are listed.
+
+30-CLIP RESOURCE SOUNDS ARE A LADDER, not variation. Resources/Fuel, Caps,
+Purple, Tech, Money and Stamina each hold 30 clips that climb the scale as
+you chain pickups. Firing a weapon with one of those will walk up the
+ladder, which is either delightful or a mess.
+
+LOOPING ENTRIES ARE FOR THE HELD SLOTS ONLY - continousShootSfx and
+warmupSfx. The game starts those, keeps the handle and stops them later;
+a one-shot there plays once and never restarts, and a looping sound in a
+one-shot slot never stops.
+
+2D entries have no position - they play at the same volume wherever they
+happen. Right for UI, wrong for a gun.
+
+Volume is the database's own value and is left alone; a quiet entry is
+quiet on purpose (the hitmarker is 0.22).
+
+==============================================================================
+ACTIVES  (18)
+==============================================================================
+
+  Actives/AirMines/Explosion
+      1 clip  |  vol 0.136
+      id 04c2d86d-ef06-4a21-b3d1-a53f4584baa7
+
+  Actives/AirMines/Shoot
+      1 clip  |  vol 0.15
+      id 6a6a77bd-284c-4090-bcdd-524b4c168e0e
+
+  Actives/CombatDrone/Death
+      EMPTY - SILENT  |  vol 0.5
+      id ff07d8d8-ac07-4541-9de9-00092e2caae0
+
+  Actives/CombatDrone/Deploy
+      1 clip  |  vol 0.1
+      id 888f83ff-2fea-4f9a-87f3-b43ab71fcee9
+
+  Actives/CombatDrone/Shoot
+      EMPTY - SILENT  |  vol 0.5
+      id f993f376-6306-498e-9e30-909f0707d150
+
+  Actives/FieldGenerator/Deploy
+      1 clip  |  vol 0.1
+      id eef4fc85-881a-44b8-9af2-a1c775908e2c
+
+  Actives/PhantomDrone/Death
+      EMPTY - SILENT  |  vol 0.5
+      id 61d3cbd8-b975-4d27-8006-803c98ab2a8f
+
+  Actives/PhantomDrone/Deploy
+      1 clip  |  vol 0.15
+      id 83b3b18a-8df7-49ce-9577-3463886619ca
+
+  Actives/PhantomDrone/Shoot
+      EMPTY - SILENT  |  vol 0.5
+      id e3b5cdad-be9d-4908-9d04-1debfe65fc90
+
+  Actives/PurpleDrone/Death
+      EMPTY - SILENT  |  vol 0.5
+      id 8e02aa5a-4532-4a52-994b-ff7ec1bb0fb8
+
+  Actives/PurpleDrone/Deploy
+      1 clip  |  vol 0.1
+      id 2bedddb7-0244-4a0b-b696-5c1e207ce990
+
+  Actives/PurpleDrone/RocketExplosion
+      EMPTY - SILENT  |  vol 0.5
+      id 54e24592-2284-463e-ab02-6442f5592287
+
+  Actives/PurpleDrone/RocketFlight
+      EMPTY - SILENT  |  vol 0.5
+      id d4bbde9c-7cbb-410c-b4f3-428f7eb15fef
+
+  Actives/PurpleDrone/Shoot
+      1 clip  |  vol 0.11
+      id 34a562bb-0bac-4fc0-8df9-442ee34ed176
+
+  Actives/TearDrop/Explosion
+      EMPTY - SILENT  |  vol 0.5
+      id bc03ae60-052e-48d6-b0b2-aa5dc8e79b54
+
+  Actives/TearDrop/Shoot
+      1 clip  |  vol 0.15
+      id 2cdf6ca6-d243-4f8c-8135-ccabf3401ccd
+
+  Actives/Vial/Explosion
+      EMPTY - SILENT  |  vol 0.5
+      id 3711396d-65b2-46b7-b210-64b88ab18888
+
+  Actives/Vial/Shoot
+      EMPTY - SILENT  |  vol 0.5
+      id fee8becd-4fa5-4e29-b0b5-9543275b0888
+
+==============================================================================
+CELLS  (10)
+==============================================================================
+
+  Cells/Bark
+      10 clips  |  vol 0.153
+      id ff748483-184c-47dd-9dad-180fdea6169b
+
+  Cells/Fuel
+      10 clips  |  vol 0.307
+      id 0db9a68c-7055-43bf-8490-dd42f1409f4c
+      >> THE FUEL BUBBLE. Pops when you break a Blob cell - CellType_Blob's
+         destroySfx - and that cell's drop table is a FuelPickup. The sound
+         is filed under Fuel and the cell is called Blob, which is why it is
+         hard to find. 10 clips.
+
+  Cells/Gold
+      10 clips  |  vol 0.308
+      id 7d1981ff-c112-4313-8c98-c8acc6a9a245
+
+  Cells/Moss
+      10 clips  |  cancels previous  |  vol 0.308
+      id e9c475ee-378d-416d-817e-24775e2c3682
+
+  Cells/Night
+      10 clips  |  vol 0.269
+      id 1995f1e8-7569-480e-9115-45aabdcacaad
+
+  Cells/Obsidian
+      10 clips  |  vol 0.175
+      id c2881895-0533-40c5-9e91-ca60cb181495
+
+  Cells/Shard
+      10 clips  |  vol 0.3
+      id 1154f3df-d780-4ca9-a8d8-b8b801b276ed
+
+  Cells/Slime
+      10 clips  |  cancels previous  |  vol 0.137  |  min gap 0.5s
+      id c3874ee4-3c02-4edb-bd66-cd79f05f5dcb
+
+  Cells/Solid
+      10 clips  |  vol 0.212
+      id 35e33323-65a7-45a2-8345-cdf232676829
+
+  Cells/Tuff
+      10 clips  |  vol 0.119
+      id fd8f9ba1-617a-44f7-8201-8dbd91154bf0
+      >> The bubble terrain from tests 128/129. 10 clips.
+
+==============================================================================
+CONSUMABLES  (4)
+==============================================================================
+
+  Consumables/Beacon/Explosion
+      1 clip  |  vol 0.196
+      id 7abb76da-c1bd-41d0-83ec-5431421758aa
+
+  Consumables/Beacon/Shoot
+      1 clip  |  vol 0.159
+      id 46898b9f-0b65-47ef-8a1f-4b54b1cb7036
+
+  Consumables/Bomb/Explosion
+      1 clip  |  vol 0.393
+      id c2619ed9-8374-4027-bb0a-f751c90d0ad2
+
+  Consumables/Deploy
+      1 clip  |  vol 0.097
+      id f59de43e-f309-416e-94b8-9e9a8767ce6e
+
+==============================================================================
+ENEMIES  (113)
+==============================================================================
+
+  Enemies/Canari/Death
+      1 clip  |  vol 0.221
+      id bf09e691-bd7f-4cf2-8fa9-9edd96ff258b
+
+  Enemies/Crawler/LaserLoop
+      1 clip  |  LOOPING  |  vol 0.55
+      id 20b6812e-ae2a-4f9b-9e12-89b2b1b07b07
+
+  Enemies/Crawler/LaserRelease
+      1 clip  |  vol 0.5
+      id fad7be6b-99c1-4719-af5c-f47eddc0f48d
+
+  Enemies/Crawler/LaserStart
+      1 clip  |  vol 0.5
+      id 47002c28-00b2-4273-a59d-573a0b432636
+
+  Enemies/Crawler/LaserWarmup
+      4 clips  |  vol 0.5
+      id 4ac4e16d-400a-4da0-9d88-157aaeab37d1
+
+  Enemies/Crawler/Step
+      1 clip  |  vol 0.257
+      id eba95193-7cc3-4299-899e-444c1fbabdc6
+
+  Enemies/Cross/Agro
+      1 clip  |  vol 0.12
+      id 64fe672a-af7e-4075-8c32-cfc655bba980
+
+  Enemies/Cross/Death
+      1 clip  |  vol 0.2  |  min gap 0.02s
+      id 88bd9be3-4af1-4c73-a19c-e1b6ff4dd730
+
+  Enemies/Cross/Move
+      1 clip  |  vol 0.15
+      id 16a522b8-115a-4879-8eb1-af1bab99d653
+
+  Enemies/Cross/Shoot
+      1 clip  |  cancels previous  |  vol 0.098
+      id e1cf39cd-5966-48d7-9f19-6c10a3bae9e9
+
+  Enemies/Cross/ShootEvent
+      EMPTY - SILENT  |  vol 0.25
+      id 6ed2b3dc-0ae4-4383-a26d-c5224e9bdc55
+
+  Enemies/CrossAlpha/Agro
+      1 clip  |  cancels previous  |  vol 0.3
+      id a3c5043b-74cb-4c7b-b11a-c4221b53aa52
+
+  Enemies/CrossAlpha/Death
+      1 clip  |  vol 0.072
+      id 8f432fda-e9c8-4f92-bc7b-55ac98ab447e
+
+  Enemies/CrossAlpha/Move
+      1 clip  |  cancels previous  |  vol 0.3
+      id e3ad3d80-4a8f-48cb-8197-8564e3de1e69
+
+  Enemies/CrossAlpha/Shoot
+      1 clip  |  cancels previous  |  vol 0.12
+      id 04c5be74-efe9-4d78-adcf-739dcaa58df4
+
+  Enemies/CrossAlpha/ShootEvent
+      EMPTY - SILENT  |  vol 0.5
+      id 008ff270-4815-41f2-96aa-c022959fd350
+
+  Enemies/CrossJocj/ShootBomb
+      1 clip  |  vol 0.328
+      id 762e5079-bead-4a79-ae7e-36cb9405f800
+
+  Enemies/CrossJock/Agro
+      1 clip  |  vol 0.27  |  min gap 0.5s
+      id 50c60672-054f-4f90-9095-99892e8c77bd
+
+  Enemies/CrossJock/Death
+      1 clip  |  vol 0.3
+      id 504a9d57-197c-4134-ba59-3d4abebe0c47
+
+  Enemies/CrossJock/Move
+      EMPTY - SILENT  |  vol 0.5
+      id d273a1df-8e8e-4e39-9c98-33a538800e93
+
+  Enemies/CrossJock/PurpleMisssileExplosion
+      1 clip  |  vol 0.13
+      id c21e0dd6-088a-4862-93e1-62dc64aa2b6f
+
+  Enemies/CrossJock/Shoot
+      1 clip  |  vol 0.11
+      id c78b0a50-c5bc-43c2-9485-657edddb826f
+
+  Enemies/CrossJock/ShootEvent
+      EMPTY - SILENT  |  vol 0.5
+      id 32089513-df58-4219-b334-19c14298c0c4
+
+  Enemies/CrossJock/Smoke
+      1 clip  |  vol 0.388
+      id 71203cde-5733-4888-bcb3-8383841d210d
+
+  Enemies/CrossLaser/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id d7dec7a7-303f-490a-a456-dab6311894a6
+
+  Enemies/CrossLaser/Death
+      EMPTY - SILENT  |  vol 0.5
+      id 29205c12-da03-4e0b-90bb-013f9be6ad2c
+
+  Enemies/CrossLaser/Move
+      EMPTY - SILENT  |  vol 0.5
+      id 52905f8f-fdfe-4bc8-bb40-58339f1136ca
+
+  Enemies/CrossLaser/Shoot
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 8b4e56a9-c32c-4e59-bb05-e6b24a5b2f41
+
+  Enemies/CrossLaser/Warmup
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 2d97a500-62e6-4b75-8636-2f403a92422d
+
+  Enemies/CrossPin/Death
+      EMPTY - SILENT  |  vol 0.2
+      id 4d4f10e0-79a3-4174-abf1-725490835317
+
+  Enemies/CrossPin/Shoot
+      1 clip  |  LOOPING  |  vol 0.11
+      id 6a87d92f-345f-4bd4-a25b-591e05828b7f
+
+  Enemies/CrossPin/Warmup
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 92e34ebe-7b7e-4c1f-bb1d-a853732975ed
+
+  Enemies/CrossQueen/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id e2ce3051-9962-40d7-8ee7-d199df9789b8
+
+  Enemies/CrossQueen/Death
+      1 clip  |  vol 0.302
+      id 95a6a12a-6675-480c-b2b6-485d3ccbbc4a
+
+  Enemies/CrossQueen/ExplosionBomb
+      1 clip  |  vol 0.15
+      id 06ed1e6f-e0c5-433e-9990-1d44a3f2af2e
+
+  Enemies/CrossQueen/Move
+      EMPTY - SILENT  |  vol 0.5
+      id 29f14318-e8e0-4d86-9169-06f269b51554
+
+  Enemies/CrossQueen/PanelDeath
+      EMPTY - SILENT  |  vol 0.5
+      id 70604ac9-a6f0-48d0-b1cd-d96c1bc4debb
+
+  Enemies/CrossQueen/Shoot
+      1 clip  |  vol 0.11
+      id 4216e827-cb01-416d-983a-185dcb84e320
+
+  Enemies/CrossQueen/ShootBomb
+      1 clip  |  vol 0.1
+      id d8cc8e33-db08-4476-b5df-56db1816d4e0
+
+  Enemies/CrossQueen/ShootLaser
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 5e720ee3-9ca9-4705-be74-d0f058eca38c
+
+  Enemies/CrossQueen/Smoke
+      1 clip  |  vol 0.442
+      id 2dba3283-c036-4aaa-9738-beb692f582e4
+
+  Enemies/CrossQueen/SpawnMinion
+      EMPTY - SILENT  |  vol 0.5
+      id bdb29bef-38de-4c67-9491-95ca059d9717
+
+  Enemies/CrossQueen/WarmupLaser
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 48fb885b-eefc-43d1-b5de-8f5b78a1625d
+
+  Enemies/CrossRed/Agro
+      1 clip  |  vol 0.345
+      id 8c0c6e44-1212-464b-ad5f-f1c5c1c98553
+
+  Enemies/CrossRed/BomberMinionBurst
+      1 clip  |  vol 0.138
+      id 819d92dd-3d04-451e-9cf1-02c4bace80c4
+
+  Enemies/CrossRed/BouncerShot
+      1 clip  |  vol 0.15
+      id 57f1a191-7e72-4c68-93f4-ad22984d49fd
+
+  Enemies/CrossRed/Death
+      1 clip  |  vol 0.264
+      id e76a053c-1f3b-4dc4-b38a-0e729ffce270
+
+  Enemies/CrossRed/Move
+      1 clip  |  vol 0.216
+      id 297cd099-a415-4cdf-aaf4-2bd8573db72c
+
+  Enemies/CrossRed/Shoot
+      EMPTY - SILENT  |  vol 0.5
+      id f935b9a6-a118-4b57-b3c8-77004876cae2
+
+  Enemies/CrossRed/ShootFast
+      EMPTY - SILENT  |  vol 0.5
+      id 786bfa33-8545-400d-b43e-5dbbbdd4eb97
+
+  Enemies/CrossRed/ShootSlow
+      EMPTY - SILENT  |  vol 0.5
+      id 9be7b134-cd59-4f09-b1bc-27d7e211afca
+
+  Enemies/CrossRed/Smoke
+      1 clip  |  vol 0.25
+      id 7207e21b-6cb9-4c5d-8fc5-ad1e4f6c0bbd
+
+  Enemies/CrossRed/ToroidShot
+      1 clip  |  vol 0.13
+      id e2bd4b1f-0d02-4025-97fc-f2afc28a14cf
+
+  Enemies/Fish/Shoot
+      1 clip  |  vol 0.12
+      id 5c7d883c-9dba-4e40-88b0-fa30042eff69
+
+  Enemies/Floater/Agro
+      1 clip  |  vol 0.45
+      id 2c6d4a7e-3a22-47a4-962e-b5a4fe6918a7
+
+  Enemies/Floater/BombDrop
+      1 clip  |  vol 0.14
+      id b4581ac5-0037-4e65-a6d8-76dc245acfd4
+
+  Enemies/Floater/Flight
+      EMPTY - SILENT  |  LOOPING  |  vol 0.3
+      id a766875e-3529-4c88-9499-672f753eccf5
+
+  Enemies/Floater/MissileExplosion
+      1 clip  |  vol 0.15  |  min gap 0.03s
+      id 9ac150a3-60a4-4af5-baba-8e563ad088a5
+
+  Enemies/Floater/MissileFlight
+      1 clip  |  LOOPING  |  vol 0.45
+      id 7169a07f-89bc-4676-a751-5f4cbc8a4a59
+
+  Enemies/Floater/MissileShoot
+      1 clip  |  vol 0.15  |  min gap 0.03s
+      id 779e5744-d065-4598-8d08-bb091af4ca6f
+
+  Enemies/Fly/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 1b41de3f-df14-4740-a36e-2781e5a511a2
+
+  Enemies/Fly/Death
+      1 clip  |  vol 0.12
+      id 68efbf39-c181-4a86-83bf-9af9c5cdef96
+
+  Enemies/Fly/FlightFast
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 8994014e-d563-4395-abb2-28832087d6bc
+
+  Enemies/Fly/FlightSlow
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 18fbba06-0d6f-4618-8781-6ae4ccd55b76
+
+  Enemies/Fly/Shoot
+      1 clip  |  vol 0.179
+      id d0ec4fec-65ac-4d82-bb81-9b990b1497d5
+
+  Enemies/FlyAlfa/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id ad112cde-a2c4-4c4f-bec1-a03c3759c1c1
+
+  Enemies/FlyAlfa/Death
+      EMPTY - SILENT  |  vol 0.5
+      id 5540866d-5ef6-49f2-91fd-d15b1824f840
+
+  Enemies/FlyAlfa/Explosion
+      1 clip  |  vol 0.148
+      id db99a0cb-81ee-48e2-a2a5-bca046158a45
+
+  Enemies/FlyAlfa/FlightFast
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id b35c0fd5-6253-4293-b14c-3b9abbacd043
+
+  Enemies/FlyAlfa/FlightSlow
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 56ea4ebb-c8ca-4e2b-b026-231190f40968
+
+  Enemies/FlyAlfa/Shoot
+      1 clip  |  vol 0.13
+      id 2df22916-fccb-4347-b9f9-226df005835b
+
+  Enemies/FlyDad/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id a20d9a02-54fe-4d89-89c2-ea9abb24fc9c
+
+  Enemies/FlyDad/Death
+      1 clip  |  vol 0.12
+      id b83b81d2-3b61-4901-90ae-bf23467a86ad
+
+  Enemies/FlyDad/FlightFast
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id d9093227-a7ea-4e75-85e4-430300a828a0
+
+  Enemies/FlyDad/FlightSlow
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 31bfbd75-b416-41c0-865b-33169a646180
+
+  Enemies/FlyDad/Shoot
+      1 clip  |  vol 0.113
+      id 4ecd2463-eebe-4f4d-a4ab-22240669e4a3
+
+  Enemies/FlyGrunt/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 58ed8426-caa9-4d0a-8d30-55294077af3f
+
+  Enemies/FlyGrunt/Death
+      1 clip  |  vol 0.1
+      id 7302855b-acef-4c7d-87b4-0e66e3ffb001
+
+  Enemies/FlyGrunt/FlightFast
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id e8ff11f6-b8fc-4941-abf0-bc73910f9289
+
+  Enemies/FlyGrunt/FlightSlow
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id a6826eb1-9041-454b-9388-5d7bb795740c
+
+  Enemies/FlyGrunt/Shoot
+      1 clip  |  vol 0.13
+      id 2c8cd0ab-86fb-4b59-9b30-8093713e51b4
+
+  Enemies/FlyLaser/Agro
+      1 clip  |  vol 0.927
+      id 45582f4e-1d14-480b-be7b-fbb829ad3af3
+
+  Enemies/FlyLaser/Death
+      1 clip  |  vol 0.24
+      id 590c14cc-bff9-43bd-bff1-8773693b8334
+
+  Enemies/FlyLaser/FlightFast
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 6c73f941-1d92-415f-be47-41fa1ddd51cf
+
+  Enemies/FlyLaser/FlightSlow
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 995f9bcd-ab1e-4de0-880f-b2f4d6f0bf76
+
+  Enemies/FlyLaser/Shoot
+      1 clip  |  LOOPING  |  vol 0.5
+      id 0827cfd9-7811-4e9b-9fd9-9285fa030d3c
+
+  Enemies/FlyLaser/Warmup
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 5e7e7def-a0f8-4bd6-92f6-e3b7c7c09de5
+
+  Enemies/FlyZapper/Agro
+      1 clip  |  vol 0.76
+      id 59d2cb19-6d0c-463c-a03d-85fc7349a845
+
+  Enemies/Hit
+      1 clip  |  vol 0.22
+      id ce93fadd-7bb2-4493-801d-7184299255a2
+      >> THE HITMARKER. One shared Sfx wired to onDamage on 83 damageable
+         prefabs - enemies, crates, boxes, fruit, the Dummy. NOT the player,
+         whose ships route onDamage to Ship.OnDamage instead. Changing it
+         cannot affect the sound of you being hurt.
+
+  Enemies/Maggot/Dash
+      1 clip  |  vol 0.246
+      id 94f52832-91a8-4e91-928d-fd7f403be920
+
+  Enemies/Maggot/Death
+      3 clips  |  vol 0.144
+      id ee13ffad-a57e-4aef-9b90-5796d6093ee5
+
+  Enemies/Maggot/Warmup
+      EMPTY - SILENT  |  vol 0.5
+      id d21d1cc6-5516-46f5-bae7-8debb0527396
+
+  Enemies/Officer/MineDeploy
+      1 clip  |  vol 0.227
+      id 388aa1c2-add5-493a-b8d4-8359580a91e9
+
+  Enemies/Officer/MissileShoot
+      1 clip  |  vol 0.317
+      id 2d3c003e-f585-424a-964f-7ddde8e186f3
+
+  Enemies/Raven/Agro
+      1 clip  |  vol 0.461  |  min gap 5s
+      id 96d955bb-1f4f-43a4-b492-b5bb6404fdea
+
+  Enemies/Raven/Death
+      1 clip  |  vol 0.343
+      id 2271cf95-ebcf-4270-a061-440f61bfed08
+
+  Enemies/Raven/Shoot
+      1 clip  |  vol 0.17
+      id c73cf6a7-83d4-438f-b220-9647475937ae
+
+  Enemies/TurretLaser/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id b707b345-5e54-4357-8781-61729bd8de09
+
+  Enemies/TurretLaser/Death
+      1 clip  |  vol 0.12
+      id 50c03f93-41a9-4196-b2fc-e445d72e3e69
+
+  Enemies/TurretLaser/Shoot
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 713e59ff-ae82-4575-82dc-7cc6af80a87d
+
+  Enemies/TurretLaser/Warmup
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id 1432a8d8-083f-48d2-8f7b-e78c3fd11d1b
+
+  Enemies/TurretSeeker/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 8f9aee7c-40cc-466a-ae78-bbf97502f8e2
+
+  Enemies/TurretSeeker/Explosion
+      1 clip  |  vol 0.267
+      id 3371b95e-271b-4941-9753-64fba57458ad
+
+  Enemies/TurretSeeker/MissileFlight
+      1 clip  |  LOOPING  |  vol 0.15
+      id 0e2add16-ff64-4b94-8234-5df2da1cc59c
+
+  Enemies/TurretSeeker/Shoot
+      1 clip  |  vol 0.317
+      id 37392856-2bbf-4cf9-96c9-27f82464e16a
+
+  Enemies/TurretSniper/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 44d096a6-2476-4b8e-8636-77bfb57fcaac
+
+  Enemies/TurretSniper/Shoot
+      1 clip  |  vol 0.244
+      id 7df27e5b-4899-4d94-8058-c3c1f7c325e8
+
+  Enemies/TurretWorm/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 63d95542-13f2-4818-8ecf-de8faa9d2418
+
+  Enemies/TurretWorm/Shoot
+      1 clip  |  vol 0.051
+      id 375ea8dc-1ca5-40ec-84ba-8e97b5a70fd7
+
+  Enemies/Zipper/Agro
+      EMPTY - SILENT  |  vol 0.5
+      id 6d307780-205a-4336-9987-0a5ea81ba3fe
+
+  Enemies/Zipper/Death
+      1 clip  |  vol 0.19
+      id 432f8286-e6fb-492b-a5ec-4fbf58c9abb1
+
+  Enemies/Zipper/Move
+      EMPTY - SILENT  |  vol 0.5
+      id 259379de-648d-4e64-8b27-5522c47c411b
+
+  Enemies/Zipper/Shoot
+      1 clip  |  vol 0.207
+      id fd06361c-d228-4b5b-96d8-7985d880b048
+
+==============================================================================
+ITEMS  (9)
+==============================================================================
+
+  Items/Crate/Death
+      1 clip  |  vol 0.12
+      id 084eb5e5-0d7b-418e-964b-e99ec8891c65
+
+  Items/ModuleDrop
+      1 clip  |  vol 0.284
+      id fcdbd066-4c5d-41b0-ba99-f688a67228af
+
+  Items/ModulePickup
+      1 clip  |  vol 0.369
+      id 9f8357b4-ea86-465b-a485-0e176f0dd467
+
+  Items/Resources/Caps
+      EMPTY - SILENT  |  vol 0.5
+      id 1992541a-fad8-41bc-9d7f-b4057ebf4eba
+
+  Items/Resources/Fuel
+      EMPTY - SILENT  |  vol 0.5
+      id ef740851-a1f4-48cd-9d51-7a0ad3fc0f78
+
+  Items/Resources/Health
+      EMPTY - SILENT  |  vol 0.5
+      id c2ee6a47-7790-4638-80a5-618a1d85e152
+
+  Items/Resources/Purple
+      EMPTY - SILENT  |  vol 0.5
+      id b028fbdf-cc74-4b9d-9013-eae7ba148911
+
+  Items/Resources/Stamina
+      EMPTY - SILENT  |  vol 0.5
+      id b549d4aa-77f3-47d0-adc5-74683593e0cf
+
+  Items/Resources/Tech
+      EMPTY - SILENT  |  vol 0.5
+      id e613b83f-963c-44e8-b063-ce33d388c84d
+
+==============================================================================
+OBJECTS  (2)
+==============================================================================
+
+  Objects/Instrument/Activate
+      1 clip  |  vol 0.316
+      id ab5c9e2b-ae41-45f8-b1c4-8bca775b767e
+
+  Objects/Instrument/Operate
+      1 clip  |  LOOPING  |  vol 0.258
+      id ebcf7b4a-f834-4216-b74c-48294911c34f
+
+==============================================================================
+PLANTS  (10)
+==============================================================================
+
+  Plants/Blue/Explosion
+      1 clip  |  vol 0.22
+      id de49c98a-2134-4269-8ef8-5a742c7bc123
+
+  Plants/Maracuja/Explosion
+      1 clip  |  vol 0.232
+      id ac7d1c06-51c9-47c4-a81b-816c43826c92
+
+  Plants/Nipple/Explosion
+      1 clip  |  vol 0.074
+      id 4350d0b6-4fcb-496d-b1fc-58d359eebe06
+
+  Plants/NippleCurved/Explosion
+      1 clip  |  vol 0.239
+      id f83b5ca3-8b3d-4e04-93ad-fc4729d19a55
+
+  Plants/Sage/Explosion
+      1 clip  |  vol 0.171
+      id 9c1a86e4-8140-423e-a41c-2e7f3c7fa91e
+
+  Plants/Tube/Explosion
+      1 clip  |  vol 0.161
+      id 23c3bbfa-3ca7-4b99-a4fe-8d3489b170ac
+
+  Plants/Vein/Explosion
+      1 clip  |  vol 0.267
+      id 36d3c3dc-9111-4fcb-b5b0-ade90e5ff70e
+
+  Plants/Vein/ExplosionSub
+      1 clip  |  vol 0.163
+      id b9a932fb-9a66-4678-b215-b496f56fe201
+
+  Plants/Wheat/Explosion
+      1 clip  |  vol 0.06
+      id b20f816a-8ca3-4250-b907-60be9426ccfb
+
+  Plants/White/Explosion
+      1 clip  |  vol 0.161
+      id c4677e07-6880-44fd-9ff7-acac8074b037
+
+==============================================================================
+RESOURCES  (7)
+==============================================================================
+
+  Resources/Caps
+      30 clips  |  vol 0.11
+      id ceaf36a7-d938-4b96-b34c-b0955a78c4b5
+
+  Resources/Fuel
+      30 clips  |  vol 0.09
+      id 4364f8b6-df91-4684-a815-013e7511e526
+      >> The pickup COLLECT ladder - 30 clips, played up the scale as you
+         chain pickups. Not the same as Cells/Fuel, which is the pop.
+
+  Resources/Health
+      11 clips  |  vol 0.11
+      id c1c2b4cc-fbb8-425f-b3bc-4770a93a0362
+
+  Resources/Money
+      30 clips  |  vol 0.1
+      id 11e8d93f-393e-4958-a468-863166ed6595
+
+  Resources/Purple
+      30 clips  |  vol 0.111
+      id 87538fd9-0e79-4549-88f3-8a1ad3e5ad26
+
+  Resources/Stamina
+      30 clips  |  vol 0.081
+      id d9e0ecb2-cd42-4c6d-8549-72e41a4eca8a
+
+  Resources/Tech
+      30 clips  |  vol 0.1
+      id 18b74c7b-4584-4db6-b2c6-b4236d7c6a02
+
+==============================================================================
+SHIP  (9)
+==============================================================================
+
+  Ship/Boost
+      1 clip  |  vol 0.4
+      id 6b220519-78e4-4619-98b5-3049a33193d1
+
+  Ship/BoostLoop
+      1 clip  |  LOOPING  |  vol 0.186
+      id 24c49a29-b5fa-4d5d-a5c3-a3ba21d5cada
+
+  Ship/Damage
+      1 clip  |  cancels previous  |  vol 0.3
+      id 032d95e0-2b1a-4957-85c3-20f20a7f965c
+
+  Ship/Death
+      1 clip  |  vol 0.288
+      id 544a8e3a-62de-4511-8bd8-d9ed0b7cb994
+
+  Ship/Dodge
+      1 clip  |  vol 0.2
+      id 167b7814-c25d-4e86-81a1-5fd9e68c432c
+
+  Ship/FuelCritical
+      1 clip  |  2D  |  vol 0.107
+      id ef27e7fb-265b-4c2a-82e8-cbcf1c217157
+
+  Ship/FuelLow
+      1 clip  |  2D  |  vol 0.104
+      id c434e086-b8e6-40d4-a907-f6489efbfb06
+
+  Ship/ModuleInstalled
+      1 clip  |  vol 0.5
+      id dad3cd33-cbd9-4d5e-ad69-a65413489d06
+
+  Ship/NoResourceToShoot
+      1 clip  |  vol 0.0675
+      id 6d443727-5d16-4d53-a01a-3f13abfe726d
+
+==============================================================================
+STATION  (11)
+==============================================================================
+
+  Station/Activate
+      1 clip  |  vol 0.284
+      id 49ef4196-fe3c-4333-a70e-73b3c90723fc
+
+  Station/Ambient
+      1 clip  |  LOOPING  |  vol 0.061
+      id c4a65442-0c73-4af3-aa94-c18fbe594eb7
+
+  Station/Close
+      1 clip  |  vol 0.521
+      id 0541035c-7ccc-4e4e-b0b5-01e7acf34ea9
+
+  Station/DistressSignal
+      1 clip  |  vol 0.301
+      id a88d2c34-059a-4b6c-ae15-1805148e762b
+
+  Station/GeneratorActivate
+      1 clip  |  vol 0.325
+      id 7c31ba79-b46f-47e0-9588-0819802d42c7
+
+  Station/ItemInTube
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5  |  min gap 0s
+      id 0da47a69-e613-4a6d-96bb-666eaa19f771
+
+  Station/Open
+      1 clip  |  vol 0.502
+      id 2521edcd-6c98-4087-8ece-8d35fec89856
+
+  Station/ShipArriving
+      1 clip  |  vol 0.4
+      id 375471c3-12c7-4079-ae54-775eae3c9716
+
+  Station/ShipGoing
+      1 clip  |  vol 0.4
+      id 26c6c0d7-5573-436b-9dc8-4efba54567af
+
+  Station/Smoke
+      1 clip  |  vol 0.501
+      id 1bb67c5d-6f84-46f1-b5ee-3937c2c3f42f
+
+  Station/Split
+      1 clip  |  vol 0.857
+      id 18a6f66f-a40c-43b5-8858-37c068b78e88
+
+==============================================================================
+UI  (22)
+==============================================================================
+
+  UI/Back
+      EMPTY - SILENT  |  2D  |  vol 0.5
+      id fb5cb66e-fac3-42d0-a056-b7581a396a03
+
+  UI/Grid/Close
+      1 clip  |  vol 0.16
+      id 1c8d3b86-8f3a-4f76-a085-a84c84e75de0
+
+  UI/Grid/ModulePlaced
+      1 clip  |  2D  |  vol 0.15
+      id bc72619a-25e0-44a6-be8e-c827434bf690
+
+  UI/Grid/ModuleSelected
+      1 clip  |  2D  |  vol 0.15
+      id 148da711-a24d-4450-a1c4-13b3fb4453d1
+
+  UI/Grid/NewShopItem
+      1 clip  |  vol 0.11
+      id 3db0d792-8ef8-4c1e-860a-1dc61e3f0ff5
+
+  UI/Grid/NoMoney
+      1 clip  |  2D  |  vol 0.189
+      id ef12f942-e79e-438e-ae79-61de6bdf63d7
+
+  UI/Grid/Open
+      1 clip  |  vol 0.107
+      id f746f29d-e843-4e94-aced-0f9367d320c2
+
+  UI/Grid/PlacementFailed
+      1 clip  |  2D  |  vol 0.1
+      id a411b982-8fc0-4809-91c0-a08377dd2d13
+
+  UI/Grid/PowerCorePlacement
+      1 clip  |  2D  |  vol 0.2
+      id 65f049d0-e884-496e-b007-52fc7064f1c7
+
+  UI/Grid/Purchase
+      1 clip  |  vol 0.25
+      id 353ae65f-dff6-4a2b-99e7-183447ce0efe
+
+  UI/Grid/Step
+      1 clip  |  2D  |  vol 0.335
+      id d963d403-6098-463e-b7c9-9498055089b7
+
+  UI/Instrument/ItemAppear
+      1 clip  |  vol 0.21
+      id 0d96da34-3e39-4b98-948f-2dc1c5fedcf4
+
+  UI/Instrument/Open
+      1 clip  |  vol 0.199
+      id efb367ae-142c-46ce-a4a3-b73aebb3dd4c
+
+  UI/Instrument/Select
+      1 clip  |  vol 0.121
+      id 7fc9da7d-436e-4791-ba64-ba76e318cb84
+
+  UI/ItemWheel/Open
+      1 clip  |  vol 0.128
+      id b04e8970-4c53-4db5-a64e-56680d3bc265
+
+  UI/Log/NewMessage
+      1 clip  |  2D  |  vol 0.075
+      id bc105ff6-9358-4d70-b08a-6768fe016417
+
+  UI/Map/Close
+      1 clip  |  vol 0.131
+      id 12b6e179-39d2-4d1f-8363-8f76f4ee4222
+
+  UI/Map/NewIcon
+      1 clip  |  2D  |  vol 0.377
+      id c54eca89-e32d-4b4e-9729-f88abfb2eba7
+
+  UI/Map/Open
+      1 clip  |  vol 0.225
+      id 81e33861-46fb-49f3-ace9-4f67c87e3483
+
+  UI/Map/Scan
+      1 clip  |  vol 0.174
+      id 83befe04-e771-40d4-8fff-3b11baa654ce
+
+  UI/OK
+      1 clip  |  2D  |  vol 0.208
+      id 8bb9eb08-fcbf-4d84-852d-042d598e16c6
+
+  UI/Step
+      1 clip  |  2D  |  vol 0.2
+      id 93d7aac3-4010-4196-a2f8-d11a609506d0
+
+==============================================================================
+WEAPONS  (44)
+==============================================================================
+
+  Weapons/Blades/Shoot
+      1 clip  |  vol 0.1
+      id 9eb980c5-e062-4bd2-8542-ab006384856f
+
+  Weapons/Bolt/Shoot
+      1 clip  |  vol 0.5
+      id d39fd50f-9e3e-41ef-9ccd-f00c2282dbb1
+
+  Weapons/ClusterCube/Explosion
+      1 clip  |  vol 0.2
+      id f3e65d9d-bb1d-491b-a6c7-c2fdafd8d72d
+
+  Weapons/ClusterCube/ExplosionSub
+      1 clip  |  vol 0.235  |  min gap 0.03s
+      id b119c6c0-5f18-435e-b21c-5e119bc474e9
+
+  Weapons/ClusterCube/Shoot
+      1 clip  |  vol 0.097
+      id 2c6ed77c-5e6e-450a-a194-27cc4b183848
+
+  Weapons/Dandelion/Explosion
+      1 clip  |  vol 0.125
+      id eb979de6-1783-4ca5-814c-12a38378c82c
+
+  Weapons/Dandelion/ExplosionSub
+      1 clip  |  vol 0.088
+      id 638cc7d0-92d1-4390-8f0a-1da630817a45
+
+  Weapons/Dandelion/Shoot
+      1 clip  |  vol 0.0855
+      id 1704701a-7758-44cf-a983-096a84cd915f
+
+  Weapons/Dart/Explosion
+      1 clip  |  vol 0.11
+      id 18955dc2-1afa-445a-896a-25039baec11d
+
+  Weapons/Dart/Flight
+      1 clip  |  LOOPING  |  vol 0.25
+      id af40ba96-6b18-46b3-9d3a-42093c6666fd
+
+  Weapons/Dart/Shoot
+      1 clip  |  vol 0.0945
+      id 3da1c704-cb77-4f4a-9b07-91849362b2bd
+
+  Weapons/Derbis/Impact
+      EMPTY - SILENT  |  vol 0.5
+      id 07b1d30a-30a0-4df4-9d7c-fd494f94f47b
+
+  Weapons/Derbis/Shoot
+      1 clip  |  vol 0.0855
+      id 819a0502-ee97-4cae-ac1b-9b1f5a25e2b3
+
+  Weapons/DisckGun/Impact
+      EMPTY - SILENT  |  vol 0.5
+      id 9982d227-680a-4b54-8f7f-59b18c412750
+
+  Weapons/DisckGun/Shoot
+      1 clip  |  vol 0.1
+      id dbbf6fed-8014-4764-b46e-2b912b380a21
+
+  Weapons/FireMissile/Explosion
+      1 clip  |  vol 0.117
+      id 92588224-2246-43fd-9d2c-83ce8568ff2a
+
+  Weapons/FireMissile/Flight
+      1 clip  |  LOOPING  |  vol 0.094
+      id 6f6efb08-e27b-4645-97e7-1aab4b8c8613
+
+  Weapons/FireMissile/Shoot
+      1 clip  |  vol 0.117
+      id 31f3bccd-c5a2-460f-b6a7-66b608749a60
+
+  Weapons/Flack/Explosion
+      1 clip  |  vol 0.2  |  min gap 0.03s
+      id 6d3022f0-9b78-4030-b8a7-ac9468466f59
+
+  Weapons/Flame/Release
+      1 clip  |  vol 0.1
+      id 0b773c09-2d78-4f04-b05b-e3b45f967e3e
+
+  Weapons/Flame/Shoot
+      1 clip  |  LOOPING  |  vol 0.125
+      id e8fc5ecf-1133-4e09-bfd1-6e72fff1076c
+
+  Weapons/Flame/Start
+      1 clip  |  vol 0.06
+      id c63c92e3-a22d-44bd-974a-b3b3ed1ed2b5
+
+  Weapons/Laser/Release
+      1 clip  |  vol 0.15
+      id 32d4f0c6-aff3-4bf1-8cf3-39eef78189b4
+
+  Weapons/Laser/Shoot
+      1 clip  |  LOOPING  |  vol 0.11
+      id b64bac2d-d394-4d46-a5a3-343333b65a51
+
+  Weapons/Laser/Start
+      1 clip  |  vol 0.085
+      id 386a8a3a-0fc7-4909-948f-4488c43ae2db
+
+  Weapons/Laser/Warmup
+      EMPTY - SILENT  |  LOOPING  |  vol 0.5
+      id ea8fb19f-4770-4b84-b478-95d30b805d6e
+
+  Weapons/Marbles/Explosion
+      1 clip  |  vol 0.15
+      id 42200f6d-88ea-4e34-9bec-aa5c019582c9
+
+  Weapons/Marbles/Shoot
+      1 clip  |  vol 0.125
+      id b4f0a35e-3bd1-458f-a672-c0aed298c6eb
+
+  Weapons/Popper/Impact
+      EMPTY - SILENT  |  vol 0.5
+      id 561cb8ca-d1e1-4b0c-adce-a8f46ea2a12e
+
+  Weapons/Popper/Reload
+      1 clip  |  vol 0.07  |  min gap 0.25s
+      id c3120d6d-d216-4f5b-b6ad-36229edbc203
+
+  Weapons/Popper/Shoot
+      1 clip  |  cancels previous  |  vol 0.637
+      id 891a1b2e-39c4-4a79-bcc9-6b89523a429d
+
+  Weapons/PurpleMissile/Explosion
+      1 clip  |  vol 0.15
+      id 324b8366-2b3b-4f72-8d7a-22989ff616c3
+
+  Weapons/PurpleMissile/Flight
+      1 clip  |  LOOPING  |  vol 0.4
+      id d5edf572-4de0-4864-a294-da7ad88a0c6a
+
+  Weapons/PurpleMissile/Shoot
+      1 clip  |  vol 0.15
+      id b47fbfd7-e9a7-4411-956f-45fd83aac759
+
+  Weapons/Shard/Explosion
+      1 clip  |  vol 0.15
+      id a2c95451-66f1-488d-9114-4001a423f617
+
+  Weapons/Shard/Shoot
+      1 clip  |  vol 0.15
+      id 34f78c2e-c4ae-40d2-80d4-2403e6c16f13
+
+  Weapons/Shotgun/Impact
+      EMPTY - SILENT  |  vol 0.5
+      id 6cf6faa3-6ac6-4850-9a05-360209b33f5b
+
+  Weapons/Shotgun/Shoot
+      1 clip  |  vol 0.15
+      id 3c33af41-a69f-48ef-bfad-4dfc832c3ed0
+
+  Weapons/Toroid/BeamLoop
+      1 clip  |  LOOPING  |  vol 0.1
+      id 0fbda071-b485-4d3f-9150-cff7b33b4592
+
+  Weapons/Toroid/Loop
+      1 clip  |  LOOPING  |  vol 0.05
+      id a8277b3d-4d4f-4eba-92bd-b8408180b4e2
+
+  Weapons/Toroid/LoopEnd
+      1 clip  |  vol 0.125
+      id 59d7461c-5e59-4372-a9fd-b04516ec95a9
+
+  Weapons/Toroid/Shoot
+      1 clip  |  vol 0.125
+      id 2006c890-c2b5-460d-93fa-ea8ff10dc66d
+
+  Weapons/Worm/Impact
+      EMPTY - SILENT  |  vol 0.5
+      id d9c44e9e-9e77-43ee-afdf-878782af61ad
+
+  Weapons/Worm/Shoot
+      1 clip  |  vol 0.1
+      id 0a935746-47fa-4289-8e15-85cdc9654830
+
+==============================================================================
+THE EMPTY ONES, ALL TOGETHER
+==============================================================================
+
+Declared in the database, no clip. These will be silent:
+
+  Actives/CombatDrone/Death
+  Actives/CombatDrone/Shoot
+  Actives/PhantomDrone/Death
+  Actives/PhantomDrone/Shoot
+  Actives/PurpleDrone/Death
+  Actives/PurpleDrone/RocketExplosion
+  Actives/PurpleDrone/RocketFlight
+  Actives/TearDrop/Explosion
+  Actives/Vial/Explosion
+  Actives/Vial/Shoot
+  Enemies/Cross/ShootEvent
+  Enemies/CrossAlpha/ShootEvent
+  Enemies/CrossJock/Move
+  Enemies/CrossJock/ShootEvent
+  Enemies/CrossLaser/Agro
+  Enemies/CrossLaser/Death
+  Enemies/CrossLaser/Move
+  Enemies/CrossLaser/Shoot
+  Enemies/CrossLaser/Warmup
+  Enemies/CrossPin/Death
+  Enemies/CrossPin/Warmup
+  Enemies/CrossQueen/Agro
+  Enemies/CrossQueen/Move
+  Enemies/CrossQueen/PanelDeath
+  Enemies/CrossQueen/ShootLaser
+  Enemies/CrossQueen/SpawnMinion
+  Enemies/CrossQueen/WarmupLaser
+  Enemies/CrossRed/Shoot
+  Enemies/CrossRed/ShootFast
+  Enemies/CrossRed/ShootSlow
+  Enemies/Floater/Flight
+  Enemies/Fly/Agro
+  Enemies/Fly/FlightFast
+  Enemies/Fly/FlightSlow
+  Enemies/FlyAlfa/Agro
+  Enemies/FlyAlfa/Death
+  Enemies/FlyAlfa/FlightFast
+  Enemies/FlyAlfa/FlightSlow
+  Enemies/FlyDad/Agro
+  Enemies/FlyDad/FlightFast
+  Enemies/FlyDad/FlightSlow
+  Enemies/FlyGrunt/Agro
+  Enemies/FlyGrunt/FlightFast
+  Enemies/FlyGrunt/FlightSlow
+  Enemies/FlyLaser/FlightFast
+  Enemies/FlyLaser/FlightSlow
+  Enemies/FlyLaser/Warmup
+  Enemies/Maggot/Warmup
+  Enemies/TurretLaser/Agro
+  Enemies/TurretLaser/Shoot
+  Enemies/TurretLaser/Warmup
+  Enemies/TurretSeeker/Agro
+  Enemies/TurretSniper/Agro
+  Enemies/TurretWorm/Agro
+  Enemies/Zipper/Agro
+  Enemies/Zipper/Move
+  Items/Resources/Caps
+  Items/Resources/Fuel
+  Items/Resources/Health
+  Items/Resources/Purple
+  Items/Resources/Stamina
+  Items/Resources/Tech
+  Station/ItemInTube
+  UI/Back
+  Weapons/Derbis/Impact
+  Weapons/DisckGun/Impact
+  Weapons/Laser/Warmup
+  Weapons/Popper/Impact
+  Weapons/Shotgun/Impact
+  Weapons/Worm/Impact
+

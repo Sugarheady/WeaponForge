@@ -1,0 +1,149 @@
+======================================================================
+ MODULE ICONS - every icon a Forge module can use
+======================================================================
+
+Both mods share one icon namespace, so this list covers Weapon Forge
+module "icon" and Module Forge "icon" alike. Type the NAME:
+
+    "module": { "icon": "HUD_GridTiles_13" }      Weapon Forge
+    "icon": "HUD_GridTiles_13"                    Module Forge
+
+There are 81: 45 HUD_GridTiles and 36 HUD_Modules.
+
+HOW TO SEE THEM. The number tells you nothing about the picture, so
+open "Module Icons.html" next to this file - it draws all 81 at size
+with their names, filters by name or by which stock module uses them,
+and copies a name when you click it. This text list is for reference
+once you know what you are looking for.
+
+SIZE. Stock icons are 24x24 (a few 22x22) at 40 pixels per unit - NOT
+the 20 the rest of the game's art uses. Your own PNG can be any size;
+it is rebuilt to the stock footprint for you. Draw it SQUARE: the
+module card stretches art to a square without preserving aspect,
+while the pickup lying on the ground keeps its shape.
+
+COLOUR. An icon is TINTED by the module's colour in both places it is
+drawn, so draw it white or grey and let "color" do the work - or set
+the colour to "#ffffff" to see the art's own colours.
+
+A NAME CLASH GOES TO THE GAME. If one of your own sprites shares a
+name with a game sprite, the game's wins and the log says so. Rename
+yours.
+
+PICKING A FRAME. "HUD_GridTiles_4:2" takes frame 2 of a numbered run.
+An icon cannot animate - nothing ever ticks it - so the suffix is a
+frame PICKER here rather than a flipbook.
+
+
+----------------------------------------------------------------------
+ IN USE BY A STOCK MODULE - 41 icons
+----------------------------------------------------------------------
+
+These carry meaning a player already reads: whatever the stock module
+does is what the icon says. Borrow it deliberately.
+
+  HUD_GridTiles_0        WORM
+  HUD_GridTiles_1        BOLT
+  HUD_GridTiles_2        DISC GUN
+  HUD_GridTiles_3        SHARD
+  HUD_GridTiles_4        + FIRERATE
+  HUD_GridTiles_5        '- SPREAD'
+  HUD_GridTiles_7        SHOTGUN
+  HUD_GridTiles_8        LASER
+  HUD_GridTiles_9        MARBLES
+  HUD_GridTiles_10       EXTRA PROJECTILE
+  HUD_GridTiles_11       + RANGE
+  HUD_GridTiles_12       CAPS UP, ELECTRON UP, FUEL UP, GEL UP, HEALTH UP, STAMINA UP, TECH UP
+  HUD_GridTiles_13       POPPER
+  HUD_GridTiles_14       SHIP
+  HUD_GridTiles_15       + PROJECTILE SPEED
+  HUD_GridTiles_16       CLUSTER CUBE
+  HUD_GridTiles_17       CAPS REGEN, GEL REGEN, HEALTH REGEN, STAMINA REGEN, TECH REGEN
+  HUD_GridTiles_18       POWER CORE
+  HUD_GridTiles_19       COMBAT DRONE, ELECTRIC DRONE, MISILLE DRONE, SUICIDE DRONE
+  HUD_GridTiles_20       BOOSTER CORE
+  HUD_GridTiles_21       TEARDROP
+  HUD_GridTiles_22       FIELD GENERATOR
+  HUD_GridTiles_24       DEBRIS, FLAME
+  HUD_GridTiles_25       AIR MINE, IGNITER
+  HUD_GridTiles_26       PHANTOM DRONE
+  HUD_GridTiles_27       DANDELION
+  HUD_GridTiles_28       VIAL
+  HUD_GridTiles_29       DART, Electron Missile, FIRE MISSILE, GEL MISSILE
+  HUD_GridTiles_30       TOROID
+  HUD_GridTiles_31       ZAPPER
+  HUD_GridTiles_32       CIRCUIT
+  HUD_GridTiles_33       BLADES
+  HUD_GridTiles_34       CAPS SHIELD, ELECTRON SHIELD, GEL SHIELD, TECH SHIELD
+  HUD_GridTiles_35       MISSILE SURGE
+  HUD_GridTiles_36       LOON
+  HUD_GridTiles_37       CAN
+  HUD_GridTiles_38       FLACK
+  HUD_GridTiles_39       ADD EXPLOSION, ADD FIRE EXPLOSION, ADD GEL EXPLOSION, ADD TECH EXPLOSION
+  HUD_GridTiles_40       ADD BURN
+  HUD_GridTiles_41       Add Spark
+  HUD_Modules_17         +1 BURST
+
+
+----------------------------------------------------------------------
+ NOT USED BY ANY STOCK MODULE - 40 icons
+----------------------------------------------------------------------
+
+Real icons no stock module claims, so they carry no existing meaning.
+Good for something new. Open the HTML to see what they depict.
+
+  HUD_GridTiles_6
+  HUD_GridTiles_23
+  HUD_GridTiles_42
+  HUD_GridTiles_43
+  HUD_GridTiles_44
+  HUD_Modules_0
+  HUD_Modules_1
+  HUD_Modules_2
+  HUD_Modules_3
+  HUD_Modules_4
+  HUD_Modules_5
+  HUD_Modules_6
+  HUD_Modules_7
+  HUD_Modules_8
+  HUD_Modules_9
+  HUD_Modules_10
+  HUD_Modules_11
+  HUD_Modules_12
+  HUD_Modules_13
+  HUD_Modules_14
+  HUD_Modules_15
+  HUD_Modules_16
+  HUD_Modules_18
+  HUD_Modules_19
+  HUD_Modules_20
+  HUD_Modules_21
+  HUD_Modules_22
+  HUD_Modules_23
+  HUD_Modules_24
+  HUD_Modules_25
+  HUD_Modules_26
+  HUD_Modules_27
+  HUD_Modules_28
+  HUD_Modules_29
+  HUD_Modules_30
+  HUD_Modules_31
+  HUD_Modules_32
+  HUD_Modules_33
+  HUD_Modules_34
+  HUD_Modules_35
+
+
+----------------------------------------------------------------------
+ WHERE THIS CAME FROM
+----------------------------------------------------------------------
+
+Generated by reading the game's own assets: every HUD_GridTiles_* and
+HUD_Modules_* sprite, and every module asset referencing one via its
+"icon" field. The mapping above is the game's, not a guess, and it is
+regenerable when the game updates.
+
+The icon ART is deliberately NOT included, here or in the HTML - it
+belongs to the game and these repos are public. The HTML draws it out
+of your own copy of the atlas instead; it tells you which file.
+

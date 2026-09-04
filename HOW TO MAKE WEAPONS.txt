@@ -94,6 +94,17 @@ weapon is skipped and the reason is written to:
      <game folder>\BepInEx\LogOutput.log
 Search the log for "WeaponForge".
 
+WARNINGS REPEAT ONCE PER RUN, not once per session. Most warnings are
+said once rather than once per shot, or a flamethrower would write
+thousands of identical lines. Until 2026-09-03 that "once" meant once
+per SESSION, so if you died and started again the warning you were
+looking for had already been spent - the run where you go hunting for a
+log line was exactly the run that could not produce it. Every run entry
+now clears those gates, whether you start a new run or continue a save.
+So if you are testing several runs without restarting the game, each run
+reports its own problems, and a repeated line across two runs means the
+problem is still there rather than being an echo of the first one.
+
 ----------------------------------------------------------------
  3. FILE STRUCTURE
 ----------------------------------------------------------------
@@ -1225,6 +1236,25 @@ a proper gadget on the 1/2/3 keys, with a real minion CAP.
   says so, and lists what you do have). "Boomerang" above is a preset in
   Weapon Builder.html, so save that one too and this works as written.
 
+  AND THE DRONE HAS TO BE ABLE TO PAY FOR THAT GUN. A carried weapon
+  spends its own "cost" out of the DRONE'S tank, not yours - so a weapon
+  costing White on a drone with no White regen fires until its tank runs
+  dry and then goes completely QUIET. The game checks the tank before
+  every shot and simply does not fire: no log, no sound, no tell. A drone
+  that shoots for four seconds and then sits there looks exactly like a
+  broken feature.
+
+  Three ways out, and the last is usually what you want:
+
+      "minion": { "regen": { "White": 2 } }      refill it
+      "minion": { "resources": { "White": 40 } } a bigger tank
+      the weapon's own "cost": 0                 it fires for free
+
+  A summoned drone paying your resource prices is rarely the intent - it
+  already cost you a drone. The mod warns when it spots this at equip
+  time (it cannot know earlier: a carried weapon is resolved on the first
+  spawn, and a minion's tanks are rebuilt from module effects).
+
 THE FIVE TEMPLATES
 ------------------
 
@@ -1383,6 +1413,32 @@ no state sprites to protect - and those fall back to a name filter.
 It survives being shot, too: the damage flash swaps the sprite's
 MATERIAL and never touches its colour.
 
+THE MOVEMENT TRAIL - "trailColor"
+
+The little streak a unit leaves as it MOVES. The stock drone gadgets
+colour theirs per module: Caps orange, Electron cyan, Purple and
+Phantom violet, Suicide red.
+
+    "minion": { "color": "#9ad14a", "trailColor": "match" }
+
+Takes a colour like "color" does, or the word "match" to follow
+"minion.color" - which is usually what you want for a themed drone. It
+is a SEPARATE key from "color" on purpose, so a red drone with a cyan
+trail is possible. Left alone unless you set it.
+
+WHY IT NEEDED ITS OWN KEY, rather than "color" covering it: the body
+recolour walks SPRITE RENDERERS, and every trail in this game is a
+PARTICLE SYSTEM. The streak was excluded by TYPE, not by location - it
+sits inside the same "Visual" subtree the recolour already scopes to.
+
+The trail is found BY SHAPE, NOT BY NAME: it is the one particle system
+on a unit that emits by DISTANCE TRAVELLED rather than over time, which
+is this game's single trail idiom (there is no TrailRenderer anywhere
+in PUNK). So it works on any unit without a lookup table, and leaves
+the engine fire and hover puffs alone. Every stock unit has exactly one
+- Larva, Maggot, Cross and all five drones included - and the log says
+so if a prefab has none.
+
 SCALE is 0.1 to 8.
 
   "scaleMode": "full"    (DEFAULT) scales the root, so the collider goes
@@ -1419,12 +1475,26 @@ Presets: "Combat Drone", "Drone Swarm", "Rogue Drone".
 Take one of the five minion-spawner WEAPON templates, put it in a
 weapon slot, and you get a gun that prints units on left click.
 
+NOTE THE FOUR "weapon" VALUES IN THE EXAMPLE BELOW. They are not
+decoration - see "THE TEMPLATES ARE BOSS ATTACKS" further down. The
+mod now supplies all four for you when a file omits them, but a file
+that states them is a file you can read.
+
+AND DO NOT USE "Unit Cross Small Caps" AS A MINION. This document used
+to. Despite "Small" it is a 173-GameObject unit carrying TWENTY fixed
+turrets; six of them froze the game and read as a room full of bosses.
+Enemy_Larva, Enemy_Cross and the Enemy_Fly drones are actual swarm
+material. The log warns for a heavy prefab now.
+
   {
     "name": "SwarmGun",
     "template": "Weapon Minion CrossSmallCaps",
     "slot": "primary",
     "weapon": {
-      "minionPrefab": "Unit Cross Small Caps",
+      "minionPrefab": "Enemy_Larva",
+      "warmupTime": 0,
+      "burstSize": 1,
+      "fireRate": 2,
       "projectileSpeed": 12,
       "minionFacesShootDirection": true
     },
@@ -1809,6 +1879,50 @@ resource. Refused with a warning on the one selectable prefab that ships
 no shield visual, because the game instantiates that without checking
 and would throw inside its own code on the first recalculation.
 
+SEEING IT - WHY A MINION SHIELD HAS ALWAYS BEEN INVISIBLE
+
+A minion shield absorbs damage perfectly and draws nothing, for TWO
+independent reasons. Both look identical in game, which is what made
+this confusing rather than merely missing.
+
+1. RADIUS. The game sizes the bubble from the prefab's
+   "firstShieldSize", and that is 0 on 70 of the 84 prefabs that can
+   carry a shield. A radius-0 bubble is invisible, and absorption never
+   looks at radius. Only the ships and the flying drones (4), Fly Zapper
+   (8) and Turret_Seeker (15) ship a real one.
+
+2. COLOUR. Four of the eight resources ship a shield colour of
+   transparent black: WHITE, FUEL, HEALTH and MONEY. That is deliberate,
+   not broken - the game only has shield modules for CAPS, ELECTRON,
+   PURPLE and TECH, so the other four were never given a colour. A White
+   shield is invisible on the player's ship too.
+
+Three keys, one per half:
+
+    "shield": { "resource": "Resource White", "effectiveness": 2,
+                "show": true, "size": 4, "color": "#7fd8ff" }
+
+  show   OFF BY DEFAULT, meaning: leave this out and nothing changes at
+         all - the prefab keeps whatever it already does, so no weapon
+         you have already built changes appearance. true gives the
+         bubble a radius on the prefabs that ship 0. false is a real off
+         switch for the few that already show one.
+  size   how big when "show" is true. 4 is what the ships and drones
+         use. It scales with the minion, and a second shield on the same
+         unit is automatically drawn one unit larger.
+  color  paints the bubble, which is what makes a White shield visible.
+
+The build log WARNS when the resource has no colour of its own, rather
+than letting you hunt it: that failure mode is a shield that works
+perfectly and cannot be seen, which reads as broken art.
+
+"color" has to be a live override rather than a one-time write, because
+Shield.Update re-reads the colour from the shared resource asset EVERY
+FRAME. Painting the resource itself would repaint every shield of that
+type in the game, including the player's, so the minion's own bubble is
+painted instead - the same "publish, do not overwrite" rule as unit
+tints and the damage stack.
+
 LIFETIME, AND THE PREFABS THAT WERE ALREADY ON A CLOCK
 ------------------------------------------------------
 
@@ -1864,18 +1978,45 @@ in this game rather than a per-weapon value, so it is not settable.
 "burn" raises how LONG a target burns, not how hard - damage per tick
 belongs to whatever is on fire.
 
-EXPLOSIONS WILL HURT YOU
-------------------------
+EXPLOSIONS USED TO ALWAYS HURT YOU
+----------------------------------
 
-    "hurtsOwner": false,
-    "hurtsAllies": false
+    "hurtsOwner": false,     <- now the DEFAULT
+    "hurtsAllies": false     <- now the DEFAULT
 
-Both default to TRUE, because that is simply what the engine does.
-Explosions in this game have NO OWNER FILTER ANYWHERE: the explosion
-walks every collider in radius and asks each one to take the damage,
-with no faction or owner check at any point. Your ship's hull qualifies
-like anything else. And the AI parks a minion within a few units of what
-it is shooting.
+Both of these DEFAULTED TO TRUE until 2026-09-02, on the reasoning that
+matching the engine is easier to reason about than quietly differing
+from it. That reasoning did not survive being tested.
+
+Explosions in this game have NO OWNER FILTER ANYWHERE: the blast walks
+every collider in radius and asks each one to take the damage, with no
+faction or owner check at any point. Your ship's hull qualifies like
+anything else, and the AI parks a minion within a few units of what it
+is shooting.
+
+AND THE OPT-OUT COULD NOT WORK ON A DEATH EXPLOSION, which is exactly
+the case that matters - a kamikaze's whole attack is dying. The filter
+starts by asking who owns the blast and gives up if nobody does, and
+nobody ever does:
+
+  * the game spawns a death prefab with a bare instantiate and threads
+    no owner through it at all;
+  * the component that prefab carries builds its blast out of its own
+    fields and NEVER COPIES ITS OWN OWNER PROPERTY INTO IT. That
+    property is public, settable, and read by nothing in the game.
+
+So all thirteen prefabs that use it explode ownerless, and
+"hurtsOwner": false parsed, logged and filtered nothing. That is fixed
+now - the owner is attached as the minion dies - which is what makes
+these two switches real for the first time.
+
+Both therefore default to FALSE now: your own minions do not blow you
+or each other up. Nothing can have been relying on the old opt-out,
+because the old opt-out did nothing.
+
+Set either to TRUE for the risky version. That is a real design - a
+swarm you have to keep clear of - and it is now genuinely selectable
+rather than the only thing available. The build log warns when you do.
 
 Turning an explosion on also moves its burn OFF contact and INTO the
 blast, so an incendiary minion sets you alight as well.
@@ -1883,6 +2024,38 @@ blast, so an incendiary minion sets you alight as well.
 Setting either to false switches on a filter of the mod's own, covering
 damage and burn together. "hurtsAllies" is what stops an explosive swarm
 chain-detonating itself.
+
+AND THEY WILL SHOVE YOU, WHICH IS A DIFFERENT PROBLEM
+-----------------------------------------------------
+
+    "solidToOwner": false
+
+Defaults to TRUE - your minions collide with the ship, exactly as they do
+in the unmodded game.
+
+THIS IS NOT A DAMAGE SETTING. The two above stop the blast, and the ram
+guard stops the headbutt, but a fast swarm pushes the ship around by pure
+physics: no damage is dealt, so no damage flag can reach it. A dozen
+Larvae at "speed": 220 will move you across the room.
+
+Set it to false and the minion's colliders stop colliding with the
+ship's, and nothing else changes. They still block enemies, still hit
+terrain, still take your shots, and their own eyes still see you (which
+they need to - that is how a friendly one decides you are a friend).
+
+It works on a spawner WEAPON and on a drone GADGET, and on a gadget it
+matters more: a drone hovers around you by design, so it is the one kind
+of minion permanently in your way.
+
+Why it is done this way, in case it ever needs changing: the obvious fix
+is to move minions to a layer the Player layer does not collide with, and
+that is the wrong tool in this game. A unit's layer decides who its
+Vision can see, what faction its bullets are, and who those bullets can
+reach - so moving a minion off Entities to dodge the ship would silently
+change three other things. Physics2D.IgnoreCollision suppresses exactly
+one pair of colliders and touches nothing else. It also does not affect
+QUERIES, which is why targeting, the ram's cast and your own shots all
+still work on an ignored pair.
 
 WHAT SURVIVES A SAVE AND RELOAD
 -------------------------------
@@ -1974,6 +2147,27 @@ So everything goes on the RIGIDBODY, which nothing snapshots:
 All four are stored on the way in and written back exactly on the way
 out, and every re-application recomputes from the stored original rather
 than compounding - so a hundred hits cannot drift the numbers.
+
+A FIFTH SWITCH: "shots"
+-----------------------
+
+  "slow": { "shots": true }        default TRUE
+
+Shots a slowed enemy FIRES come out slow too. "fireRate" above already
+halves how OFTEN it shoots; this is how fast the bullets travel, which
+is the half you can see and dodge. Separate switches because they are
+separately useful - a sniper firing at its normal cadence whose shots
+crawl is a different thing from one firing half as often at full speed.
+
+APPLIED AS THE SHOT IS FIRED, not to shots already in the air, and that
+is a deliberate line rather than a limitation. A bullet's speed, its
+heading and the range at which it despawns are ALL derived at the moment
+it leaves the barrel. Scaling it there keeps all three consistent.
+Reaching into a bullet mid-flight instead gets the range wrong (the
+despawn timer was computed from the original speed, so it would die well
+short for no visible reason) and gets undone on the next physics step by
+any weapon using "rangeData".slowDown - which the most-copied template
+in this mod ships ON.
 
 This is also the game's own idiom: the one place it slows something down
 is DragCellBehaviourTarget, which multiplies velocity in FixedUpdate.
@@ -2119,6 +2313,9 @@ HEAT BUILD AND COOL
                  hold-to-fire weapon, where "per shot" is a fiction
   coolPerSecond  how fast it falls once cooling starts
   coolDelay      seconds after the last shot before cooling begins
+  enabled        the off switch every block has. false parks a tuned
+                 heat setup in the file without running it, which beats
+                 deleting the block and losing the numbers.
 
 coolDelay is the number that makes trigger discipline a skill. At 0,
 tapping is nearly free and the mechanic barely registers.
@@ -2202,6 +2399,199 @@ step ran unconditionally. It now only runs when something is actually
 being painted over the top.
 
 
+OVERHEAT PLUS CHARGE - THE ONE COMBINATION THAT BITES
+-----------------------------------------------------
+
+A "charge" block in release mode with "holdFire" on (the default) means
+holding the trigger BUILDS a shot instead of firing one. Overheat is a
+SUSTAINED-FIRE mechanic. Put those together and the weapon can only ever
+gain one "perShot" of heat per release.
+
+It used to be worse than that. The game calls Shoot() at the full fire
+rate the whole time you hold, the charge block suppresses each one, and
+heat was being charged for shots that never happened - so a weapon at
+fireRate 8 with perShot 8 took 64 heat a SECOND while firing nothing,
+overheated in a second and a half, vented, and cancelled the charge it
+was building. Hold: nothing. Release: nothing. Every value in the file
+correct and no line in the log. That is fixed: a suppressed shot no
+longer charges heat.
+
+For a gun that overheats while you lean on it, either
+
+  "charge": { "holdFire": false }   fires normally AND gives you a
+                                    charged shot on release, which is
+                                    also what makes "ventShot" feel
+                                    like a reward, or
+  "overheat": { "perSecond": N }    holding heats it up on its own.
+
+The builder warns when it sees the combination.
+
+THE HEAT TINT TAKES A STRENGTH NOW
+
+  "overheat": { "tintMuzzle": true, "hotColor": "#FF5A29",
+                "tintStrength": 0.5 }
+
+0 to 1, the same scale and the same key name as every other tint in
+the mod - 1 is the full colour at maximum heat, which is what this has
+always done, so nothing already written changes. A strength with
+"tintMuzzle": false is a number that cannot do anything and the log
+says so.
+
+Preset: "Plasma Repeater" (holdFire false, and it says why).
+
+
+----------------------------------------------------------------
+ 4j2. SPIN-UP - SUSTAINED FIRE REWARDS YOU
+----------------------------------------------------------------
+
+The mirror of overheat. Hold the trigger and the gun gets BETTER:
+quicker, more accurate, and whatever else you switch on. Let go and it
+unwinds.
+
+  "spinUp": {
+    "spinUpTime": 2,
+    "spinDownTime": 1.2,
+    "grace": 0.4,
+    "ramp": "click",
+    "fireRate": 2.6
+  }
+
+That is a gun that takes two seconds of steady fire to reach two and a
+half times its rate, unwinds over 1.2 seconds, and forgives a 0.4
+second pause.
+
+It is authored as TIMES rather than as a meter, unlike overheat. Heat
+needs a meter because the interesting question is where the ceiling
+is; spin-up has no ceiling to find - it is at 0 or on its way to 1.
+
+PRIMARY AND SECONDARY ONLY. A gadget fires without going through the
+Shooter, so there is no held trigger to measure - and a gadget's
+cadence belongs to its module rather than to the weapon's fireRate, so
+the main reward could not arrive either. The builder refuses it there
+and says so.
+
+WHAT COUNTS AS SUSTAINED FIRE
+
+The trigger is down AND you can pay for the shots. An empty gun does
+not wind up. Neither does a JAMMED or STUNNED one - both of those
+block the Shooter, and a blocked weapon is not firing, so the meter
+unwinds through the lockout. That falls out of the definition rather
+than being a special case, and it is the more interesting rule.
+
+THE FIVE REWARDS - two on, three off
+
+  "rate": true        fire rate,  "fireRate": 2         ON by default
+  "accuracy": true    scatter,    "accuracyAtFull": 1   ON by default
+  "damage": false     damage,     "damageAtFull": 1.5
+  "pellets": false    count,      "pelletsAtFull": 2
+  "cheaper": false    cost,       "costAtFull": 0.5
+
+Everything is a MULTIPLIER at full except accuracyAtFull, which is the
+fraction of the scatter REMOVED - 1 is pinpoint, 0.5 halves it. That
+is the way round the question gets asked ("how much better does it
+get"), so it is the way round the key reads.
+
+A fireRate at or below 1 makes the gun slower the longer you hold,
+which is a penalty rather than a reward. The log warns; for a penalty
+use "overheat" with "response": "slow".
+
+CHECK YOUR WEAPON HAS ANY SCATTER TO REMOVE
+
+The accuracy reward tightens "angleVariance", and MOST STOCK WEAPONS
+SHIP IT AT 0 - White Popper and White Shotgun both do. On those there
+is nothing to remove and this half does nothing at all. Two ways out:
+
+  "weapon": { "angleVariance": 9 }   give it scatter to tighten, or
+  "spinUp": { "spread": 0.3 }        close its deliberate FAN instead
+
+The second is the only "accuracy" a shotgun has. "spread" is left
+alone by default (1) because a fan is the shape you asked for, not a
+mistake - tightening a shotgun to nothing turns it into a slug gun,
+which is a fine weapon and a terrible surprise. The build log says
+outright when the accuracy half cannot do anything.
+
+THE THREE RAMP SHAPES
+
+  "ramp": "smooth"    every frame is slightly better (the default)
+  "ramp": "stepped"   "steps": 3 discrete stages, each one announced
+  "ramp": "click"     smooth, but the colour and a sound SNAP at full
+
+Stepped reads as a mechanic rather than a drift, and can fire
+"stepSfx" on each stage it climbs to - upward only, since a gun
+unwinding should not chirp its way back down. Keep the count low: a
+stage boundary arriving mid-fight feels arbitrary if there are many.
+
+FEEDBACK
+
+  "tintMuzzle": true      on by default - the muzzle flash takes the
+                          wind-up colour
+  "color": "#8CD9FF"      cool blue, deliberately the far end of the
+                          spectrum from overheat's orange
+  "tintStrength": 1       0 to 1, same scale as every other tint
+  "readySfx": "..."       once, the instant it reaches full
+  "stepSfx": "..."        per stage, "stepped" only
+  "lostSfx": "..."        when a full gun has unwound to nothing
+  "showSpin": false       a percentage on the buff indicator
+
+The muzzle tint is on by default because it is the only feedback that
+always works - the buff indicator is globally off unless you switch it
+on, so "showSpin" shows nothing on most setups.
+
+SPIN-UP PLUS OVERHEAT - THESE COMPOSE
+
+Put both on one weapon and you get a gun that winds up to its best
+right as the heat is about to take it away. They do not fight: both
+publish into one owner for the fire rate and multiply, so the answer
+does not depend on which one ran last.
+
+That is worth stating because it was NOT true of the two features
+already in the mod. "overheat" with "response": "slow" and an "onKill"
+fire-rate buff each held their own private copy of the weapon's rate,
+and overheat rewrites it EVERY FRAME - so a kill landing on a hot gun
+made it slower rather than faster, and the rate ratcheted down further
+on every kill after that. Nothing warned, because both features were
+doing exactly what they said. Fixed in the same change as this.
+
+And remember the wind-up is LOST while jammed, which is the whole
+tension of the pair: you are choosing how close to the limit to run.
+
+SPIN-UP PLUS THE GAME'S OWN warmupTime - A PROPER MINIGUN
+
+  "weapon": { "warmupTime": 0.5 },
+  "spinUp": { "spinUpTime": 2, "fireRate": 2.6 }
+
+Two separate meters, and the difference matters. "warmupTime" is the
+game's own spin-up GATE - the weapon refuses to fire at all until it
+is wound, and releasing the trigger ZEROES it instantly. "spinUp" is
+softer: it keeps its progress through "grace" and then unwinds.
+
+So the pair is a delay before the first shot, then a gun that
+accelerates - and a tap costs you the delay again but not the whole
+wind-up.
+
+SPIN-UP PLUS CHARGE
+
+A "charge" in release mode with "holdFire" on (the default) fires
+nothing while you hold, so the wind-up builds during the CHARGE and
+the released shot arrives carrying it. That works, and the log points
+it out, because it is worth knowing you have built a one-shot payoff
+rather than a stream.
+
+READING THE LOG
+
+  spinUp - winds up smoothly after 1.5s of sustained fire, and
+  unwinds over 1s after a 0.25s grace period. At full: fire rate 6/s
+  -> 12/s, scatter 9deg -> 0deg.
+
+Every way this can be configured into doing nothing is a warning:
+accuracy on a weapon with no scatter, a discount on a weapon that
+costs 0, a pellet multiplier on a melee weapon, a fireRate at or
+below 1, or every reward switched off.
+
+Preset: "Windup" (a minigun - and it sets angleVariance on purpose, so
+the accuracy half has something to tighten).
+
+
 ----------------------------------------------------------------
  4k. RALLY - REFLECT THE SAME SHOT, BUFFING IT EACH TIME
 ----------------------------------------------------------------
@@ -2247,10 +2637,33 @@ the edge glances it away at a shallow angle. Positioning becomes the
 skill instead of aiming.
 
 All four work on "deflect" too (its "aim" key takes back / nearest /
-cursor / mirror) and on a catalyst node ("reflectAim"). Only "rally" is
-limited to the shield and the catalyst - a deflector's settings live on
-the projectile prefab, and an int serializes there while a config
-reference does not.
+cursor / mirror) and on a catalyst node ("reflectAim").
+
+"RALLY" NOW WORKS ON ALL THREE - shield, catalyst AND deflect. It used
+to be refused on deflect, and the reason is worth keeping because it is
+a trap the whole codebase has to respect: ForgeDeflect rides the
+PROJECTILE PREFAB, and Unity's Instantiate copies serialized state
+only, so a plain config-class reference on a prefab component arrives
+NULL on every shot - silently, with a build log that looks perfect.
+That exact trap once disabled the whole of "gas" and "catalyst".
+
+The fix is the same one those two use: the prefab carries an INT id
+(Unity serializes ints happily) and the real config is fetched from a
+table in Awake - before Shoot, before any patch, so it never depends on
+patch ordering.
+
+A deflect rally also needs "mode": "reflect". On "destroy" the shot is
+deleted rather than returned, so there is nothing to catch again, and
+the build log says so.
+
+ON A CATALYST, "reflectAim" AND THE OLDER "aimReflected" OVERLAP, and
+the bool used to win silently. The node asks
+"aimReflected ? nearest : reflectAim", and aimReflected DEFAULTS TO
+TRUE - so a file that set only "reflectAim": "cursor" got the nearest
+enemy and no complaint. Naming the fuller key is now taken as choosing
+it: "aimReflected" keeps its default only while "reflectAim" is absent.
+Set both, with the bool on, and the bool still wins - but the build log
+says so instead of leaving you to wonder.
 
 It matters most with a rally: being able to PLACE the return means you
 can put the shot somewhere you can reach and catch it again, instead of
@@ -2288,6 +2701,8 @@ WHAT EACH CATCH CAN DO
   sizePerReflect    grows the REAL hitbox, not just the art
   piercePerReflect  more enemies punched through per catch
   lifePerReflect    keeps it alive long enough to be caught again
+  enabled           the off switch every block has. false keeps a tuned
+                    rally in the file while you test the shield without it
 
 lifePerReflect defaults above 1 deliberately. Without it a rally ends
 because the shot timed out, which looks exactly like the feature
@@ -2314,6 +2729,23 @@ RISK
   "hostile": "after"   safe while small, dangerous once charged
   "hostile": "always"  a pure hot potato - and it cannot hurt enemies
 
+SPLIT: "resetSlowdown" (default TRUE)
+-------------------------------------
+
+Fragments inherit the parent's "rangeData", and slowDown on it means
+"coast to a dead stop at your range" - which the stock White Popper, the
+most-copied template in this mod, ships ON. A fragment inheriting that
+decelerates from birth, so the shards crawl and clump a few units from
+the burst, which reads as the shards being broken rather than as an
+inherited setting.
+
+On by default: the parent wanted to stop at ITS range, and a fragment is
+a new shot with its own. Set false for a deliberate cloud of hanging
+shards.
+
+  "split": { "resetSlowdown": false }
+
+
 "bounce": true gives the shot terrain ricochet so the room hands it back
 to you instead of you chasing it. Off by default, because the intended
 loop is that you outmanoeuvre it.
@@ -2328,6 +2760,1535 @@ deflect still reflects normally; it just will not stack. The log says so
 if you have both.
 
 Preset: "Rally Shield".
+
+
+----------------------------------------------------------------
+ 4L. MAKING A MINION FIGHT FOR THE SIDE IT IS ON
+----------------------------------------------------------------
+
+Three switches, all ON by default, all three fixing a bug rather than
+adding a behaviour. Before them, a minion of yours could not see an
+enemy, could not hurt one with its own gun, and could not follow you -
+and every value in every log was correct, which is why it took a round
+of testing to find.
+
+  "minion": {
+    "seek": true,           /* both layers, not one             */
+    "friendlyShots": true,  /* its bullets hurt what it aims at */
+    "follow": true,         /* it comes back to you             */
+    "followSpeed": 9,
+    "followDelay": 0.6
+  }
+
+
+THE ONE FACT BEHIND THE FIRST TWO
+---------------------------------
+
+A unit's EYES are wired to one layer, its BULLETS belong to one layer,
+and neither of them follows the faction you put it on.
+
+  Vision.targetLayers   Enemy_Larva, Enemy_Maggot  -> Player   (64)
+                        Enemy_Fly Variant Drone    -> Entities (128)
+
+An enemy is built to look for YOU and nothing else. A player drone is
+built to look for ENEMIES and nothing else. The AI then sorts whatever
+its eyes handed it into friends and enemies BY FACTION and targets the
+first enemy - so faction decides who it fights and the layer mask
+decides who it can see, and nothing reconciles the two.
+
+Both reported symptoms are the same field, from opposite directions:
+
+  - A hostile prefab on YOUR side sees only you, decides you are a
+    friend, and never finds a target. It drifts. ("None of the enemie
+    minions will follow or seek enemies.")
+  - A drone prefab left hostile with "faction": "keep" sees only the
+    Entities layer, and you are not on it - so it cannot attack you
+    however much it wants to. ("Funny enough doesn't attack the
+    player.")
+
+"seek": true gives it both layers and lets the faction sort it out,
+which is what the game's own AI was already written to do.
+
+Then its GUN. A shot's faction IS the layer of the prefab it came from
+(the collision mask is rebuilt from that layer when it is fired), and an
+enemy gun fires on EnemyProjectiles - which the matrix lets hit YOU and
+never the Entities layer everything it is shooting at lives on. Hence
+"their weapons dont appear to hurt enemies but hurt the player".
+"friendlyShots" moves the cloned ammo onto the player's layer.
+
+The ammo prefab is CLONED first. One bullet asset is shared by up to
+eight enemy prefabs; moving the original would make every one of them
+harmless to you and lethal to its own side for the rest of the run.
+
+AND SOME MINIONS HAVE NO GUN AT ALL - THEY RAM
+
+A LARVA NEVER SHOOTS. Nor does a Maggot or a Child. Their attack is a
+headbutt: a "ChargerHead" component that sweeps a circle along its own
+velocity every physics step. So everything above about bullet layers
+simply does not apply to them - and the log line about retargeting
+their ammo, while true, is about a weapon they never fire.
+
+That cast has its OWN serialized mask, and it is the same trap again:
+
+    Enemy_Larva / Maggot / Child
+        ChargerHead.collisionLayerMask = 1088
+                                       = 64 (Player) | 1024 (Ground)
+
+NO ENTITIES BIT - the layer every enemy is on. So a Larva flipped to
+your side would seek an enemy, connect with it, and do nothing, while
+remaining perfectly able to ram YOU. Reported exactly that way: "they
+run into enemies with their heads... they dont shoot projectiles at
+all. They do seek the enemies but not hurt them."
+
+"friendlyShots" now fixes the ram too: it ADDS Entities and REMOVES
+Player. Dropping Player matters as much as adding Entities - a friendly
+minion that can still ram you is the other half of the complaint.
+GROUND IS KEPT DELIBERATELY, because the same cast is how the thing
+stops itself against a wall; drop it and Larvae swim through terrain.
+
+THAT IS THREE SEPARATE LAYER MASKS ON ONE PREFAB, none of which follow
+the unit's faction: what it can SEE (Vision.targetLayers), what its
+BULLETS hit (the ammo prefab's layer), and what its RAM hits
+(ChargerHead.collisionLayerMask). Each cost a test round to find. If a
+minion behaves as though it is on nobody's side, look for a fourth.
+
+
+FOLLOWING IS AN AI STATE, NOT A NUMBER
+--------------------------------------
+
+  Enemy_Fly Variant Drone   Idle / Aggro / Seek / REGROUP
+  Enemy_Maggot              Idle / Aggro / Charge / Seek
+  Enemy_Larva               Idle / Aggro
+
+Regroup is the come-back-to-your-owner state, and ONLY the five drone
+prefabs the game itself uses as minions have one. That is why
+"followDistance" and "leash" are honest no-ops on anything else - there
+is nothing there to tune - and why only the original player drones ever
+followed you.
+
+LEFT UNSET IT IS SMART ABOUT IT. A prefab that already carries a
+MoveAroundOwnerAction - i.e. one of the five with a Regroup state - is
+left to follow you the way the game intended, because pushing it as well
+means two things propelling the same body at the same point and it
+overshoots and orbits. Only prefabs that cannot do it themselves get the
+push. Writing "follow": true outright forces the push on anyway; false
+turns it off everywhere.
+
+The push does the job from outside: when the minion has nothing to
+fight, a force on its RIGIDBODY leans it toward you. Not a write into
+its movement component, because a movement component snapshots its
+values when an AI state begins and restores them when it ends - so
+anything written mid-state is reverted, or worse, snapshotted while
+modified and made permanent.
+
+  followSpeed   cruise speed of the lean, units/second (default 9).
+                Compensated for mass and damping, so it is a real speed
+                on any prefab - PUNK's bodies run from mass 1 damping
+                0.5 to mass 200 damping 4, a factor of 1600.
+  followDelay   seconds after spawn before it starts (default 0.6). A
+                spawner THROWS its minions at projectileSpeed, and
+                pulling them back during that flight would cancel the
+                throw.
+
+It stays out of the way while the minion has a target, unless the minion
+has drifted past its "leash" - which is what a leash is for.
+
+It closes to "followDistance" (default 6) and eases off over the last
+stretch, so it settles beside you rather than orbiting.
+
+
+OR HOLD GROUND INSTEAD - THE OTHER STANCE
+-----------------------------------------
+
+    "hold": true,           /* guard a SPOT, not you           */
+    "holdRadius": 8,        /* how far it may roam from it     */
+    "holdDelay": 0.6,       /* when the post is stamped        */
+    "holdSpeed": 9          /* almost never used - see below   */
+
+Spawn a knot of them somewhere and run. They stay, and they fight
+whatever comes to them.
+
+MUTUALLY EXCLUSIVE WITH "follow", because the two are opposite answers
+to one question: keep to me, or keep to a spot. Setting both makes
+"hold" win and the escort stand down - running both would lean one body
+toward two different points and leave the minion sitting on the line
+between them. The build log says which won.
+
+INSIDE THE POST, NOTHING OF OURS IS IN THE WAY. It wanders, charges,
+rams and shoots exactly as it always did, which is why a held Larva is
+still dangerous instead of being a statue. Only when it leaves does
+anything happen: its own steering is suspended and it walks back ON ITS
+OWN LEGS, at its own speed, with its own gait.
+
+That last part is why this is not the same machinery as the escort.
+"UnitMovement.MoveTo(position)" is public on every mover, and the
+mover's own FixedUpdate then carries the body - so the creature walks
+home the way that creature moves and there is no force to calibrate. It
+is also safe from the snapshot trap described above: a destination is
+not TUNING, so it is not in the values a movement action saves and
+restores at every state change.
+
+WHY THE LEASH IS ENFORCED BY MOVEMENT AND NOT BY TARGETING. The obvious
+way to stop a minion chasing something out of its post is to take its
+target away. That cannot work:
+
+    AIAgent.Update:
+        RefreshEnemyAndFriendLists();
+        if (HasTarget && IsTargetVisible) { ...; return; }
+        SelectTargetFromVisibleEnemies();      <-- every frame
+
+SelectTargetFromVisibleEnemies takes the first enemy in sight, and it
+runs on any frame the agent has no visible target. So forgetting a
+target that is still in view is undone on the same frame it is
+forgotten - a per-frame thrash, not a leash. Blinding it instead would
+stop it fighting at all, which is not what a held minion is for.
+
+Movement is the honest lever, and it is available because a
+MovementAction is the ONLY thing steering a unit. The beak on a Larva
+or Maggot was worth checking here and does NOT propel - it casts for
+damage and applies a recoil impulse to itself, nothing more - so
+suspending the movement really does stop a charge.
+
+  holdRadius    how far from the post it may roam, in units (default
+                8). Inside this it is completely free; outside, it walks
+                back. Floored at 1 with a warning: a post narrower than
+                the creature standing in it is a unit vibrating on a
+                point.
+  holdDelay     seconds after spawn before the post is stamped (default
+                0.6). THE POST IS WHERE IT COMES TO REST, NOT WHERE IT
+                APPEARED, and that is what this buys. A spawner THROWS
+                its minions - every stock template ships
+                projectileSpeed 60 +/- 40 - so the barrel is not the
+                spot you meant; the spot you meant is roughly where the
+                throw lands. On a minion that is placed rather than
+                thrown the two are the same point and this costs
+                nothing.
+  holdSpeed     the walk home, units/second - and it is ALMOST NEVER
+                USED, which is the point of the design. Anything with a
+                mover of its own walks back under its own power. This
+                is the fallback for the cases with nothing to borrow: a
+                unit sitting in a "Wait" sub-state, or a prefab with no
+                movement components at all.
+
+It is handed control again only once it is WELL inside - three quarters
+of the way in - not the instant it crosses back. That gap is
+deliberate: without it a minion sitting on the rim would suspend and
+release its movement every frame, and every release costs a pathfinder
+request. What you see is a guard dog on a chain, lunging out and walking
+back, rather than a twitch. Widen the post if you want it to commit
+further to a chase.
+
+ON A DRONE THIS ALSO SWITCHES REGROUP OFF for as long as it is held, and
+unconditionally rather than only when the drone strays. Regroup is the
+come-back-to-your-owner state the five drone prefabs have; left running
+it would drag the drone toward you, we would walk it back, and it would
+shudder between the two several times a second. This is the biggest
+change on a gadget drone, because that is the one kind of minion the
+game itself already makes follow you - holding turns a bodyguard into a
+picket.
+
+A minion that cannot move at all - a turret, a beacon - already holds
+its ground for free, and the log says so rather than pretending to do
+something.
+
+
+THE TEMPLATES ARE BOSS ATTACKS
+------------------------------
+
+Every minion-spawner asset in the game is an enemy's attack, and they
+all ship the same shape:
+
+  Weapon Minion CrossSmallCaps   fireRate 0.2  warmupTime 2  burstSize 4
+  Weapon Minion Cross Red        fireRate 0.2  warmupTime 2  burstSize 4
+  Weapon_Minion_CrossQueen       fireRate 0.2  warmupTime 2  burstSize 4
+  Weapon Minion CrossRedBomber   fireRate 0.2  warmupTime 2  burstSize 1
+
+plus angleVariance 10-30 and projectileSpeed 60 with a variance of 40.
+
+Read that as a player weapon: hold the trigger, wait TWO SECONDS while
+nothing happens, get four minions at once flung out at 20-100 units/s in
+a 60-degree cone, then wait five seconds for the next lot.
+
+"warmupTime" is the one nobody knew about. It is the game's minigun
+spin-up - Shooter gates every shot on being warmed up - and no file ever
+set it, so the template's 2 stood. That was the "insane charge time".
+
+THE SETTINGS WERE REACHING THE GAME ALL ALONG. The other three only
+looked ignored because a file that mentions "fireRate" still inherits
+burstSize 4 and warmupTime 2 from the template, and the delay dominates
+everything you can feel.
+
+SO THE MOD NOW TAMES WHAT YOUR FILE DOES NOT MENTION:
+
+  warmupTime               2   -> 0
+  burstSize                4   -> 1
+  fireRate       under 0.5     -> 1
+  angleVariance  over 5        -> 0
+  projectileSpeedVariance      -> a quarter of the speed, if it was
+                                  more than half of it
+
+Each change is named in the log with the reason. Anything your file
+DOES mention is used exactly as written, including a deliberate
+two-second wind-up. This is a default, not a policy.
+
+
+THE CAP AND THE GREEN ARROWS
+----------------------------
+
+"capPerLevel" now defaults to 1 whenever you set a "cap". It used to
+default to 0, which made the boost display lie: a BoosterCore raises the
+module's level and the grid draws one green up-arrow per level, but with
+no capPerLevel the cap never moved - so the card said "boosted, boosted,
+boosted" and the weapon did exactly the same thing.
+
+One arrow, one more minion. "capPerLevel": 0 opts out.
+
+"inheritGrid" now defaults to TRUE as well: each minion gets a copy of
+the weapon's other grid modules. It multiplies, so the log still warns
+at a high cap - twenty minions each carrying your full grid is a
+different weapon from twenty minions.
+
+
+----------------------------------------------------------------
+ 4o. SWIPE - A MELEE SWING FOR THE SHIP
+----------------------------------------------------------------
+
+A blade that sweeps an arc across the front of your ship on every
+trigger pull, hitting what it passes through and batting shots away.
+
+  "swipe": {
+    "pureMelee": true,
+    "arc": 130,
+    "reach": 3.6,
+    "duration": 0.16,
+    "direction": "alternate",
+    "knockback": 90,
+    "marksSlammable": true,
+    "deflects": true,
+    "aim": "mirror"
+  }
+
+
+NOTHING IN THIS GAME DOES CONTACT DAMAGE
+----------------------------------------
+
+Worth stating first because it is why this is code rather than a
+setting. HealthBase's only entry points are projectile / explosion /
+hitscan / hazard / electricity / cell collision. There is no melee
+component anywhere, and no OnCollisionStay2D or OnTriggerStay2D in the
+whole assembly - flying into an enemy is FREE.
+
+So the blade runs its own overlap query and deals its own damage. Which
+also means it has to credit its own kills: the game credits a kill from
+exactly three places and none of them is ours, so without that a swipe
+kill would be invisible to onKill rewards, the music controller and
+everything else listening.
+
+
+IT WORKS IN A WEAPON SLOT AND ON A GADGET KEY
+---------------------------------------------
+
+With no extra settings, and that is worth knowing because orbit needed a
+whole second patch for the gadget path. The trigger hook sits on the
+SHOT, which is on the path of both:
+
+  weapon slot   Shooter -> Shoot -> Fire -> burst -> the shot
+  gadget key    Activate -> Fire(FakeBarrel) -> burst -> the shot
+
+So in a weapon slot "fireRate" is the swing cadence and "cost" prices a
+swing, both for free. On a gadget key the gadget's own cooldown and cost
+apply instead.
+
+A burstSize of 3 therefore swings THREE TIMES. That is a flurry, and it
+is the honest reading of burst on a melee weapon.
+
+
+THE SWING
+---------
+
+  arc         TOTAL degrees swept, centred on where you are aiming. 45
+              is a jab, 120 a broad slash, 360 a spin that hits
+              everything around you once per pull.
+  reach       world units. The ship is about 1 unit across, so 3.5 is a
+              comfortable arm's length.
+  duration    seconds the swing takes. This matters more than it looks:
+              the sweep only hits what it passes THROUGH, so a slow
+              swing gives enemies time to walk into it and a fast one
+              only catches what is already there.
+  ease        above 1, the blade accelerates through the middle and eases
+              at both ends - most of what makes it read as a swing
+              rather than a rotating stick. 1 is a flat sweep.
+  direction   "alternate" (default) / "right" / "left" / "random".
+              Alternate is what makes holding the trigger a rhythm
+              rather than the same stroke over and over, and the ART
+              MIRRORS WITH IT so the curve leads the stroke both ways.
+
+EACH TARGET IS HIT ONCE PER SWING, not once per frame it overlaps. A
+swing has a definite start and end, so "the edge passed through you" is
+the honest count - which is a different rule from the ram's time-based
+repeat delay, deliberately.
+
+THE HIT TEST IS AN ANGULAR BAND, not a point. Each frame the blade is
+somewhere between last frame's angle and this frame's, and anything in
+that band gets hit. A 120-degree sweep in 0.18s moves about 11 degrees
+per frame at 60fps - easily a whole enemy - so testing only the blade's
+current position would let a fast swing step straight over somebody.
+
+
+ON CONTACT
+----------
+
+  damage         per target per swing. Blank uses the weapon's own
+                 damage, which is what you want on a pure melee weapon;
+                 set it separately on a gun that also swings, since that
+                 lands on top of a bullet.
+  damageType     defaults to the weapon's own.
+  knockback      an impulse ALONG THE SWING, not away from you. That is
+                 the point of a blade: it sends things sideways, so you
+                 can bat one enemy into another.
+                 THIS IS THE ONE TO PAIR WITH "slam". A shove carries a
+                 body knockback / (mass * damping) units and a common
+                 enemy is mass 5 damping 6, so 90 moves one about 3
+                 units. Bat them into a wall and the wall does the real
+                 damage.
+  marksSlammable mark what the blade touches even without shoving it, so
+                 anything can throw them afterwards. Free, because slam
+                 is a standalone property - see 4n.
+
+
+CUTTING TERRAIN
+---------------
+
+  cutTerrain      damage dealt to each cell the blade passes through.
+  igniteTerrain   burn level added instead of (or as well as) cutting.
+
+GATED BY THE SAME HARDNESS TEST EXPLOSIONS USE, so a blade carves soft
+cells and bounces off hard ones unless the number is big. Without that
+gate a starter weapon could dig through the level. For scale: Slime and
+Blob 1, Moss 2.5, Bark and Gold 10, and SOLID - the main terrain - 45.
+
+
+DEFLECTING
+----------
+
+On by default, because batting shots away is half of why you would want
+a blade.
+
+  deflects        default true.
+  aim             "mirror" (default) / "back" / "nearest" / "cursor".
+  deflectDamage   multiplier on a batted shot. Add a "rally" block and it
+                  compounds every time you catch the same shot again.
+  deflectSpeed    multiplier on its speed.
+  maxDeflect      most shots one swing may bat (default 8). Stops a spin
+                  through a bullet hell returning forty rounds at once.
+
+MIRROR IS THE RIGHT DEFAULT FOR A BLADE: a shot batted by a moving edge
+should leave at the angle it arrived. And because the arc is centred on
+your ship it behaves as a CONVEX mirror, so WHERE ON THE SWING you catch
+something decides where it goes - which makes positioning the skill
+rather than aiming.
+
+A deflected shot becomes YOURS - its layer, its collision mask and its
+owner all change - so it can hurt enemies and can no longer hurt you.
+
+Enemy projectiles have their Collider2D DISABLED (they resolve hits by
+raycast), so they are invisible to a physics overlap at any radius. The
+mod registers each enemy shot when it is fired, which is the only way to
+find one; switching "deflects" on enables that tracking.
+
+FIXED 2026-09-03, and worth knowing if you tested this before then: "aim"
+did nothing at all on shots from four enemy weapons. A plain projectile
+carries a hidden BASE HEADING, and the game rebuilds its velocity from
+that heading every frame whenever the weapon has "movementNoiseData" on -
+so a deflection that only turned the velocity was undone within a frame
+and the shot wandered back the way it came. Every other steering feature
+in the mod avoids this by switching that noise OFF when it builds the
+weapon, but a deflected shot is not ours to build: it belongs to whoever
+fired it. And the four stock weapons that ship the noise enabled are all
+ENEMY weapons - Soldier, Floater, Floater Officer and Cross Small, the
+purple ones - at 60 degrees and 2 Hz, which is a wide wander, not a
+shimmer. Enemy fire being the only thing there is to deflect, the one
+case it could break in was exactly the case it is for. It now moves the
+base heading too.
+
+
+PURE MELEE
+----------
+
+  "swipe": { "pureMelee": true }
+
+No bullets at all: the trigger is the swing. Done by setting
+projectileCount to 0 rather than by blocking the shot, and the
+difference matters - cost, fire rate, knockback and the shoot sound are
+all taken INSIDE the shot, so blocking it would have handed you a free
+swing and a silent one.
+
+The cost of that: NO MUZZLE FLASH either, since one flash instance is
+built per pellet. The blade is the flash.
+
+Left off, the weapon fires as usual AND swings, the way the Ram Shield
+is still a normal gun. Strictly stronger than not swinging, so it is a
+power fantasy rather than a balance.
+
+
+THE ART
+-------
+
+The default is GENERATED IN CODE: a tapered crescent drawn from "arc",
+"reach" and "thickness", so the picture can never drift out of sync with
+the hitbox. Change the reach and the curve changes with it. Same
+reasoning as the shield's arc.
+
+  sprite      name one of your own instead.
+  color       colour of the blade. Baked into the pixels on the generated
+              crescent; a tint on your own sprite.
+  thickness   radial width. ART ONLY - the hit test is "inside reach and
+              inside the swept angle", so a thicker-looking blade does
+              NOT reach further.
+  trail       how much of the arc the drawn crescent covers, as a
+              fraction. Under 1 reads as a trailing slash.
+  fadeOut     seconds to fade after the stroke.
+  sfx         a sound for the swing.
+
+THE TWO ARE PLACED DIFFERENTLY, and deliberately. The generated crescent
+is authored AROUND THE SHIP - pivot at the centre of the circle - so it
+can rotate about the ship the way an arm would. YOUR sprite is placed AT
+the blade and turned to the tangent, because that is how anyone would
+actually draw a swoosh: as a slash, centred on itself.
+
+A ready-made one ships with the mod. Copy wf_swipe.png and
+wf_swipe.json out of the "Example Sprites" folder into your "sprites"
+folder and use:
+
+  "swipe": { "sprite": "wf_swipeAnim" }
+
+Presets: "Swipe" (pure melee, alternating, shoves and slams) and
+"Gunblade" (a normal gun that also swings).
+
+
+----------------------------------------------------------------
+ 4n. SLAM - ARRIVING SOMEWHERE HARD HURTS
+----------------------------------------------------------------
+
+A STANDALONE PROPERTY, in the same sense as "discharge" or
+"aimAssistData": bolt it onto ANY weapon and whatever that weapon
+touches becomes brittle for a moment.
+
+  "slam": { "damagePerSpeed": 1.6, "minSpeed": 6 }
+
+IT DOES NOT HAVE TO BE THE THING THAT THROWS THEM. "requiresPush" is
+off by default, so a plain hit from a plain projectile is enough to mark
+a target - and what flings them into the wall afterwards can be
+anything:
+
+  slam + pushForce    one weapon does both (the Riot Wave preset)
+  slam + gravity      the well flings them, the mark prices it
+  slam + explosion    the blast throws them, the mark prices it
+  slam + slow         slow LOWERS MASS, so everything throws further
+  slam alone          a MARKER GUN. Shove them with your other weapon,
+                      or let them charge you and clip a wall
+
+FIVE ROUTES MARK A TARGET, so this works on every weapon shape: both
+projectile contact paths, plus the three damage paths - which is what
+covers a HITSCAN BEAM, an EXPLOSION and a DISCHARGE ARC. A gravity well
+marks what it drags separately, because a well never really "hits"
+anything.
+
+  requiresPush    default FALSE. On, only a hit that actually shoves
+                  counts, and the three damage routes are skipped (a
+                  beam's push is the weapon's own pushForce and an
+                  explosion's is derived from its radius by the game, so
+                  neither is a per-hit fact worth testing).
+  swept           default FALSE - this is what shipped and it is not
+                  being changed underneath you. On, the arrival is found
+                  by casting along the velocity every physics step
+                  rather than waiting for a collision callback.
+
+                  WHY IT EXISTS: every unit rigidbody in this game uses
+                  DISCRETE collision detection and the physics step is
+                  0.02s, so a body faster than about 50 units/s skips a
+                  1-unit object between steps. pushForce 220 on a common
+                  enemy is 44 u/s, and slow's knockback HALVES the mass,
+                  taking it to 88 - 1.76 units per step, further than an
+                  enemy is wide. So the hardest throws are exactly the
+                  ones the callback can miss. Expect "swept" to trigger
+                  MORE often, including on grazes it never saw. See
+                  section 4r.
+
+
+SEEING WHO IS SLAMMABLE - "tint"
+--------------------------------
+
+Without a colour this whole mechanic is INVISIBLE. "Brittle for the next
+second and a half" has no tell of its own, and you cannot aim at a state
+you cannot see - which is most of why slam is easy to build and hard to
+play.
+
+  "slam": { "damagePerSpeed": 1.6, "tint": "#ff7a7a" }
+
+  tint        colour worn by anything currently slammable, for the
+              length of the "window". No default - off unless asked for.
+  tintPulse   throbs per second, default 3. A slammable unit is a
+              TEMPORARY state, and a pulse reads as a timer running out
+              in a way a steady colour cannot. The throb runs between no
+              tint and the full colour, so it stays legible on a dark
+              enemy. 0 is steady.
+
+The tractor beam has the same two keys under its own block, spelled
+"slamTint" and "slamTintPulse".
+
+IT MULTIPLIES, IT DOES NOT REPLACE. A red enemy tinted red stays red; a
+pale one goes obviously wrong. Scoped to the unit's art, so an enemy's
+AI state indicators keep their own colours.
+
+IT NEVER TOUCHES ALPHA. A renderer's alpha is a visibility decision, not
+a colour - every Larva and Maggot carries a full-body silhouette held at
+alpha 0 that the damage flash drives, and painting that opaque is what
+once made a recoloured minion wear its own outline. So an alpha in your
+colour is ignored, and a "fade" running at the same time is left alone.
+
+HOW HARD ANY TINT COMES THROUGH - "tintStrength" / "colorStrength".
+
+Every block in this mod that tints a unit takes a strength from 0 to 1.
+1 is the full colour and is what they have always done; 0.35 is a hint
+of it; 0 is no tint at all. The nine blocks are:
+
+    slow            tintStrength
+    slam            tintStrength
+    stun            tintStrength
+    contactDamage   tintStrength
+    tractor         slamTintStrength
+    charm           colorStrength
+    execute         colorStrength
+    crit            colorStrength
+    adaptive        tintStrength
+
+EITHER SPELLING WORKS EVERYWHERE. The blocks above are split between a
+tint/tintPulse naming and a color/colorPulse one, and that split is
+already baked into files people have written - so both "tintStrength"
+and "colorStrength" are read on all of them rather than making you
+remember which prefix a given block uses.
+
+IT MULTIPLIES THE PULSE RATHER THAN REPLACING IT, so a half-strength
+pulsing tint still pulses - between "nothing" and "half" instead of
+between "nothing" and "full". Setting one never switches the other off.
+
+WORTH TURNING DOWN WHEN SEVERAL EFFECTS TINT THE SAME UNIT. Live tint
+layers MULTIPLY over the unit's own colours, so a unit that is both
+slowed and slammable at full strength reads as very dark. That
+compounding is deliberate - it is what makes stacked debuffs legible -
+but two strong colours is a lot.
+
+A stun's tint is the exception worth naming: it is the one debuff with
+no other tell at all, so going much below 0.4 there trades away the only
+feedback it has.
+
+A STRENGTH WITH NO COLOUR DOES NOTHING, and six of the nine blocks have
+their colour OFF until you name one - slow, slam, contactDamage,
+tractor, crit and execute. So "slam": { "tintStrength": 0.4 } on its own
+is a number that cannot have an effect; it needs a "tint" too. The other
+three (charm, stun, adaptive) are on by default and only go off if you
+say so explicitly. The build log warns either way.
+
+IT COMPOSES WITH THE "slow" TINT RATHER THAN FIGHTING IT, and that is
+why this key did not exist until now. Both publish a LAYER to one owner,
+which keeps a single captured base colour per renderer and multiplies
+every live layer over it. Before that, each feature remembered the
+colour it found and wrote it back on expiry - correct for exactly one
+tint at a time, and quietly wrong for two:
+
+  slow starts   remembers ORIGINAL,       writes ORIGINAL x blue
+  slam starts   remembers ORIGINALxblue,  writes ORIGINAL x blue x red
+  slow ends     writes back ORIGINAL          <- the red is gone
+  slam ends     writes back ORIGINALxblue     <- THE BLUE IS PERMANENT
+
+Multiplication is commutative, so with layers there is no ordering to
+get wrong and no restore path that can bake somebody else's colour in.
+
+Two strong tints DO compound (0.5 x 0.5 = 0.25), so a unit that is both
+slowed and slammable reads as doubly odd. That is deliberate - it is
+what makes stacked debuffs legible at a glance.
+
+
+IF YOU WANT ONE WEAPON TO DO BOTH
+---------------------------------
+
+  "weapon": { "pushForce": 220, "projectileCount": 9, "spread": 60 },
+  "slam": { "damagePerSpeed": 1.6, "minSpeed": 6 }
+
+THE GAME ALREADY DOES THE SHOVING. Both projectile classes apply
+
+  AddForceAtPosition(direction * pushForce, hitPoint, ForceMode2D.Impulse)
+
+to whatever they hit. So a weapon with a big "pushForce" has always been
+a shove weapon - it just had nothing to show for it, because arriving at
+a wall hurt nobody. This block prices the arrival. It is the same
+machinery the tractor beam's "slam" used; the only thing that was
+missing was letting a projectile mark what it shoved.
+
+  damagePerSpeed  damage per unit of closing speed above minSpeed.
+                  Shorthand: "slam": 1.6 means this and nothing else.
+  minSpeed        below this, arriving costs nothing. Default 6 - the
+                  game's own reference is 10, but that is what a SHIP
+                  calls a hard crash (every ship prefab carries
+                  ImpactDamage at minVelocity 10) and an enemy being
+                  thrown is a lighter event.
+  maxDamage       ceiling on one arrival. Worth setting with a very
+                  large pushForce, since damage scales with speed.
+  window          seconds a shoved unit stays slammable (default 1.5).
+                  A real balance knob: without it every enemy in the
+                  level would be permanently fragile on contact.
+  hitsUnits       default TRUE - crashing into another unit counts and
+                  hurts both. Most of the fun of a fan.
+  hitsPlayer      default false - whether an enemy flung into YOUR hull
+                  hurts you too.
+  damageType      defaults to the weapon's own, so the arrival is
+                  resisted and coloured like the gun that threw them.
+
+
+THE ARITHMETIC - READ THIS BEFORE PICKING A pushForce
+-----------------------------------------------------
+
+One number never fits in this game. An IMPULSE gives an instant velocity
+change of pushForce / mass, and linear damping then bleeds it off, so the
+distance a body actually travels is
+
+    pushForce / (mass * linearDamping)
+
+A common Enemy_Cross is mass 5, damping 6 - so 30:
+
+    pushForce 10   (the stock White Shotgun)  ->  a third of a unit
+    pushForce 220                             ->  about 7 units
+    pushForce 600                             ->  about 20 units
+
+Which is why nobody ever noticed this game had knockback.
+
+HEAVY ENEMIES BARELY MOVE. A Jock or a Red is mass 50 and a Queen is
+200, so the same shot moves them 10x and 40x less. Pairing this with
+"slow" helps a great deal, because slow's "knockback" switch works by
+LOWERING MASS - which is the number in the denominator. That is what the
+Riot Wave preset uses it for.
+
+AND A SHOVE DECAYS, so this is a CLOSE-RANGE idea. They arrive slower
+the further they travel. The build log prints the distance for you.
+
+
+THE ONE HARD TRAP
+-----------------
+
+A PIERCING SHOT NEVER PUSHES ANYTHING. In the projectile's hit handling,
+
+    if (PiercingData.enabled && layer != ground) { MoveForward(); return; }
+
+sits ABOVE the knockback line - so "pierce" and "pushForce" are mutually
+exclusive on a plain projectile. Drop "pierceLimit" and leave
+piercingData.enabled off for a shove weapon. The builder warns if you
+set both.
+
+THE GOOD NEWS ON THE OTHER SIDE: the knockback repeat delay
+(piercingData.knockBackRepeatDelay) is stored on the INDIVIDUAL
+PROJECTILE, so it only stops one pellet shoving the same body twice.
+Every pellet of a fan applies its own impulse. Nine pellets landing on
+one enemy at close range is nine shoves - which is exactly what makes
+this devastating in a corridor and gentle at range.
+
+A LOBBED shot pushes on EVERY collision it has, with no repeat delay at
+all, so a bomb rolling along a line of enemies shoves each one.
+
+Kills are credited properly, so onKill rewards pay for a slam.
+
+Preset: "Riot Wave".
+
+
+----------------------------------------------------------------
+ 4m. FADE - EASING A SHOT IN AND OUT
+----------------------------------------------------------------
+
+Nothing in the game fades a projectile. Every ammo prefab is a sprite at
+full alpha for its whole life which then simply disappears.
+
+  "fade": 0.2                          /* both ends  */
+  "fade": { "in": 0.1, "out": 0.4 }    /* separately */
+
+Works on BOTH projectile kinds, plain and lobbed ("usePhysics"), which
+was the point of the request.
+
+  in           seconds to fade UP from invisible at the muzzle.
+               0.05-0.15 takes the hard edge off without the shot
+               feeling late.
+  out          seconds to fade DOWN before the shot dies.
+  trail        default true - the trail and glow children fade with the
+               bullet. False leaves a solid trail behind a disappearing
+               shot, which can look deliberate on a ghost round.
+  assumeLife   total seconds to ASSUME the shot lives, for the fade-out,
+               when nothing bounds it. It does not shorten the shot's
+               life; it just tells the fade when to start.
+
+THE FADE-OUT NEEDS TO KNOW WHEN THE END IS. A plain shot is bounded by
+its rangeData or its lifetimeData, whichever comes first. A LOBBED shot
+is bounded by lifetimeData alone - rangeData is completely inert on one,
+because the game computes a range time for it and then never reads that
+field again. With neither, the fade-out never triggers, the fade-in
+still works, and the log says so.
+
+THINK IN UNITS OF TRAVEL, NOT SECONDS - this is what a round-12 test
+lost, on a fade that was working perfectly. The numbers are seconds,
+but what decides whether you can SEE the fade is how far the shot has
+gone by the time it finishes:
+
+    in x projectileSpeed = how far out before it is fully bright
+
+At "in": 3 on a shot doing 10 units/second, the bullet is not at full
+brightness until it is THIRTY UNITS away, which is well past the edge
+of what is on screen. It reads as a dim bullet that never appears
+rather than one that fades in - and no amount of staring at the log
+would have said so, because the fade was doing exactly what it was
+told.
+
+SO SAY IT IN UNITS AND LET THE MOD DO THE SUM:
+
+  inUnits      fade UP over this many units of travel.
+  outUnits     fade DOWN over the last this many units.
+
+Both are converted to seconds at BUILD time using projectileSpeed, so a
+module that changes the speed later will not re-scale them. They need a
+projectileSpeed to convert through, so they are refused with a warning
+on a lobbed weapon - use the seconds form there.
+
+THE BUILD LOG NOW CHECKS TWO DIFFERENT THINGS, because there are two
+ways a fade can be invisible and an absolute-distance check only finds
+one of them:
+
+  - the fade being longer than the ROOM (in x projectileSpeed over
+    about 20 units), and
+  - the fade being most of the FLIGHT (more than 30% of the shot's own
+    life).
+
+Round 13 was caught by neither. At projectileSpeed 4 a 3-second fade-in
+is only 12 units, comfortably under 20 - but the shot's whole life was
+8 seconds, so the fade-in ate 37% of it. A SLOW shot makes an
+absolute-distance check quieter and the actual problem worse, which is
+exactly backwards.
+
+AND THE REAL ANSWER USUALLY COMES FROM THE "fade AT DEATH" LINE. The
+runtime instrument used to report only that the alpha was being painted
+correctly - which was true, complete, and no help. It proves the fade
+is RUNNING and says nothing about whether the shot lives long enough to
+show it. A White Popper shot dies on its first contact: with a 3-second
+fade-in, one that hits a wall after half a second spends its whole
+visible life at 17% alpha and then vanishes. A dim bullet, never a
+fading one. So the log now reports, once per run, how long the shot
+lived, how far it got, and what its alpha was WHEN IT DIED - and says
+outright when that is the answer. If a fade looks absent, read that line
+first.
+
+To let the shot survive long enough to finish its fade, that is
+"impactBehaviour": { "enabled": false }.
+
+Each renderer's OWN alpha is preserved and scaled rather than assumed to
+be 1, so deliberately translucent art stays translucent and anything
+held at alpha 0 stays invisible.
+
+
+----------------------------------------------------------------
+ 4p. THE CURVE BEAM - A BEAM THAT LOCKS ON AND BENDS
+----------------------------------------------------------------
+
+BEAM WEAPONS ONLY. Build it on a hitscan template such as
+"Module Weapon Caps Laser". On anything else it is ignored with a
+warning - for a bullet that curves toward a target, the block you want
+is "homing".
+
+The beam locks onto one unit, bends its way there around whatever is in
+between, and damages everything it threads through on the way. Turn
+tightly enough and it will loop right around and come back.
+
+  "curveBeam": {
+    "lock": "nearest",
+    "turnRate": 110,
+    "maxLength": 34,
+    "route": "steer",
+    "pierce": true,
+    "flow": 7
+  }
+
+Two presets in the builder page show the two ends of it: LASH turns hard
+and loops around one enemy hitting everything in the curl, and TRACER
+turns gently, routes around cover, and puts most of its damage into the
+one target it locked.
+
+
+THREE THINGS A STOCK BEAM CANNOT DO
+-----------------------------------
+
+Worth stating first, because it is why this is its own block rather than
+a few more keys on "beam".
+
+  1. THE STOCK BEAM IS ONE STRETCHED QUAD. The game puts one sprite at
+     the barrel, rotates it to face the target, and sets its width to
+     the whole distance. There is nowhere for a curve to live. This
+     draws a CHAIN of short quads instead.
+
+  2. A STOCK BEAM HITS EXACTLY ONE THING. It casts once and damages the
+     first thing in the way, and nothing else. Piercing is not a flag
+     anywhere in the game - it is a cast per link, which is ours.
+
+  3. DAMAGE AND VISUALS WERE TWO INDEPENDENT RAYCASTS. One decides what
+     to hurt, a second decides where to draw. That is the trap in this
+     feature: bend only one and you get a beam that looks perfect and
+     damages a straight line.
+
+The third one is solved by the order the game does things in, rather
+than by being careful. The drawing pass runs every frame and always
+BEFORE the firing pass, so the path is worked out once and both passes
+read that same path. There is only one path to bend, so they cannot
+disagree.
+
+
+LOCKING ON
+----------
+
+  lock         "nearest"  the closest target, in any direction. The beam
+                          will happily curl behind your back.
+               "forward"  the one closest to your aim, inside lockCone.
+                          Reads more like a weapon you are aiming.
+               "none"     no lock. The beam keeps going the way you
+                          pointed it - STILL sliding around terrain. A
+                          beam that snakes down a corridor you cannot
+                          shoot straight down.
+  lockRange    how far to look. Defaults to the weapon's range.
+  lockCone     degrees either side of your aim, for "forward". 60.
+  objectsToo   let it lock onto crates and boxes too. Off by default.
+               They carry the game's own target marker exactly like
+               enemies do and are on the same faction, so nothing
+               excludes them automatically - but locking a seeking beam
+               onto a supply crate mid-fight is never what was wanted.
+  holdLock     keep the same target while the trigger is down. True.
+               Off re-picks every frame, which whips the beam between
+               enemies in a crowd. Chaotic, and genuinely fun.
+  reacquire    pick a new target when the locked one dies. True.
+
+
+THE CURVE
+---------
+
+  turnRate     DEGREES PER WORLD UNIT OF BEAM, not per second. 40.
+
+               That is the honest unit for a shape rather than a motion.
+               It makes the tightest circle the beam can draw - about
+               360/turnRate units around - identical on every computer,
+               whatever the frame rate and however fast you are moving.
+               Per-second would have made the same weapon curve
+               differently on a better machine.
+
+               40 gives a tightest loop about 9 units around. 110 gives
+               about 3, which is what lets a beam wrap a single enemy.
+               Below about 15 it barely bends.
+
+  maxLength    THE LENGTH OF THE BEAM, NOT HOW FAR IT REACHES. A beam
+               that loops spends its length on the loop, so a curve beam
+               usually wants more of this than a straight one covering
+               the same ground. Defaults to the weapon's range, and the
+               log says so. If it keeps stopping short of things you can
+               see, raise this rather than "range".
+
+  segment      length of one link. 0.4. Shorter is smoother and more
+               quads. There is a hard cap of 160 links, so a very small
+               segment SHORTENS THE BEAM rather than costing frames -
+               the build log warns when that is happening. The curve
+               stays smooth at longer segments anyway, because the turn
+               limit is per unit of length rather than per link.
+
+  smoothing    how much of last frame's heading is kept, 0 to 1. 0.35.
+               The path is rebuilt every frame, so at 0 a target
+               stepping sideways snaps the whole curve at once. This is
+               what makes it read as a heavy tether being dragged.
+
+
+WEAVING THROUGH OTHER ENEMIES
+-----------------------------
+
+His idea: "the segments going to that enemy also looks for other enemies
+that it can hit along or near it's path. Like seeking behavior."
+
+Without this the beam takes the most direct route it can to whatever it
+locked, and only pierces what happens to be ON that line. With it on, it
+deliberately DETOURS through other targets on the way - and still ends at
+the one you locked.
+
+  weave        off by default. It is a real damage increase on top of
+               piercing, and a beam that snaps straight at its target is
+               a different, more precise weapon. Needs a lock - with
+               "lock": "none" there is no path for a detour to be on.
+  weaveRange   how far off the straight line an enemy may be and still be
+               worth a detour. 4. THIS IS THE GREED DIAL: small keeps the
+               beam near the direct line, large sends it wandering.
+  weaveMax     most detours in one beam. 3. Without a cap a crowded room
+               turns the beam into a scribble that never arrives. Every
+               detour also spends "maxLength", so a weaving beam wants
+               more of it than a straight one.
+
+BUILT AS A ROUTER, NOT AS A STEERING FORCE, which is why it costs almost
+nothing. The path solver already follows a corridor of waypoints for the
+pathfinder; weaving hands it a different corridor. The turn limit, the
+terrain avoidance and the damage pass all behave exactly as before and
+none of them needed to learn about this.
+
+DETOURS ARE TAKEN IN THE ORDER THE BEAM MEETS THEM - sorted by how far
+along the way to the target they are, never by proximity. A nearest-first
+walk would happily send the beam backwards, and a beam that doubles back
+reads as broken rather than clever. Anything behind the barrel or past
+the target is dropped for the same reason: a detour is only a detour if
+it is on the way.
+
+The detours are chosen ONCE FOR THE WHOLE VOLLEY, so a multi-beam hitscan
+has all of its beams take the same route rather than four beams each
+picking a different one.
+
+If both "weave" and "route": "path" are set, weaving wins - routing a
+corridor to each detour in turn would be several searches per frame.
+Terrain is still avoided by the steering between detours, and
+"steerThenPath" still rescues a weave that dead-ends.
+
+
+GETTING AROUND TERRAIN
+----------------------
+
+Steering is LOCAL - it sees what is directly in front of it and nothing
+else - so like anything that steers, it can drive into a dead end. That
+is what the other two modes are for.
+
+  route  "steer"          look ahead, slide along whatever surface you
+                          meet. Organic, loops fall out naturally,
+                          cheap. If it genuinely dead-ends it stops at
+                          the wall, which is what a normal beam would
+                          have done anyway. The default.
+         "steerThenPath"  the above, plus a proper route through the
+                          level's cells computed ONLY when steering
+                          fails. Always finds a way if one exists. It
+                          changes character slightly when it rescues
+                          itself, because a routed corridor is a
+                          different shape from a steered one.
+         "path"           route every time. Most reliable, least
+                          organic - a pathfinder has no reason to ever
+                          curl back on itself, so loops become hard to
+                          get. With "lock": "none" there is nothing to
+                          route TO, so it steers regardless and says so.
+
+  lookAhead    how far in front it looks. 1.4. Longer starts the turn
+               earlier and gives wider, lazier arcs; shorter hugs.
+  clearance    how wide a berth it gives terrain. 0.45. Also the radius
+               the router uses to decide a gap is passable at all, so
+               raising it makes the beam refuse tight squeezes.
+
+All three modes run the same integrator. The mode only changes what the
+beam is AIMING at from step to step, which is why even a routed path
+comes out as a curve rather than a chain of corners.
+
+
+DAMAGE - AND THIS IS A BIG INCREASE
+-----------------------------------
+
+At the Caps Laser's fireRate 13 and damageRepeatDelay 0.08, a beam
+threading six enemies does about six times the damage of the stock one.
+Said plainly rather than left to be discovered.
+
+  pierce       damage everything it passes through. True. Off makes it a
+               seeking beam that still hits only one thing, which is a
+               perfectly reasonable weapon.
+  bystander    multiplier on anything that is NOT the locked target. 1.
+               0.35 keeps the lock-on meaningful and stops the beam
+               being strictly better than a straight laser in every
+               situation. 0 passes harmlessly through everything else.
+  maxTargets   most units hurt per firing tick. 0 = no cap. Bounds the
+               worst case, at the price of feeling arbitrary - the
+               seventh enemy takes nothing for no visible reason.
+  push         shove where the beam touches, along the beam AT THAT
+               POINT. On a curve that direction is genuinely local, so
+               something caught on the outside of a bend goes sideways.
+               Defaults to the weapon's own pushForce.
+
+The beam will not cut through your own minions. A stock beam is kept off
+its owner's friends by the layer mask alone, which is enough when a beam
+only ever touches one thing; a beam that threads a whole room is a
+different matter.
+
+Kills are credited properly, so onKill rewards pay for them.
+
+
+ART - AND AN ANIMATION FINALLY MEANS SOMETHING ON A BEAM
+--------------------------------------------------------
+
+The plain "beam" block warns that only frame 0 of an animation is
+usable, because one stretched quad has no flipbook. A CHAIN HAS A FRAME
+PER LINK - frame 0 on the first, frame 1 on the second - and the whole
+assignment shifts along every frame, so the pattern travels down the
+beam toward the target while every quad stays put.
+
+  sprite       an ANIMATION name from your "sprites" folder. A single
+               sprite works, but every link is then identical and "flow"
+               has nothing to travel.
+
+               A READY-MADE SHEET SHIPS WITH THE MOD. Drop
+               wf_beamlink.png and wf_beamlink.json from the
+               "Example Sprites" folder into your "sprites" folder.
+               One strip, two animations:
+
+                 wf_beamlinkAnim  a chevron comet - a bright arrowhead
+                                  with a fading tail, racing toward the
+                                  target.
+                 wf_beamlinkAlt   the literal alternating reading - a fat
+                                  link and a thin one, so the beam reads
+                                  as a chain of beads.
+
+               Drawn nearly WHITE on purpose, so "color" tints it
+               cleanly to anything. A saturated sheet goes muddy the
+               moment somebody asks for the opposite hue.
+  frames       how many links the GENERATED pattern cycles through. 4.
+               1 is an even beam with no pulse. Ignored when you name
+               your own sprite.
+  flow         patterns per second travelling down the chain. 6.
+               NEGATIVE runs the pattern back toward the ship, which
+               reads as the beam draining something rather than
+               delivering it. 0 holds it still.
+  thickness    how thick the beam is drawn. 0.35. No repeat-mode trap
+               here, unlike the plain "beam" block - each link is sized
+               directly, so thickness is always free.
+  overlap      how far each link runs past its own end, as a fraction of
+               its length. 0.35. THIS IS WHAT MAKES THE BEAM CONNECTED
+               THE WHOLE WAY THROUGH: two quads meeting at an angle
+               leave a wedge-shaped gap on the outside of the bend, and
+               a little overlap fills it. At 0 a tightly curved beam
+               looks like a dotted line.
+
+               THE TRADE-OFF, IF THE BEAM SHOWS A LADDER OF BRIGHT RUNGS.
+               Overlapping links are drawn on top of each other, so if
+               the beam material ADDS rather than covers, every seam is
+               double brightness and the beam reads as a rung ladder.
+               Lower "overlap" if you see that. Going too far the other
+               way puts the wedge gaps back on tight bends - though the
+               gap is small: at 44 degrees per link (Lash) it is about a
+               fifth of a link, on the outer edge only, and soft-edged
+               art hides most of it.
+  taper        thins the beam toward the far end, 0 to 1.
+  color        the beam's colour. Baked into the generated links; a tint
+               on your own sprite. The beam material is emissive and
+               blows detail toward white, so saturated colours survive
+               better than pale ones.
+
+  endPuff      park the beam's impact puff at the end of the CURVE.
+               True, and it costs nothing - that particle system was
+               always on the beam visual and the game already moves it
+               to the end of the straight ray every frame. This just
+               moves it somewhere truer.
+
+  explodeOnTarget   a real explosion where the beam lands, using the
+                    weapon's own "explosion" block. Rate-limited by
+                    explodeInterval (0.25s), because a held beam fires
+                    many times a second and a stock explosion is not
+                    priced for that. Does nothing without an "explosion"
+                    that has damage and a radius.
+
+The WARM-UP beam stays straight on purpose. It is the tell that the
+weapon is spinning up and has not chosen a target yet; curving it would
+say the beam is already tracking when it is not. The "beam" block still
+owns the warm-up art, the material and the impact sprite - this block
+owns the fire beam.
+
+
+WHAT IT DOES NOT DO
+-------------------
+
+  * angleVariance is ignored. A random wobble at the muzzle is invisible
+    within two links on a beam that steers toward a target anyway.
+  * projectileCount above 1 gives each beam its own path and its own
+    chain, all locked to the same target. It works, and it is expensive.
+  * It does not bend around UNITS, only terrain. Enemies are what it is
+    trying to reach, so routing around them would be perverse.
+
+
+----------------------------------------------------------------
+ 4q. THE HIT "TICK" - THE SOUND SOMETHING MAKES WHEN YOU HURT IT
+----------------------------------------------------------------
+
+EVERY DEFAULT HERE IS THE GAME'S OWN BEHAVIOUR. A "hitSound" block that
+only sets "scope" changes nothing at all. Everything below is opt-in.
+
+  "hitSound": { "minInterval": 0.06, "vary": 0.06 }
+
+
+WHAT THE TICK ACTUALLY IS
+-------------------------
+
+None of this is findable by reading the game's code, which is why it sat
+in the "captured, not built" list for four rounds.
+
+ONE SOUND, SHARED BY 83 THINGS. Every damageable prefab wires its damage
+event to a sound player AS A UNITY EVENT IN THE PREFAB, so it appears at
+no call site anywhere - and every single one points at the same sound:
+"Enemies/Hit", volume 0.22, positional, ONE CLIP WITH NO VARIATION. Not
+just enemies either: crates, boxes, fruit and the practice Dummy too.
+
+THE PLAYER IS NOT ONE OF THEM. All four ship prefabs carry no sound
+player at all and route their damage event somewhere else entirely. So
+this sound is unambiguously a HITMARKER, and nothing in this block can
+affect the sound of you being hurt.
+
+
+THE ONE THING GENUINELY WRONG WITH IT
+-------------------------------------
+
+THERE IS NO THROTTLE ON THE TICK WHATSOEVER. The damage event only fires
+when damage really lands, which sounds like a gate until you check the
+game's own i-frame duration: it is ZERO on all 84 damageable prefabs.
+The only limiter is a GLOBAL 100-per-second cap in the audio database,
+not a per-enemy one.
+
+So a shotgun plays one tick PER PELLET THAT CONNECTS. A piercing beam
+plays one per enemy per damage tick - six enemies at the Caps Laser's
+rate is about 75 a second. If it has ever sounded like a buzz, that is
+why, and it is not your imagination.
+
+This is left alone by default because the game's behaviour is the
+default. "minInterval" is the fix. The build log points at it on any
+weapon likely to trip it.
+
+
+WHO IT APPLIES TO
+
+  scope   "all"     everything that takes damage - your hits, burn
+                    ticks, gas clouds, enemies shooting each other, and
+                    crates. The default, and the only setting where a
+                    throttle really fixes the buzz, because a burning
+                    crowd spams the tick as hard as a shotgun does.
+          "mine"    only hits caused by THIS weapon. A true per-weapon
+                    hitmarker, leaving the game's feedback alone
+                    everywhere else. Works because the mod can already
+                    tell which weapon caused a hit - the same
+                    attribution that credits kills.
+          "units"   everything except crates and boxes, using the
+                    game's own discriminator: all 60 fighting units
+                    carry an AI agent and none of the 13 containers do.
+                    Turrets count as fighters.
+
+A game-wide scope is declared BY a weapon, so only one weapon can win.
+The log warns if two of them disagree.
+
+
+THE SOUND ITSELF
+
+  sfx        replace it. A stock sound id, or one of your own from the
+             "sounds" folder. "none" SILENCES it (also "off", "silent",
+             "mute") - the impact sprites already tell you that you
+             connected, so silence is a real option rather than a
+             broken one.
+  volume     multiplier on the sound's own 0.22. It is already quiet.
+
+
+STOPPING IT MACHINE-GUNNING
+
+  minInterval  seconds between ticks. 0 is the game's own behaviour: no
+               throttle at all. 0.06 is a good starting point - fast
+               enough to still feel responsive, slow enough that a
+               shotgun blast reads as one impact rather than nine.
+  perTarget    throttle per ENEMY rather than overall. Off, one tick
+               represents the whole moment however many things were hit,
+               which is what a shotgun wants. On, each enemy gets its
+               own and a crowd is audibly a crowd, which is what a
+               piercing beam wants. Worth trying both.
+
+
+MAKING IT CARRY INFORMATION
+
+The game ships ONE CLIP for every hit in the game, so every impact
+sounds identical. That sameness is most of what makes repeats grate -
+even a little jitter helps far more than it sounds like it would.
+
+  pitch      "none"     one flat sound, as the game has it. Default.
+             "damage"   heavy hits sound HEAVIER - the pitch drops as
+                        the hit gets bigger. The cheapest way to make a
+                        weapon feel like it has weight.
+             "health"   rises as the target nears death, so you can
+                        hear who is nearly finished without looking at
+                        a health bar. Good on a weapon you fire into a
+                        crowd.
+  pitchLow   the far end - a full-power hit, or a target at full
+             health. Default 0.85.
+  pitchHigh  the near end - a graze, or a target about to die. 1.25.
+  damageAt   the damage that reaches pitchLow. Default 10. Set it near
+             your weapon's biggest realistic hit, or the whole range
+             collapses into one end of it.
+  vary       random jitter either side, on top of any mode. 0.06 ON ITS
+             OWN, with no pitch mode at all, fixes most of the grating.
+
+ONE THING WORTH KNOWING IF YOU USE PITCH. The game never sets a pitch on
+any sound, and its audio sources come from a POOL - so the moment a
+pitch is set, the next unrelated sound to borrow that source would
+inherit it. A detuned explosion four seconds later would be almost
+impossible to trace back. So once any weapon uses a pitch, the mod
+writes an explicit pitch on EVERY sound the game plays: yours where you
+asked for one, and a plain 1 everywhere else.
+
+
+----------------------------------------------------------------
+ 4r. CONTACT DAMAGE - MAKING A UNIT DANGEROUS TO TOUCH
+----------------------------------------------------------------
+
+  "contactDamage": { "damage": 4, "push": 60, "recoil": 20 }
+
+
+I HAD THIS WRONG AND YOU WERE RIGHT
+-----------------------------------
+
+I have written "nothing in this game does contact damage" into three
+files. The narrower truth is that YOUR SHIP does not - ImpactDamage on
+the ship is self-damage, and only while sprinting. The game has TWO
+contact-damage systems:
+
+  Hazard       a plain component with OnCollisionEnter2D and
+               OnTriggerEnter2D that damages anything with a HealthBase,
+               plus a contact pushback. TWELVE of them: Bouncer Red
+               (2 damage / 30 push), Bouncer Worm (5/30), FLY ALFA and
+               FLY ZAPPER AT 0 DAMAGE AND 30 PUSH - pure bumpers - the
+               Turret Bouncer (5/30), Fruit White (5/30), the Fish
+               (3/20), the four beak enemies, and Ammo Dandelion.
+
+  ChargerHead  the Larva, Child, Maggot and Swimmer Maggot. Does not
+               use collision callbacks at all: a swept CircleCast along
+               the rigidbody's velocity every physics step, rate-limited,
+               pushing the victim AND recoiling itself. The Hazard on the
+               beak is used purely as a damage container, which is why
+               that object has no collider on it.
+
+
+WHY THE SWEPT CAST IS THE DEFAULT HERE
+--------------------------------------
+
+This is the reason the feature is worth building rather than just
+reusing "slam".
+
+EVERY ONE OF THE 65 UNIT RIGIDBODIES USES DISCRETE COLLISION DETECTION -
+only ammo prefabs use Continuous - and the physics step is 0.02s. So a
+body moving faster than about 50 units/s SKIPS a 1-unit object between
+steps.
+
+Riot Wave's pushForce 220 on a common Cross (mass 5) is 44 u/s, already
+marginal. Add slow's knockback, which HALVES the mass, and it is 88 u/s
+- 1.76 units per step, further than an enemy is wide.
+
+So the hardest, most spectacular throws are exactly the ones a collision
+callback misses. ChargerHead is the game's own answer to this, and
+copying it costs nothing.
+
+"slam" is deliberately LEFT ALONE and still uses the callback. Its new
+"swept" key opts into the same cast so the two can be compared without
+changing what already shipped.
+
+
+WHO CARRIES IT
+
+  who   "marked"    units this weapon has touched, for "window"
+                    seconds. The default, and it keeps this a weapon
+                    property. Same marking slam uses, so it works on
+                    bullets, beams and explosions alike.
+        "enemies"   EVERY enemy, always. A world rule - enemies become
+                    dangerous to each other whether you were involved or
+                    not. Only one weapon can own it.
+        "ship"      your own ship, so you can ram things by flying into
+                    them without the shield block. Your ship takes no
+                    crash damage itself unless sprinting, so this is
+                    currently free.
+        "all"       enemies and your ship.
+
+  window    how long a marked unit stays dangerous. 1.5. Re-marking
+            refreshes rather than stacks.
+
+
+THE DAMAGE
+
+Flat by default, matching every stock Hazard - the Maggot's beak is a
+flat 3.
+
+  damage           flat damage per contact. 3. ZERO IS A LEGITIMATE
+                   WEAPON: Fly Alfa and Fly Zapper are 0 damage with 30
+                   push, things that only shove.
+  damageType       defaults to the weapon's own.
+  scaleBySpeed     scale by how fast the carrier was going instead,
+                   the way slam does. Off.
+  damagePerSpeed   damage per unit of speed above minSpeed, when
+                   scaling. 1.
+  minSpeed         below this it costs nothing, when scaling. 6.
+  maxDamage        cap, when scaling. 999.
+
+
+SHOVING - BOTH DIRECTIONS
+
+  push      shove what it touches, along the carrier's direction of
+            travel. A shove carries a body push / (mass x damping)
+            units, and a common enemy is mass 5 damping 6 - so 90 moves
+            one about 3 units.
+  recoil    shove the CARRIER back. Without it a flung unit ploughs
+            straight on and the impact reads as nothing having
+            happened. The stock chargers use 10 and 30.
+
+  repeatDelay   seconds before the SAME target can be hit again. 0.3,
+                and it is PER TARGET - unlike the game's own
+                ChargerHead, which rate-limits globally, so a stock
+                charging Maggot only ever hurts the first thing it
+                ploughs into.
+
+
+DETECTION, REACH AND WHO IT CAN TOUCH
+
+  detect        "swept" (default) or "collision". See above.
+  radius        how far the contact reaches. Blank takes it from the
+                unit's own collider, which is almost always right and
+                means one setting fits a Larva and a Queen.
+  hitsEnemies   can it hurt other enemies? On - that is the point.
+  hitsPlayer    can it hurt YOU? Off. A world rule with this on makes
+                every enemy dangerous to touch, which is a different and
+                much harder game. The log warns when it is on.
+
+  tint / tintPulse   a colour worn by anything currently dangerous.
+                     Goes through the same owner as the slam and slow
+                     tints, so all three compose - a unit that is
+                     slowed, slammable AND spiky wears all three.
+
+Kills are credited properly, so onKill rewards pay for them. Worth
+knowing that the game's OWN hazards do not do this - a Larva's beak kill
+credits nobody.
+
+
+----------------------------------------------------------------
+ 4s. THE CHARGE LUNGE - WIND UP, THEN LAUNCH YOURSELF
+----------------------------------------------------------------
+
+The BULL RUSH preset in the builder page is this, fully wired.
+
+  "charge": { "mode": "release", "time": 0.9, "min": 0.35 },
+  "lunge":  { "windSpeed": 0.22, "force": 75, "damage": 9, "push": 90 }
+
+
+MODELLED ON THE MAGGOT
+----------------------
+
+Its charge is a three-state machine and the NUMBERS are the design:
+
+    state          movementForce   maxSpeed   maxAngularVelocity
+    Aim Move             400          1              1
+    Charge Move         2000        850            0.3
+    Move Away            900         50             25
+
+THE WIND-UP IS NOT A TIMER, IT IS maxSpeed 1. The Maggot telegraphs by
+almost STOPPING while it slowly turns to face you. And the commitment is
+maxAngularVelocity 0.3 - once launched it can barely steer, which is
+exactly what makes it dodgeable rather than unfair.
+
+Both of those are copied. The damage is incidental by comparison.
+
+
+IT NEEDS A "charge" BLOCK, IN RELEASE MODE
+------------------------------------------
+
+The lunge rides the charge block's hold and release rather than growing
+its own, which is what gets it the METER, the minimum charge, the
+response curve and the ready sound for free. A "lunge" with no "charge"
+never launches, and the build log says so plainly rather than leaving
+you guessing.
+
+Auto mode fires continuously and has no release to launch on, so that
+is refused too.
+
+
+THE SHIP'S MASS IS EXACTLY 1
+
+Which makes this unusually easy to tune: AN IMPULSE IS THE RESULTING
+SPEED IN UNITS PER SECOND. For scale, the ship's own numbers are:
+
+  maxSpeed             12.5      (19 while boosting)
+  acceleration         45        (65 while boosting)
+  dash, peak           about 43
+
+So "force": 60 is a genuine launch, and 120 crosses a room.
+
+
+THE WIND-UP
+
+  windSpeed   top speed while charging, as a fraction of normal. 0.3.
+              At 0.25 you are crawling at about 3 - the Maggot's
+              "almost stopped". This is the tell, to YOU as much as to
+              anything watching.
+  windAccel   acceleration while charging. 0.4. Lower feels heavy.
+  windCurve   above 1 the slow arrives late, so you keep your speed
+              until the meter is nearly full; below 1 it bites the
+              moment you press.
+
+
+THE LAUNCH
+
+  force       the impulse - i.e. the speed. 60.
+  minForce    the force at the MINIMUM charge your charge block allows,
+              scaling up to "force" at full. 0 means a barely-charged
+              release barely moves you.
+  aim         "cursor"  where you are pointing. The default, and the
+                        most controllable - you can still turn to line
+                        the launch up while barely able to move.
+              "move"    the movement stick, which is what the game's own
+                        Dash uses (it fires along flyDirection, NOT the
+                        aim). Consistent, but awkward when you are
+                        deliberately crawling. With the stick centred it
+                        falls back to the cursor rather than launching
+                        due world-east.
+              "barrel"  wherever the weapon points.
+
+
+THE COMMITMENT - the half that makes it fair
+
+  commit       seconds your engines stay throttled after launching, so
+               you fly the arc you committed to. 0.3.
+  commitSteer  how much of your normal acceleration you keep while
+               committed. 0 is a pure ballistic arc - the Maggot. 0.3
+               lets you nudge it, which is more forgiving and much less
+               dramatic. The Bull Rush preset uses 0.15, because a ship
+               that strafes freely is harder to aim than a Maggot that
+               only goes forwards.
+
+
+WHAT IT DOES
+
+  fires        does the charged shot still go off as you launch? TRUE.
+               On, this is a shoulder-barge with a gun and everything
+               the charge block scales comes along. Off sets
+               projectileCount to 0 - the same route SWIPE's pureMelee
+               takes, so cost, fire rate and the shoot sound are all
+               still taken. The price is no muzzle flash, since one is
+               built per pellet.
+
+  damage       damage for flying into something. 0 MEANS LEAVE THE
+               HURTING TO A "contactDamage" BLOCK - and if you have
+               neither, the log warns that the launch will move you but
+               hurt nothing. Above 0, your ship gets its own contact
+               damage for the length of the lunge, built from these
+               keys and running through the same code contactDamage
+               uses, so the two can never drift apart.
+  damageType   defaults to the weapon's own.
+  push         shove what you hit, along your direction of travel. 40.
+               Pairs obviously with "slam": punt them into a wall and
+               the wall finishes it. That is what the preset does.
+  recoil       shove YOURSELF back off what you hit. Above 0 you bounce
+               rather than ploughing through, which reads as weight.
+  repeatDelay  before the same target can be hit again. 0.3.
+  radius       how far the impact reaches. Blank takes it from the
+               ship's own collider.
+  selfDamage   damage YOU take for crashing into terrain at the end of
+               a lunge. 0, which is what the game does today - your
+               ship's own crash damage is switched off unless you are
+               sprinting, so flying into a wall is normally free. Set
+               it if you want the commitment to have a price.
+  sfx          a sound for the launch. The wind-up sound is already
+               yours via the weapon's warmupSfx, which the charge block
+               plays while the meter fills.
+
 
 ----------------------------------------------------------------
  5. WEAPON FIELDS - ALL WEAPON TYPES
@@ -2405,17 +4366,28 @@ These go inside the "weapon": { } block and work on every type.
 
   SOUND, SHAKE & MUZZLE - every stock weapon sets most of these, and
   until now a forged weapon just inherited whatever its template had.
-  All of them point at something the game already ships: sounds by audio
-  GUID, everything else by asset NAME. A value the game doesn't know is
-  skipped silently, so use the builder's pickers.
+  All of them point at something the game already ships, by asset NAME.
+  A value the game doesn't know is skipped silently, so use the
+  builder's pickers.
+
+  SOUNDS CAN NOW BE NAMED. Every sound field takes the readable name
+  the game's own audio database uses - "Weapons/Bolt/Shoot",
+  "Cells/Fuel", "UI/Click" - as well as a raw GUID. Until 2026-09-02
+  the lookup compared GUIDs only, so all 259 of the game's sounds
+  were reachable solely by typing a guid and nothing mapped a name to
+  one. SOUNDS.txt next to this file lists every one of them with its
+  clip count.
+
+  70 OF THE 259 ARE DECLARED WITH NO CLIP. They resolve perfectly and
+  play nothing. SOUNDS.txt marks every one and the build log warns.
 
   "shootSfx": "d39fd50f-9e3e-41ef-9ccd-f00c2282dbb1"
                             The firing sound, once per volley. The only
                             sound field that works in EVERY slot -
                             primary, secondary, gadget AND sub-emitter
-                            stages. Must be the GUID: the lookup compares
-                            GUIDs only, so "Weapons/Bolt/Shoot" is
-                            silence. Handy ones:
+                            stages. Takes the readable name
+                            ("Weapons/Bolt/Shoot") or a GUID. Handy
+                            ones:
                               Popper   891a1b2e-39c4-4a79-bcc9-6b89523a429d
                               Bolt     d39fd50f-9e3e-41ef-9ccd-f00c2282dbb1
                               Shotgun  3c33af41-a69f-48ef-bfad-4dfc832c3ed0
@@ -2551,6 +4523,21 @@ These go inside the "weapon": { } block and work on every type.
                             nothing at all here. It is the same trap as
                             the beam's thickness.
 
+  "muzzleLifetime": 0.1     How long each puff lives, in seconds.
+                            THIS IS THE FIX FOR A FLASH THAT SMEARS OR
+                            GOES BLACK ON A FAST WEAPON. The game calls
+                            Play() on the SAME particle system every
+                            shot, and Play() on a system that is already
+                            running ADDS a burst rather than restarting
+                            it. So a puff that outlives the gap between
+                            shots piles up on top of the last one -
+                            which darkens alpha-blended art toward black
+                            and smears a drawn sprite.
+                            Set it a little under 1/fireRate and you get
+                            exactly one flash at a time. The build log
+                            works the number out for you and warns with
+                            it.
+
   "muzzleFollow": true      The flash RIDES THE BARREL instead of being
                             stamped where you last fired.
                             The game positions the emitter at
@@ -2595,6 +4582,475 @@ These go inside the "weapon": { } block and work on every type.
                             "impactSpread" works on a stock puff without
                             naming a sprite - "keep the art, just stop it
                             spraying everywhere".
+
+  "impactLifetime": 2       Seconds each impact particle lives, replacing
+                            whatever range the prefab shipped. The twin of
+                            "muzzleLifetime", which existed for ages while
+                            impact had nothing.
+                            Reach for it when your art reads as a slow
+                            dissolve and needs the time to do it: a stock
+                            impact puff is brief, while the game's tuff
+                            bubbles live 1 to 3 SECONDS. Without this they
+                            vanish before the pop reads.
+                            Works on a stock puff with no sprite named.
+
+  "impactGravity": -0.05    NEGATIVE RISES, POSITIVE FALLS. That is
+                            Unity's own sign and it is kept on purpose, so
+                            a number copied off a stock prefab works
+                            verbatim.
+                            -0.05 is exactly what the game's tuff puff
+                            uses, and that slow upward drift is a large
+                            part of why those particles read as BUBBLES
+                            rather than sparks. 0.5 gives embers that
+                            fall; 0 hangs where it burst.
+                            Works on a stock puff with no sprite named.
+
+  ---- "adaptive": THE RIGHT DAMAGE TYPE FOR EACH VICTIM ------
+
+  Prism rounds. Every hit switches the shot's damageType to whichever
+  one THIS victim takes worst. Nothing in the game or this mod has
+  ever varied damage type per target.
+
+      "adaptive": true
+
+      "adaptive": {
+        "types": ["Resource Electron", "Resource White",
+                  "Resource Caps", "Resource Tech",
+                  "Resource Purple", "Resource Fuel"],
+        "neverWorse": true,
+        "tint": true,
+        "tintSeconds": 0.18
+      }
+
+  READ THIS FIRST. Most things in this game are immune to damage
+  type. Counted across the game's prefabs: 100 of 129 damageable
+  components defend with Health, 13 with Fuel, 4 with Money - and
+  none of those three is a key in any damage table, so they are
+  always x1 whatever hits them. Only about 8% of enemies have any
+  damage-type relationship at all.
+
+  So this is a SPECIALIST tool for specific enemies, not a general
+  damage increase. The build log says so on every weapon that uses
+  it, because otherwise it looks broken.
+
+  THE REAL TABLE, decoded from the game's assets:
+
+    attacker      vs Purple  vs Caps  vs Electron  vs Tech
+    Electron         x5        x5         x1        x0.5
+    Caps             x4        x1         x3        x0.25
+    White            x4        x4         x3        x0.25
+    Tech             x4        x4         x3        x0.25
+    Purple           x4        x4         x3        x0.25
+    Health           x1        x4         x3        x0.25
+    Fuel / Money     x1        x1         x1        x1
+
+  The biggest single multiplier is x5. My earlier note said "up to
+  20x" - that was the SWING between the best and worst choice
+  (5 / 0.25), not a multiplier you can reach.
+
+  TECH IS THE RESISTANT ONE. Everything hits Tech at x0.25 except
+  Fuel and Money at x1. So against Tech this is not extra damage, it
+  is the removal of a x4 PENALTY - which is why Fuel is in the
+  default list even though it never wins anywhere else.
+
+  "types" IS THE BALANCE LEVER. Trim the list and you trim the
+  ceiling: give it only "Resource White, Resource Fuel" and it can
+  escape the Tech penalty but never reach x5. A name that does not
+  resolve is dropped with a warning rather than failing the weapon.
+
+  "neverWorse": true (default) makes the weapon's own damageType a
+  floor - if nothing in the list beats it against this victim, the
+  shot is left completely alone.
+
+  ---- "charm": TURN AN ENEMY TO YOUR SIDE, BRIEFLY -----------
+
+  A chance on each damaging hit to flip an enemy's allegiance for a
+  few seconds. It fights what it used to be on, then goes back.
+
+      "charm": 0.25             the short form - 25% per hit
+
+      "charm": {
+        "chance": 0.25,         a FRACTION, not a percentage
+        "seconds": 6,
+        "max": 2,               at once; oldest released. 0 = NO LIMIT
+        "maxTargetHealth": 500, the boss guard, 0 = no limit
+        "harmless": true,       leave this on - see below
+        "playerCanHit": false,  true = you can shoot a charmed unit
+        "infighting": false,    true = charmed units fight each other
+        "color": "#ff80f2",
+        "colorPulse": 3,
+        "sfx": "Explosion3"
+      }
+
+  EVERYTHING IT CHANGES, IT CHANGES BACK. The enemy's faction, its
+  vision mask AND its grudge against you are saved when the charm
+  starts and restored when it ends, when it dies, and when the cap
+  releases it. Hitting an already-charmed enemy REFRESHES the timer
+  rather than saving a second time - saving twice would record the
+  charmed values and "restore" the enemy to being permanently yours.
+
+  A FACTION CHANGE IS NOT A TARGETING CHANGE, and this is the one
+  that made charm look broken in round 12. Three separate things
+  decide who a unit fights in this game and NOTHING reconciles them:
+
+    1. its faction
+    2. its Vision layer mask  (widened - see EYES below)
+    3. its own PERSONAL GRUDGE LIST
+
+  That third one is the killer. The game keeps a per-unit list of
+  entity ids it hates, it is checked BEFORE faction, and being hit by
+  something is what puts you on it - so THE ACT OF CHARMING SOMETHING
+  BLACKLISTS YOU ON IT. Its faction said friend, its grudge said
+  enemy, the grudge won, and it kept hunting you for the whole charm.
+
+  The report that cracked it was "it works while invisible" - under
+  permanent stealth the player never enters a unit's vision at all,
+  so the grudge is never consulted and the AI falls through to
+  picking a real enemy. The one configuration where charm worked was
+  the one where the grudge could not be read.
+
+  So the grudge is withdrawn for as long as the charm lasts, and the
+  unit is made to forget whatever it was chasing so it re-picks the
+  same frame instead of waiting to lose sight of you. It is re-checked
+  every frame, because any later hit from you would put it back.
+
+  ITS BULLETS COME WITH IT. Flipping a unit's side does not on its
+  own move its bullets - a projectile's faction IS its layer, and an
+  enemy shot is on a layer that cannot collide with other enemies at
+  all. So as each charmed unit fires, its shot is moved onto your
+  side: layer remapped and collision mask rewritten, aim untouched.
+  It keeps shooting exactly where it aimed, and now that actually
+  hits the things it is fighting.
+
+  This is the same operation "deflect" and "shield" already use to
+  catch an enemy bullet and send it back as yours - it is done on the
+  real projectile at the moment it is fired, not on a prefab, which
+  is why it does not depend on which weapon asset the enemy ended up
+  using.
+
+  "harmless": true is a SECOND layer of safety, not the main one.
+  Adoption fixes what its gun can reach; this covers anything that
+  gets through anyway - a contact hit, an explosion (which has no
+  owner filter anywhere in this game), or a shot fired in the instant
+  before the charm landed. Leave it on.
+
+  "max": 0 IS UNLIMITED. It always was in the engine; the builder
+  clamped a 0 back up to 1 on the way in, so the mode existed and
+  could not be reached from a file. Above 0, charming one more
+  releases the OLDEST, properly restored.
+
+  "playerCanHit": true LETS YOUR OWN FIRE DAMAGE THEM. By default it
+  cannot: a charmed unit is on your faction, and the game skips a hit
+  outright when the shooter and the target are friends, so your
+  bullets pass straight through one.
+  Read this as ONE rule rather than two: it makes a charmed unit of
+  yours answer "not a friend" to that single question, so this mod's
+  homing, chain, curve beam, tractor, turret and execute - which all
+  ask the same question - will treat them as valid targets too. That
+  is deliberate; "my bullets hit it but my homing refuses to aim at
+  it" would be two contradictory rules.
+  A LOBBED weapon could always hit them, incidentally: a physics shot
+  has no friendly-fire test at all.
+
+  "infighting": true MAKES CHARMED UNITS FIGHT EACH OTHER. Factions
+  cannot express this - they all share yours, so they are all
+  friends - but the grudge list outranks faction, which is the very
+  property that caused the bug above. So each charmed unit is written
+  into the others' lists and taken back out on release. Needs "max"
+  above 1 (or 0) to do anything, and the build log says so if not.
+
+  AND UNTIL R13 THAT WAS ONLY HALF THE FEATURE. Reported as: "they try
+  to shoot each other but unable to hurt each other, the projectiles
+  they shoot go through them."
+
+  PICKING a target and being able to HURT it are separate systems in
+  this game, and only the first had been taught about infighting. Two
+  independent guards refused the shot, and BOTH had to be relaxed -
+  fixing either alone would have been worse than the original bug,
+  because a bullet that visibly connects and deals nothing is a harder
+  thing to report:
+
+    1. the game's own friendly-fire skip. Projectile.FixedUpdate drops
+       a hit outright when Owner.IsFriendsWith(victim), and two charmed
+       units share your faction. The "playerCanHit" rule could never
+       cover this: it asks whether the victim was charmed by the
+       SHOOTER, and here the shooter is a fellow convert rather than
+       you.
+    2. charm's own "harmless" guard, which cancels any damage a charmed
+       unit would do to your side - and another charmed unit IS your
+       side by construction. It defaults to true, so this swallowed
+       every shot of an infighting swarm.
+
+  The exemption is deliberately narrow: it needs BOTH units charmed by
+  the same owner with infighting on. So they still cannot touch your
+  ship or a minion you summoned yourself. That is why it is an
+  exemption rather than telling you to set "harmless": false, which
+  would also let the swarm shoot you.
+
+  IT ALSO WORKS WITHOUT "playerCanHit". The two switches are
+  independent, and the per-bullet check is gated on either of them
+  being in use by any weapon.
+
+  THREE THINGS IT REUSES rather than reinventing, all of them fixing
+  bugs this mod has already been bitten by:
+    * the faction write goes through the same one place minions use;
+    * the enemy's EYES are widened, because vision is wired to one
+      layer that does not follow faction - a flipped enemy that still
+      only watches the Player layer sees you as a friend and drifts;
+    * its headbutt is guarded, because the game's charge attack has
+      NO faction test at all and a charmed rammer would otherwise
+      plough through your own minions.
+
+  ---- "wallRide": SHOTS THAT FOLLOW TERRAIN -------------------
+
+  A shot that catches a nearby wall and runs along it - round
+  corners, up walls, across ceilings - instead of ignoring it.
+  Nothing in the game or this mod did this: homing steers in open
+  space, and bounce and the curve beam go AROUND terrain.
+
+      "wallRide": true
+
+      "wallRide": {
+        "standoff": 0.7,        gap held from the surface
+        "grabRange": 1.6,       how near to catch a wall
+        "turnRate": 540,        degrees per second
+        "hug": 2.5,             how hard it corrects back
+        "side": "auto",         auto / left / right
+        "speed": 1,             multiplier while riding
+        "seconds": 0,           0 = as long as there is wall
+        "leaveOnLostWall": true
+      }
+
+  IT NEVER TOUCHES THE WALL. The shot holds the standoff gap, so its
+  own collision never reaches terrain and it cannot be destroyed by
+  it. Terrain damage, digging and cell behaviours are unchanged -
+  this only steers.
+
+  "standoff" IS THE SETTING THAT BREAKS IT. The shot dies on contact
+  like any other, so below about 0.25 it clips the surface and
+  vanishes - which looks exactly like the feature not working. The
+  build log warns you. 0.5 to 0.9 rides visibly close without
+  touching.
+
+  "hug" HIGHER IS NOT BETTER. At 4 the shot visibly rings along a
+  flat wall, wobbling by most of the standoff. 2.5 settles. That was
+  measured, not guessed: the steering was simulated against flat
+  walls, inside and outside corners, a ceiling, a corridor and a
+  pillar before it ever ran in game.
+
+  "side": auto picks whichever way round matches the heading when it
+  grabs, then HOLDS that choice. Decided once on purpose - deciding
+  per frame makes a shot reverse the moment its heading crosses the
+  perpendicular, which reads as rattling in one spot.
+
+  PLAIN PROJECTILES ONLY. A lobbed (usePhysics) shot is a different
+  class steered by its rigidbody, and holding one to a wall means
+  cancelling its fall - at which point it is not a lobbed shot. The
+  build log says so rather than failing quietly.
+
+  WHAT COUNTS AS A WALL: a terrain cell with a real collider. Fog is
+  skipped, because its whole trick is having none - so a shot rides
+  past fog rather than along it.
+
+  ---- "execute": FINISH ANYTHING ALREADY NEARLY DEAD ---------
+
+  A hit from this weapon kills outright anything already below a
+  health threshold.
+
+      "execute": 0.2            the short form - under 20%
+
+      "execute": {
+        "percent": 0.15,        a FRACTION of maximum health
+        "flat": 25,             OR an absolute amount left
+        "maxTargetHealth": 500, skip anything bigger than this
+        "color": "#ff4d4d",     flash the victim as it dies
+        "colorSeconds": 0.25,
+        "colorPulse": 0,
+        "sfx": "Explosion3"
+      }
+
+  "percent" IS A FRACTION, NOT A PERCENTAGE. 0.2 means 20%. A value
+  above 1 would finish everything you touch, so the build log catches
+  it and divides by 100 for you rather than letting it ship.
+
+  WHICHEVER THRESHOLD IS MET FIRST WINS, so setting both "percent"
+  and "flat" catches the chaff and the big one with one weapon.
+
+  "maxTargetHealth" IS THE BOSS GUARD. A 15% execute on a
+  2000-health boss is 300 free damage in one hit - a different weapon
+  than the one you probably meant. Set this to a few hundred to keep
+  the execute for ordinary enemies. 0 = no limit.
+
+  THE KILL COUNTS AS A NORMAL KILL. On-kill rewards, leech, Module
+  Forge's kill effects and the music all pay out. That is not extra
+  work in the mod: the execute calls the game's own death method, and
+  the game's own "did that kill it" credit line runs immediately
+  after, so it sees the death the same as any other.
+
+  WORKS ON SHOTS, BEAMS AND EXPLOSIONS from one place, because every
+  damage route funnels into a single method.
+
+  BURN AND GAS TICKS NEVER EXECUTE - damage over time reports no
+  weapon, so there is nothing to look a threshold up on. Same as
+  crit.
+
+  IT CANNOT HURT YOU OR YOUR SIDE. Yourself and anything friendly are
+  skipped, so a minion caught in your own blast is safe.
+
+  IT ONLY FIRES ON A HIT THAT ACTUALLY LANDED. Damage is refused
+  three silent ways in this game - a damage blocker, no tank of that
+  damage type, or i-frames - and on any of those the enemy is
+  untouched and the execute does not fire. Otherwise a weapon could
+  finish something it never really hit.
+
+  ---- "targeting": WHICH ENEMY THIS WEAPON GOES FOR ----------
+
+  Everything in this mod that picks a target picks the NEAREST one,
+  or the one closest to straight ahead. This lets ONE weapon choose
+  differently.
+
+      "targeting": "lowest"
+
+      "targeting": { "priority": "unshielded", "unitsOnly": true }
+
+  priority:
+    nearest     closest to the shot (what most of it did already)
+    farthest    the one at the back
+    lowest      least health LEFT - a finisher
+    highest     most health left - focus the big one
+    weakest     lowest % of its OWN max health
+    toughest    highest % of its own max health
+    unshielded  skip anything with an active shield
+    shielded    strip shields first
+    forward     closest to straight ahead (what homing did already)
+
+  "lowest" is raw health, so it finishes a hurt Larva before a fresh
+  one. "weakest" is a percentage, so a boss at 5% beats a full-health
+  fly. They feel very different; try both.
+
+  TIES BREAK BY DISTANCE in every mode, so "unshielded" means "the
+  nearest unshielded one" rather than an arbitrary one.
+
+  unitsOnly: crates, boxes and fruit are real targets to the game -
+  they carry the same "shoot me" marker enemies do and share the
+  enemies' faction - so "lowest" will happily pick a crate, which has
+  very little health. Set this true to rank only things that fight
+  back. It is separate from each block's own "targetObjects", which
+  decides whether objects are eligible at all; this decides whether
+  they get RANKED.
+
+  WHAT IT STEERS: homing, chain, ricochet's seek, split, the
+  catalyst's redirect, converge's target focus, and a curveBeam's
+  lock. A split fragment or a chained shot keeps its parent weapon's
+  priority.
+
+  WHAT IT DOES NOT TOUCH: the game's own aim assist - the thing that
+  nudges the BARREL, deciding where your bullets actually go. That is
+  a separate mechanism and this leaves it alone, deliberately and
+  permanently. "targeting" only changes which enemy a shot chases
+  once it is already in the air.
+
+  There are two reasons, and the second is the real one. Aim assist
+  moving on its own would fight the player's aim. But it also sets
+  the barrel direction that OTHER features read: the volley axis
+  comes from it, and a converge weapon takes its shared focal point
+  from that axis. So "make assist prefer the hurt enemy" would
+  quietly move where a converging volley meets - a targeting option
+  reaching sideways into an unrelated feature.
+
+  IT CHANGES NOTHING UNTIL YOU SET IT, and nothing but this weapon.
+  Leave the block out and every finder runs the code it ran before
+  the feature existed - not a branch that happens to match, the same
+  code path. The priority is looked up per weapon asset, so an
+  enemy's gun, a stock gun, and your other Forge weapons are all
+  unaffected.
+
+  An enemy with no health component sorts LAST rather than being
+  skipped, so it is still picked when it is the only thing in range.
+
+  ---- CONTACT DAMAGE IS SCOPED TO THE EQUIPPED WEAPON --------
+
+  "contactDamage": { "who": "enemies" | "ship" | "all" } are WORLD
+  rules - they arm units you never touched - and they are live ONLY
+  while the weapon carrying them is equipped. Unequipping puts the
+  world back: the units already armed are disarmed again, not merely
+  left alone.
+
+  Worth stating because it did not used to be true. Until 2026-08-31
+  the rule was latched at STARTUP by the mere presence of a file
+  carrying it, so a single "who": "ship" weapon sitting in the folder
+  made every unrelated weapon ram for the rest of the session. If you
+  ever saw an unrelated gun doing contact damage, that was this.
+
+  The default is the game's own behaviour: your ship does no contact
+  damage at all (its ImpactDamage is SELF damage, and only while
+  sprinting), while 12 Hazard prefabs and 4 charging enemies do.
+
+  "who": "marked" was never affected - it always asked which weapon
+  dealt the damage, which is the discipline the world modes lacked.
+
+  The log prints a line each time a world rule switches on or off.
+
+  ---- THE TUFF BUBBLE POP, copied off the game ----------------
+
+  The pink bubbles that burst out of tuff terrain are nine sprites,
+  area_zero_particle_tuff_0 to _8, and they SHRINK: frame 0 is a 12px
+  bubble and frame 8 is 4px. So the forward run IS the pop - there is
+  no separate pop animation to find, and ":8-0" makes them GROW
+  instead.
+
+  The game spawns them from "ImpactParticle Cell Tuff": a burst of 2-5,
+  speed 0-15, size 0.5, lifetime 1-3s, gravity -0.05 so they float up,
+  and the nine frames fitted to each particle's own life. All of that
+  is reachable now:
+
+      "weapon": {
+        "impactSprite": "area_zero_particle_tuff@life",
+        "impactLifetime": 2,
+        "impactGravity": -0.05,
+        "impactCount": 4,
+        "impactSize": 0.5,
+        "impactSpread": 0.5
+      }
+
+  "@life" is the load-bearing part. The stock effect's lifetime is a
+  RANGE (1 to 3 seconds), so any fixed fps is wrong for most of the
+  burst - and without it a stock run defaults to 12 fps, which finishes
+  all nine frames in 0.75s and then leaves a 4px dot sitting there for
+  up to two more seconds.
+
+  THE OTHER BUBBLES - the plain solid circles, not the tuff ones. The
+  game ships "part_cyrcle_0" through "part_cyrcle_19": a twenty-frame
+  run of a hard-edged circle shrinking from 20x20 pixels down to a
+  single pixel, monotonically, measured out of the atlas. That is the
+  "four basic circles that shrink" - and it needs no new feature,
+  because impactSprite already animates a stock run:
+
+      "weapon": {
+        "impactSprite": "part_cyrcle@life",
+        "impactCount": 4,
+        "impactSize": 1.2,
+        "impactSpread": 0.6
+      }
+
+  Ask for the run by its BARE BASE NAME. "part_cyrcle_12" with the
+  number still means only frame 12 - a trailing "_<digits>" is always
+  one specific frame, which is exactly why the bare name is what
+  requests the animation.
+
+  Worth knowing that this is the only way to get a shrinking impact:
+  SizeModule.enabled is 0 on every one of the game's impact prefabs,
+  so nothing in the game shrinks a particle by size. Both shrinking
+  effects it has are FLIPBOOKS whose art gets smaller - the tuff
+  bubbles do it through their sprite rects, these do it inside a fixed
+  20x20 frame.
+
+  A last thing you get for free: the game's own AutoPopper watches every
+  cell change, and tuff carries an "AutoPopNeighbour" behaviour. Destroy
+  one tuff cell and its four neighbours each roll 65% to pop 0.05-0.15s
+  later, the next ring rolling 20% (so it dies out after two). That is
+  not faction-gated or player-only - it listens to the level - so any
+  weapon that breaks tuff already gets the cascade with no keys at all.
 
   "muzzleRotate": true      Whether the particles turn with the emitter.
   "impactRotate": true      Every stock prefab ships set to FACE THE
@@ -3060,10 +5516,16 @@ for).
 
 A misspelled name is reported in the log with a list of the sounds
 that DID load, and the slot goes silent rather than falling back - so
-check the log if a weapon loses its sound. For a STOCK sound the
-value must be the audio GUID, not the readable path: the lookup
-compares GUIDs only, so "Weapons/Bolt/Shoot" is silence. The builder
-page has pickers for the stock ones.
+check the log if a weapon loses its sound.
+
+For a STOCK sound, use the readable name from SOUNDS.txt -
+"Weapons/Bolt/Shoot", "Cells/Fuel", "UI/Click". A raw GUID still
+works and the builder page has pickers for the common ones. Custom
+names win a clash with a game name, the same order every sprite key
+uses.
+
+Use "none" - or silent / silence / off / mute / "-" - in any sound
+field to switch that sound OFF.
 
 Projectile/beam color is NOT tied to the damage resource in this
 game - changing damageType recolors damage numbers/UI only, not the
@@ -3222,13 +5684,24 @@ PROJECTILE templates also accept:
   plain bullet has no parts for.
 
   So "homing" is homing for the PLAIN projectile. It steers by rotating the
-  shot's velocity, and there is a happy accident in how the game is built
+  shot's heading, and there is a happy accident in how the game is built
   that makes this the right way round: a plain projectile's collision sweep
   is rebuilt FROM its velocity every frame -
       Physics2D.CircleCast(position, Radius, Velocity, ...)
   - so bending the velocity bends THE HITBOX TOO, automatically. There is no
   second raycast to keep in sync, which is exactly what makes bending a
   hitscan beam hard by comparison.
+
+  HEADING, not velocity, and the difference is the whole ballgame. A plain
+  projectile keeps a hidden BASE HEADING alongside its velocity, and
+  anything that curves a shot - "wave", or the game's own noise wobble -
+  rebuilds the velocity from that heading every frame without ever reading
+  the velocity back. So a turn written only into the velocity is erased
+  before it moves anything. Homing used to do exactly that, which is why it
+  did nothing whatsoever on a shot that was ALSO waving; the noise case was
+  covered (see below) and the wave case, which is the same overwriter, was
+  not. Both work now, and "wave" + "homing" together give you a weaving
+  pursuit rather than one feature winning.
 
       "homing": true            on, with defaults
       "homing": {
@@ -3465,6 +5938,10 @@ PROJECTILE templates also accept:
     returnDamage damage multiplier applied ONCE as the return begins.
                  1.5 rewards letting the arc finish instead of firing
                  into a wall.
+                 COMPOSES with "grow" and "damageRamp". Before 2026-08-25
+                 it wrote damage directly, so on a boomerang that also
+                 grew, the trip home was back at full damage one frame
+                 later.
     onCatch      "vanish" (default), "refund" (pays back a share of the
                  weapon's cost into the tank it was fired from - needs
                  the weapon to have a cost), or "loop" (throws itself out
@@ -3595,6 +6072,15 @@ PROJECTILE templates also accept:
                 A balance lever if an infinite bouncer in a tight corridor
                 turns out absurd: 0.7 makes the fourth hit worth about a third
                 of the first.
+                COMPOUNDS FROM THE FIRST BOUNCE, so hit N is worth this to the
+                power of N-1. The lobbed "bounce" block's "damageFalloff"
+                deliberately starts one bounce later - the two are not the
+                same convention, and neither was changed to match the other
+                because that would rebalance every weapon already using them.
+                COMPOSES with "grow" and "damageRamp": all three publish
+                multipliers against one captured base rather than writing
+                damage. Before 2026-08-25 this wrote damage directly, so
+                either of those erased it on the next frame.
     pierceWins  ONLY matters if piercingData is also on. The game checks
                 piercing BEFORE bouncing and returns early, so a pierced enemy
                 is never bounced off - the two cannot both apply to one hit.
@@ -3781,6 +6267,12 @@ PROJECTILE templates also accept:
                exactly as hard as the arc needs" - that is the whole
                feature. Capping it makes the outer pellets under-turn and
                miss the point on the wide side.
+    faceTravel rotate the sprite to match the heading each frame, the
+               same switch "homing" has. TRUE by default, and a
+               converging volley turns hardest right at the start, so
+               art with a nose points visibly wrong without it. Turn it
+               off for a round blob, or to let a "rotationData" spin
+               survive the turn.
 
   DO NOT STACK IT WITH "homing". Both steer the same shot every frame and
   neither reliably goes last, so they fight and the curve comes out
@@ -3872,6 +6364,948 @@ PROJECTILE templates also accept:
 
   Works on lobbed shots too, for "distance" and "time". Preset:
   "Railgun".
+
+  SPEED RAMP - TOP-LEVEL "speedRamp" block.
+
+  Speed that CHANGES WHILE THE SHOT FLIES. Same keys as "damageRamp" on
+  purpose - it is the same idea on a different quantity, so if you can
+  read one you can guess the other.
+
+  NOTHING IN THE GAME DOES THIS. A projectile's speed only ever goes
+  DOWN, in exactly one place: "rangeData": { "slowDown": true } coasts
+  it to zero at its range. The one exception is a lobbed shot's
+  "homingData": { "acceleration" }, which only works while it is homing
+  at a target.
+
+      "speedRamp": true        on, with defaults
+      "speedRamp": {
+        "enabled": true,
+        "from": 0.25,
+        "to": 1,
+        "over": "distance",
+        "span": 0,
+        "curve": 2,
+        "clamp": true,
+        "minSpeed": 8,
+        "maxSpeed": 0
+      }
+
+    from/to    MULTIPLIERS of the shot's LAUNCH speed, so a module that
+               raised "projectileSpeed" still counts. from bigger than
+               to is a shot that runs out of puff.
+    over       same four drivers as damageRamp - "distance" (default),
+               "time", "pierce", "bounce". Bounce is the fun one here:
+               a shot that gets faster every time it hits a wall.
+    span       0 means "the weapon's own range".
+    curve      above 1 holds low then rushes, which is what sells the
+               wind-up. Use the SAME curve on damageRamp and the shot
+               looks like it is gathering the damage it lands with.
+    minSpeed   floor in units per second. THIS IS THE END THAT BITES -
+               see below.
+    maxSpeed   ceiling in units per second. Purely a tuning dial.
+
+  GOING FAST IS SAFE. A projectile finds its hits with a SWEPT circle
+  cast along the whole physics step, so it cannot skip over a wall
+  however fast it goes. (A fast MINION can, but that is rigidbody
+  movement - a different mechanism that does not apply here.)
+
+  GOING SLOW IS THE TRAP, and it bites twice. A shot that ramps down to
+  nearly nothing hangs in the air until its range or lifetime ends - and
+  on a DISTANCE ramp a stalled shot stops advancing through its own
+  ramp, so it stays stalled. Set "minSpeed". The build log warns you if
+  your numbers land there.
+
+  IT STANDS ALONE. Nothing here needs "damageRamp". Use it with "gas",
+  "bounce", "split", "ricochet" or any other block on any projectile
+  template - the railgun is just where the idea came from.
+
+  LOBBED SHOTS WORK TOO (Derbis and the other usePhysics templates).
+  One thing to expect: a lobbed shot STOPS BEING A PARABOLA. It still
+  arcs - gravity is applied first and this only changes the speed, not
+  the direction - but it no longer trades speed for height, so a ramp up
+  throws flatter and further and a ramp down drops hard. The log says
+  so when you build one.
+
+  "pierce" and "bounce" are plain-projectile only, because a lobbed
+  shot goes through neither code path. The log falls back to "distance"
+  rather than sitting still.
+
+  THE GAME HAS A ROUGHER VERSION FOR LOBBED SHOTS, and it is worth
+  knowing about:
+
+      "homingData": { "acceleration": 30, "maxSpeed": 40 }
+
+  adds constant thrust along the shot's FACING - and it works with NO
+  TARGET and NO HOMING ENABLED, because PhysicsProjectile runs its
+  homing step every frame regardless of the enabled flag. That is
+  constant thrust; "speedRamp" is a curve. Set both and speedRamp wins
+  the speed, because it runs afterwards.
+
+  IT DOES NOT FIGHT YOUR STEERING. It writes only the LENGTH of the
+  velocity, never its direction, so homing, wave, converge and the rest
+  keep full control of where the shot points.
+
+  ONE CLASH TO KNOW: "rangeData": { "slowDown": true } is the game's own
+  "coast to a dead stop", and the stock White Popper template ships it
+  ON. The ramp runs afterwards so the ramp wins, but the file is then
+  asking for two opposite things - the log tells you to turn slowDown
+  off so the file says what it means. Preset: "Railgun".
+
+
+  STUN - TOP-LEVEL "stun" block.
+  ------------------------------
+
+  A hit freezes what it hits: its gun is blocked, its own steering is
+  suspended, and it stops dead instead of coasting.
+
+      "stun": { "duration": 0.9, "cooldown": 2.5 }
+
+  or just:
+
+      "stun": 1.5
+
+  IS THIS JUST "slow" WITH amount 0? No, and it could not be. Slow's
+  factor is clamped to a floor of 0.01 by construction, so the strongest
+  slow available is 1% speed - and its three levers are the wrong shape
+  for a freeze anyway:
+
+    - movement is done by inflating DAMPING, which fights a force rather
+      than removing it, so a hard-charging lunger still lurches;
+    - "slowKnockback" makes the victim LIGHTER, so a "frozen" unit gets
+      flung further by your shots than an unfrozen one;
+    - "slowFire" sets the fire rate to 0, which does stop shots but
+      leaves the gun's LOOPING SOUND running.
+
+  A stun uses the game's own switches instead. Its blocker list is a
+  set, so a stun, a second stun and an overheat jam coexist without
+  clobbering each other's release. And the loop sound is stopped
+  explicitly, because the blocked code path skips the game's own sound
+  cleanup - that is the difference between "the gun stops" and "the gun
+  stops and goes quiet".
+
+    duration          seconds a hit freezes something (default 1.2).
+                      0.2-0.4 reads as a stagger; a second or more reads
+                      as a proper hold.
+    chance            probability per hit as a FRACTION (default 1 =
+                      every hit). Above 1 is read as "always" and warned
+                      about, since it is almost certainly a percent sign.
+    cooldown          minimum gap between stuns ON THE SAME VICTIM,
+                      measured from when a stun STARTS. 0 = none.
+    refresh           default true - later hits extend the freeze. Set
+                      false and the first stun must run out before
+                      another can land.
+    stopGun           block its weapon and silence it (default true).
+    stopMovement      suspend its own steering (default true).
+    stopMotion        zero its velocity every frame (default true).
+    maxTargetHealth   skip anything with a bigger health capacity - the
+                      boss guard. 0 = no limit.
+    tint / tintPulse  colour cue. ON by default here - see below.
+    sfx               a sound when a stun lands.
+
+  THE LOCK-DOWN IS THE THING TO WATCH. A stun is the one debuff where
+  "it works" and "it is unplayable" are the same setting at different
+  numbers: if you land stuns faster than they expire, anything you keep
+  shooting is frozen forever. A beam is the extreme case, since it
+  damages on a repeat delay and lands many hits a second.
+
+  The build log does that arithmetic and warns you with the numbers.
+  There are three ways to fix it, and they feel different:
+
+    "cooldown"          a hard cap per victim. duration 1 with cooldown
+                        4 means a target is frozen at most a quarter of
+                        the time, however fast you shoot it.
+    "chance"           makes it unreliable but never oppressive.
+    "refresh": false   makes it reliable but not extendable.
+
+  MIX AND MATCH THE THREE SWITCHES for other effects:
+
+    stopGun false, stopMovement true    a ROOT - it stands there and
+                                        keeps shooting at you.
+    stopGun true, stopMovement false    a SILENCE - it charges you but
+                                        cannot fire.
+    stopMotion false                    a frozen enemy you can still
+                                        knock across the room. Pairs
+                                        well with "pushForce".
+
+  STOPPING THE MOVEMENT IS ALSO WHAT STOPS A RAM. A Larva's charge IS
+  its movement - its beak only carries the damage, it does not propel -
+  so suspending the movement action stops a rammer as well as a walker.
+
+  THE TINT IS ON BY DEFAULT, where slow's is off, and that is
+  deliberate: A STUN HAS NO OTHER TELL. Nothing about a frozen unit
+  looks different from one that happens to be standing still, so
+  without a colour you cannot see that it landed. Set "tint": false if
+  you have your own cue.
+
+  It never stuns the unit holding the gun, and that is not theoretical:
+  explosions in this game have no owner filter at all, so your own blast
+  hits you like anyone else's. A frozen ship - unable to move OR shoot -
+  would be the worst bug in the mod.
+
+  It does not stun a corpse, and there is no "onKill" counterpart on
+  purpose.
+
+  WORKS ON EVERY WEAPON TYPE: it hooks the bullet, beam and explosion
+  damage routes, so a laser and a rocket blast can both freeze things.
+
+  Preset: "Cryobeam" - a weak freezing laser that stops things rather
+  than killing them.
+
+
+  GUIDED PROJECTILES - TOP-LEVEL "guided" block.
+  ----------------------------------------------
+
+  The shot follows your CROSSHAIR for as long as it is in the air. You
+  fly it. Half-Life's RPG, Worms' guided missile, Metroid's missiles.
+
+      "guided": { "turnRate": 200, "while": "held", "delay": 0.15 }
+
+  or just:
+
+      "guided": true
+
+  THIS IS NOT HOMING WITH A DIFFERENT TARGET. Three things in this mod
+  move a shot toward something, and the difference is the whole point:
+
+    "homing"              THE MOD picks an enemy and chases it. You have
+                          no say once it is fired.
+    "converge" + cursor   reads the crosshair ONCE, at launch, to decide
+                          where a volley meets.
+    "guided"              reads the crosshair EVERY FRAME. It is the only
+                          one of the three that is an INPUT rather than
+                          an automation.
+
+  It has no target-finding at all - no cone, no range, no retargeting,
+  no mask - because there is nothing to acquire. That makes it much
+  smaller than homing despite feeling bigger.
+
+    turnRate    degrees per second it may turn (default 240, which keeps
+                up with a normal mouse). 90 is a heavy missile you have
+                to lead; 400+ snaps to wherever you point.
+    while       "always" (the default - its whole flight) or "held".
+    delay       seconds after launch before it answers the mouse
+                (default 0). 0.1-0.3 makes it leave the barrel along
+                your aim first, which reads as the motor lighting.
+    duration    seconds of guidance from the end of "delay". 0 = for as
+                long as it lives. A short duration means "you get one
+                correction, then it is committed".
+    arrive      stop steering within this many units of the crosshair
+                (default 1.5). See the warning below.
+    faceTravel  point the sprite where it flies (default true).
+
+  WHAT YOU ACTUALLY SEE IS THE TURN RADIUS, AND IT GROWS WITH SPEED.
+  Radius is roughly speed divided by turnRate in radians, so the same
+  rate that whips a slow shot around barely bends a fast one - at speed
+  25 and rate 240 it turns inside about 6 units, at speed 60 it needs
+  14. The build log does that sum and says "THAT IS WIDE" past 10 units,
+  because "my guided shot ignores the mouse" is otherwise a mystery with
+  a perfectly correct log line above it. If it feels sluggish, the fix
+  is usually a SLOWER SHOT rather than a faster turn.
+
+  DO NOT SET "arrive" TO 0 WITHOUT MEANING IT. A turn-rate-limited shot
+  that keeps steering after it reaches the cursor cannot stop - it turns
+  as hard as it can and loops through and around the crosshair forever,
+  which reads as a bug rather than as a feature. Simulated both ways: at
+  0 it was still steering after twelve seconds of looping.
+
+  "while": "held" MEANS LET GO AND IT COMMITS. The shot locks its
+  heading the moment you release the trigger, and a re-press fires a new
+  one rather than reclaiming the old one. It is a good skill mechanic on
+  a slow rocket - and it is NOT the default, because on a tap-fired
+  weapon the trigger is down for about one frame, so as a default it
+  would give almost no guidance and the feature would look broken.
+
+  A GADGET HAS NO TRIGGER TO HOLD, so a gadget-fired shot flies straight
+  in "held" mode. Same limitation "charge" has, for the same reason.
+
+  IT READS THE UNASSISTED CROSSHAIR - the exact mouse position, not the
+  aim-assisted firing direction - because a shot you are steering by
+  hand has to go where you are pointing. The stock rockets ship 45
+  degrees of aim assist, so on one of those the LAUNCH is assisted while
+  the steering is not. It corrects itself within a few frames, but
+  "aimAssistData": { "enabled": false } makes a guided weapon feel much
+  tighter.
+
+  ROCKETS AND GRENADES WORK NOW, AND THE OLD REFUSAL WAS WRONG.
+
+  Until R13 this block refused any weapon with "usePhysics" - a rocket
+  or a grenade - saying "a lobbed shot cannot be steered at all:
+  rewriting its velocity cancels the fall". Every clause of that is true
+  about the technique it assumed, and the game does not use that
+  technique.
+
+  "usePhysics" does not mean LOBBED. It means "this shot is a
+  rigidbody", and it covers two very different things:
+
+      Ammo Derbis (a grenade)   gravityScale 1.8
+      Ammo Rocket Fire          gravityScale 0
+
+  THE ROCKET HAS NO GRAVITY AT ALL. There was no fall to cancel. Keying
+  the refusal on the flag rather than on the gravity refused a weapon
+  with nothing wrong with it.
+
+  And the game already steers those shots with its own code:
+  PhysicsProjectile.Homing() torques the nose toward a target point and
+  thrusts along it, every physics step. A stock rocket is a guided
+  missile whose target never moves - Shoot() sets it 10,000 units dead
+  ahead and nothing updates it. So "fly the rocket with your mouse" is
+  ONE FIELD WRITE: put the cursor in that point every frame and the
+  engine does the rest. Nothing rewrites the velocity, so gravity, drag
+  and its own thrust all keep working.
+
+  THREE EXTRA FIELDS APPLY ONLY TO A PHYSICS SHOT (ignored on an
+  ordinary bullet):
+
+  cruise      THE SPEED IT ACTUALLY FLIES AT, in units per second, and
+              the field you want. Read the next paragraph first.
+  thrust      the raw force instead, if you would rather. Ignored when
+              "cruise" is given. The stock rocket uses 70.
+  speedCap    a hard ceiling on speed. On the stock rocket this ships at
+              100 and is never reached.
+  wobble      how much of the shot's own random turbulence to keep, as a
+              multiplier. DEFAULTS TO 0 - off. The stock rocket ships
+              turbulenceTorque 2.5 against a steering torque of 2, so
+              THE WOBBLE IS STRONGER THAN THE STEERING and a missile you
+              are flying by hand would fight you. Set 1 to keep it, or
+              0.3 for a little of it.
+
+  A THRUST IS A FORCE, NOT A SPEED, and this is where the preset for
+  this feature was wrong first time. A constant force does not produce a
+  speed - it settles at force / (mass x damping). The rocket is mass 4
+  with damping 3, so its stock acceleration of 70 cruises at 70/12 =
+  5.8 units per second, and its maxSpeed of 100 is a ceiling nothing
+  ever reaches.
+
+  Which means "projectileSpeed" is ONLY THE LAUNCH: a thrusting shot
+  converges on that one speed from either direction, so a fast launch
+  DECELERATES to it. "cruise" takes the speed you want and does the
+  mass-and-damping sum for you, so the number means the same thing on
+  any prefab. 10-14 is comfortable to fly. The build log prints the
+  speed the shot really settles at, which is neither of the two numbers
+  in your file.
+
+  "turnRate" MAPS ONTO THE ENGINE'S OWN CAP, exactly, because Unity 2D
+  measures angular velocity in DEGREES per second. What climbs to that
+  cap is homingData "torque", and the mod adjusts it for you at launch
+  in BOTH directions:
+
+    - RAISED if it is too weak to hold the rate you asked for, or
+      "turnRate" would silently mean nothing;
+    - LOWERED if it is strong enough to chatter. The engine checks
+      "is the spin under the cap" BEFORE adding torque, so one step can
+      push the spin past the cap - and while it is over the cap NO
+      torque is applied at all, including no reversing torque. The
+      controller goes deaf exactly when it needs to correct. The stock
+      rocket ships 29 times more torque than it needs, and simulated,
+      its heading swung 43 degrees either side of the cursor.
+
+  A torque already inside that window is left exactly as the weapon
+  shipped it.
+
+  A GRENADE (gravityScale above 0) is steerable too, and it is a
+  different weapon: guidance aims its nose and its thrust, and gravity
+  still pulls it down the whole time, so you fly it in an arc and lead
+  upward. "converge" is still the answer if you want a lobbed shot to
+  LAND on a point without steering it.
+
+  "arrive" DOES MUCH LESS ON A ROCKET than on a bullet, and the log says
+  so. A bullet's velocity is rewritten directly, so it can be turned as
+  hard as the code likes and really will sit on a point spinning - that
+  is what the field was written for. A rocket has momentum and a minimum
+  turn radius, so it flies THROUGH the cursor and comes back round.
+  Measured across the whole range of the field, the laps it does around
+  a stationary cursor only move from about 3.7 to 1.9. Nothing settable
+  stops that; its range, its lifetime, or you moving the cursor are what
+  end the flight.
+
+  A BEAM is still refused - it arrives instantly, so there is no flight
+  to fly.
+
+  ONE CLASH TO KNOW: "rangeData": { "slowDown": true } is the game's own
+  coast-to-a-dead-stop, and the most-cloned stock template ships it ON.
+  Steering re-normalises to the shot's current speed, so it composes
+  with a decelerating shot right up until the speed reaches zero - at
+  which point there is no heading left to rotate and guidance stops for
+  good, leaving the shot hanging there ignoring you. The log warns when
+  it sees both.
+
+  An enemy-fired or sub-emitter shot has no crosshair to read, so it
+  simply flies straight. Nothing to configure and nothing that can go
+  wrong there.
+
+  Preset: "Wire-Guided" - one slow rocket, steered with the mouse, that
+  commits the moment you let go.
+
+
+  ROTATING SPIRAL - TOP-LEVEL "spiral" block.
+  -------------------------------------------
+
+  Successive shots step a FIXED angle instead of a fixed or a random
+  one, so holding the trigger paints a spiral rather than a stream or a
+  cone. A bullet-hell staple - Nuclear Throne and Enter the Gungeon both
+  have weapons that read as "spinning" because of this.
+
+      "spiral": { "step": 24 }
+
+  or just:
+
+      "spiral": 24
+
+  IT IS EASY TO MISTAKE FOR TWO FIELDS YOU ALREADY HAVE, so side by
+  side, on a weapon firing one pellet at a time:
+
+    "angleOffset"    a FIXED nudge     every shot leaves 10 deg left of
+                                       your aim. Shot one and shot fifty
+                                       are identical.
+    "angleVariance"  RANDOM scatter    every shot lands somewhere inside
+                                       a cone, unpredictably.
+    "spiral.step"    it ADVANCES       0 deg, then 20, then 40, round
+                                       and round. Neither fixed nor
+                                       random - a rotating pattern.
+
+  IT ROTATES THE WHOLE VOLLEY AS ONE RIGID SHAPE. "spread" and
+  "projectileCount" still fan each shot exactly as they did, so a
+  three-pellet weapon becomes a rotating rosette rather than a smear,
+  and "angleVariance" still scatters on top. Nothing you already set
+  changes meaning.
+
+  WORKS ON EVERY WEAPON TYPE, because it acts where the game places a
+  volley - which is one method, shared by all of them. A spinning laser,
+  a spiral of lobbed grenades and a spiral of thrown minions all come
+  out of this one block.
+
+    step      degrees each shot advances (default 20, so a full turn
+              every 18 shots). A NEGATIVE value spins the other way -
+              there is no separate direction setting, because the sign
+              of the step is the direction.
+              Rough feel: 5-15 is a tight readable coil, 20-45 is an
+              obvious pinwheel, 90-170 throws shots to opposite sides in
+              turn and reads as alternating rather than spinning.
+              A step of 0 is REFUSED with a warning: a spiral that never
+              advances would look like a broken feature.
+    sweep     leave it out for a full rotation. Set it and the weapon
+              stops spinning and instead SWEEPS back and forth across an
+              arc this wide, centred on your aim - a turret walking a
+              firing line. It reverses at each end. "sweep" divided by
+              "step" is roughly the shots per pass, so 60 and 10 is a
+              six-shot wipe. A step as big as the sweep just flips
+              between the two ends; that is legal and warned about, in
+              case it was a typo rather than a plan.
+    reset     "never" (the default) or "pull".
+
+  THE FIRST SHOT OF A SPIN ALWAYS LEAVES ON YOUR AIM. "reset" decides
+  whether the rotation ever goes back there.
+
+  The default is "never" - the rotation carries on across trigger pulls
+  - and that is deliberate rather than lazy. Were it the other way, a
+  slow single-shot weapon would put every shot on your aim and the whole
+  feature would look like it was doing nothing. Use "pull" when you want
+  a burst weapon to lay down the same pattern every time you press.
+
+  A GADGET HAS NO TRIGGER TO RELEASE, so on one "pull" behaves as
+  "never". Same limitation "charge" has, for the same reason: gadgets
+  fire directly and never go through the held-trigger path.
+
+  TRY IT WITH A SLOW PROJECTILE SPEED. The arms have to stay on screen
+  long enough to be read as a curve; at the stock speed of 30 they are
+  gone before the shape appears. And a step that divides into 360
+  exactly (24 gives 15 shots a turn) draws clean repeating arms, while
+  one that does not (23) lands each turn between the last one's arms and
+  fills in a denser flower.
+
+  ON A BEAM, THINK IN DEGREES PER SECOND, NOT PER SHOT.
+
+  A projectile weapon fires in taps you can count. A HELD BEAM re-fires
+  at its fireRate continuously, so "24 degrees per shot" at fireRate 12
+  is 288 DEGREES A SECOND - four fifths of a turn every second, which
+  reads as a strobe rather than a sweep. On a beam, 1 to 3 degrees a
+  shot is a smooth rake. The build log does that multiplication for you
+  and warns above about half a turn a second.
+
+  AND A BEAM READS ITS DIRECTIONS TWICE, which is why this did not work
+  on one until R13. HitscanWeapon places each beam VISUAL from its own
+  GetDirections call in OnBarrelMoved, every frame, separately from the
+  damage cast that DoShoot drives. Only the second was rotated - so the
+  spiral was turning the damage ray while the drawn beam stayed put.
+  Not "not working", but silently desynced, which is worse. Both are
+  rotated now, and the frame order makes them exact rather than
+  approximate: the game calls OnBarrelMoved before it reaches Shoot, so
+  within one frame the beam is drawn along the same angle the damage
+  cast is about to use.
+
+  The generalisable bit: a patch on the method that CONSUMES a value is
+  not a patch on every READER of that value.
+
+  Preset: "Catherine Wheel" - two arms 180 degrees apart rotating out
+  from the ship, which is the arrangement that reads unmistakably as a
+  wheel. And "Sweep Laser" for the beam version, whose whole point is
+  the small step.
+
+
+  CRIT - TOP-LEVEL "crit" block.
+  ------------------------------
+
+  A chance for a hit to do multiplied damage.
+
+      "crit": { "chance": 0.15, "multiplier": 2 }
+
+  That is 15% for double damage, and it is the whole minimum file.
+
+  IT WORKS ON SHOTS, BEAMS AND EXPLOSIONS from that one block. Every
+  damage route in this game funnels into a single method, so there was
+  no per-weapon-type work to do and nothing to remember.
+
+  BURN AND GAS TICKS NEVER CRIT, and that is the intended behaviour
+  rather than a gap. The crit needs to know which weapon is responsible,
+  and damage-over-time reports none - so it is excluded for free. Turn
+  "onExtras" on if you want the mod's own damage to crit too.
+
+      "chance"      0.15 = 15%. A number ABOVE 1 is read as a percent
+                    and the log says so, so 15 works as well. Above
+                    100% see "overflow".
+      "multiplier"  what a crit multiplies damage by. Default 2.
+      "roll"        "hit" (default) / "shot" / "pull" - see below.
+      "overflow"    what happens past 100%. Default true.
+
+  WHEN THE DICE IS ROLLED, and it changes how the weapon feels:
+
+      "hit"   (default) once per thing damaged. A piercing shot rolls
+              again for each enemy it passes through. This is the only
+              mode that means anything on a beam or an explosion.
+      "shot"  once per projectile, at fire time. If it crits, everything
+              that shot touches crits. NOTE a shotgun rolls per PELLET
+              here, because each pellet is its own projectile.
+      "pull"  once per trigger pull, so a whole shotgun blast is
+              all-crit or no-crit. Use this if half your pellets
+              critting reads as noise rather than as a payoff.
+
+  ABOVE 100% CHANCE, "overflow" (on by default) turns the excess into a
+  chance at a SECOND crit stack: 1.5 always crits and half the time
+  crits twice. Nothing is wasted, so stacking has somewhere to go.
+
+  STACKS ADD THE BONUS, so two stacks of x2 is x3, not x4. Multiplying
+  would make three stacks x8 and stop being tunable. Hard-capped at 8
+  stacks so a runaway module cannot produce a silent 40x hit.
+
+  HOW YOU SEE IT - AND YOU MUST PICK SOMETHING
+  --------------------------------------------
+
+  THIS GAME HAS NO FLOATING DAMAGE NUMBERS ANYWHERE. There is no hidden
+  system to switch on; a crit is genuinely invisible unless something
+  announces it. So "impact" is ON by default - it is the only cue that
+  needs nothing from you - and the log warns if you switch every cue off.
+
+      "impact"       a second, larger copy of the weapon's own impact
+                     burst. Default TRUE.
+      "impactScale"  how much bigger. Default 2.
+      "color"        a brief tint on whatever got crit. Blank = off.
+      "colorSeconds" how long. Default 0.25.
+      "colorPulse"   throbs per second. 0 (default) is a steady flash.
+      "sfx"          a distinct sound. Blank = off.
+      "shake"        kick the camera. Default false.
+
+  "impact" IS PROJECTILE HITS ONLY. A beam's spark and an explosion's
+  flash are not per-hit prefabs there is anything to borrow, so use
+  "color", "sfx" or "shake" on those. The log says so once per run if
+  the case comes up.
+
+  ONE CUE YOU GET FREE: if the weapon also sets
+
+      "hitSound": { "pitch": "damage" }
+
+  then a crit ALREADY sounds heavier, with no crit sound of your own.
+  The crit is applied before the hit sound reads the damage, on purpose.
+
+  The tint goes through the same layer as the slow and slam tints, so it
+  composes with them instead of overwriting, and it can never leave an
+  enemy permanently discoloured.
+
+  WHAT ELSE CAN CRIT - "onExtras", default OFF
+  -------------------------------------------
+
+  On, FOUR of this mod's own damage sources can crit: the "gas" cloud,
+  the "swipe" blade, "contactDamage" (which is also how a ram and a
+  lunge hurt what they hit), and "slam".
+
+  NOT WIRED: orbit rings, tethers, turrets, gravity wells, the shield.
+  Ask if you want any of those.
+
+  THE LUNGE'S CRASH DAMAGE TO YOU NEVER CRITS whatever this says. A
+  critical hit on your own self-damage is a bug, not a feature.
+
+  BE CAREFUL WITH GAS. A cloud ticks several times a second, so a crit
+  there fires constantly and reads as noise rather than as a payoff.
+  That is why the whole switch is off by default.
+
+  IT CANNOT FIGHT YOUR OTHER DAMAGE FEATURES. "grow", "damageRamp",
+  "ricochet" and "boomerang" all publish multipliers against one
+  captured base so they compose; the crit never touches the shot at all
+  - it multiplies the number already on its way to the victim. So a
+  fully grown, fully ramped, bouncing crit gets all four.
+
+  A CRIT MODULE ADDS TO THIS ONE
+  ------------------------------
+
+  Module Forge has a "crit" module of its own, and with both mods
+  installed THIS MOD OWNS THE MECHANIC - a crit is a patch on the game's
+  one damage method, and two of them would each roll their own dice on
+  the same hit. So that mod stands its own patch down and pushes its
+  numbers in here:
+
+     the module's CHANCE           added to this weapon's
+     the module's multiplierBonus  added to this weapon's "multiplier"
+
+  A module in a WEAPON's grid only raises that gun; one on the SHIP grid
+  raises every weapon you carry. Either way you get ONE combined number
+  on the weapon's stat card, not two half-truths.
+
+  AND THE LOOK COMES FROM HERE. Roll mode and the four cues above are
+  this block's, so a crit module that asked for a colour or a roll mode
+  is told once in the log that the weapon decides those. Set the look
+  here and the chance on the module.
+
+  A weapon with NO "crit" block still crits if a module grants it one -
+  it gets the defaults (a bigger impact burst, rolled per hit), which is
+  exactly why "impact" defaults on.
+
+  LEECH - TOP-LEVEL "leech" block.
+
+      "leech": true
+      "leech": { "fraction": 0.35, "maxPerSecond": 6 }
+
+  YOUR HITS HEAL YOU. "leech": true is a complete weapon - 10% of the
+  damage you deal comes back as health, and a bubble flies out of the
+  enemy into your ship carrying it.
+
+  IT WORKS ON EVERY WEAPON TYPE from one place - bullet, lobbed, beam,
+  explosion, missile, and anything added later. There was no
+  per-type work to do because it does not hook a projectile at all: it
+  reads the ENEMY'S OWN health pool before and after the hit.
+
+  WHICH MEANS IT ONLY PAYS FOR DAMAGE THAT LANDED. The game's own
+  Damage() can refuse a hit three silent ways:
+
+      invincibility (damageBlockers)
+      i-frames (iFrameDuration)
+      the enemy having NO TANK of that damage type at all
+
+  That last one is not a corner case - it is how a Crawler resists
+  nearly every damage type. A feature that read the damage NUMBER
+  instead would have healed you for hits that did nothing at all.
+
+  OVERKILL DOES NOT PAY EITHER. A 200-damage rocket into a 5-health
+  fly leeches off 5. (The game writes `tank.Value -= amount` with no
+  floor, so the raw difference there would read 200.)
+
+  BURN AND GAS TICKS NEVER LEECH unless you ask. Damage-over-time
+  reports no weapon, so it is excluded for free rather than by a rule.
+  See "onExtras" below.
+
+    fraction   share of the damage you dealt. 0.15 = 15%. Default 0.1.
+
+               NOT AUTO-CORRECTED FROM A PERCENT, and this is the one
+               place that differs from crit's "chance". There, 15 could
+               only ever have meant 15%. Here, healing for more than you
+               dealt is a legitimate build, so dividing by 100 would put
+               it out of reach - 15 means 1500% and the log says so
+               loudly enough to catch a typo on the first shot.
+
+    flat       a fixed amount per hit whatever the damage was. Stacks
+               with fraction; either alone is a complete config. Useful
+               on a weak fast weapon where a share rounds to nothing.
+
+    maxPerSecond
+               THE NUMBER THAT DECIDES WHETHER THIS IS BALANCED.
+               Ceiling on healing per second. 0 = uncapped, and the
+               build log warns you - louder still on a beam.
+
+               WHY A BEAM IS THE WORST CASE: a beam damages its target
+               every damageRepeatDelay (0.08s on the stock Caps Laser),
+               and a PIERCING one does that to every enemy it threads.
+               Six enemies is roughly 75 heals a second. Uncapped, that
+               is not a strong weapon, it is immortality.
+
+               The cap is PARTIAL, not all-or-nothing: a hit that wants
+               3 with 2 left in the budget heals 2. An all-or-nothing
+               cap makes a weapon feel randomly dead.
+
+    perEnemyDelay
+               seconds before the SAME enemy can feed you again.
+               0 = off. A different flavour of limit: this one rewards
+               spreading damage across a crowd instead of focusing one
+               target. Use both if you like.
+
+    resource   which pool refills. LEAVE IT BLANK almost always - that
+               means your ship's own health pool, read off the ship
+               itself rather than guessed from the name "Health", so
+               there is nothing to spell wrong. Name a resource to
+               build an ammo-leech or a fuel-leech instead.
+
+    healOn     "arrival" (default) or "hit".
+
+               arrival: the health lands when the bubble reaches your
+               ship, so it reads as absorption rather than as a number
+               changing. Costs a fraction of a second.
+
+               hit: instant and predictable. The one to use for a
+               weapon that wants the drain without the flourish.
+
+               AN ORB THAT CANNOT REACH YOU PAYS OUT ANYWAY after
+               orbLifetime - a lost orb would be lost HEALING, which is
+               the worst way this could fail. And with "orb": false this
+               falls back to "hit" by itself, because otherwise it would
+               heal never. The log says so when it does.
+
+    onExtras   default FALSE. On, four of this mod's own damage sources
+               also feed you: the "gas" cloud, the "swipe" blade,
+               "contactDamage" (which is how a ram and a lunge hurt
+               things), and "slam". NOT WIRED: orbit rings, tethers,
+               turrets, gravity wells, the shield.
+
+               GAS IS THE DANGEROUS ONE. A cloud ticks several times a
+               second on everything inside it, so leech on gas is an
+               enormous sustain - the cap matters more there, not less.
+
+  THE ABSORB ORB
+  --------------
+
+  A bubble that leaves the enemy and flies into your ship.
+
+  IT IS NOT A WEAPON AND NOT A PROJECTILE, which is worth saying
+  because it looks like one and "make it a hitscan weapon" is the
+  obvious guess. It is a bare GameObject with a sprite: no collider, no
+  faction, no damage, and invisible to every projectile feature in the
+  mod. A real weapon would have needed a barrel, an owner, a cost and a
+  fire rate, would have done damage, and would have fired OUTWARD from
+  your ship - the opposite of the effect.
+
+  It TRACKS your ship rather than flying at where you were. A fixed
+  heading means a moving player outruns their own healing, which reads
+  as the feature being broken.
+
+    orb          default true. Off makes leech invisible and fully
+                 functional, and switches healOn to "hit" by itself.
+    orbSprite    default "area_zero_particle_tuff" - the bubbles from a
+                 white tuff block, all nine frames, animated. See the
+                 naming rule below.
+    orbFps       animation speed, default 14.
+    orbScale     size multiplier, default 1. The tuff bubbles are
+                 particle art and small; try 1.5-2 if they read as
+                 specks.
+    orbSpeed     units per second, default 22.
+    orbArc       how much it SWOOPS instead of beelining, as a share of
+                 its speed thrown sideways at launch. Default 0.7;
+                 0 is a straight line. Worth keeping above zero - a
+                 dead-straight line reads as a bullet being fired AT
+                 you, which is the one thing this must not look like.
+                 The side is random per orb, so a stream fans out.
+    orbSpin      degrees per second, default 0.
+    orbLifetime  seconds before an orb gives up, PAYS OUT ANYWAY and
+                 vanishes. Default 2.5. A backstop, not a dial.
+    orbColor     tint the bubble. Blank keeps the sprite's colours.
+    maxOrbs      most alive at once, default 14. A shotgun with eight
+                 pellets, or a beam threading a crowd, would otherwise
+                 be a firehose. OVER THE CAP THE HEALING IS GRANTED
+                 IMMEDIATELY rather than dropped - a firehose should
+                 cost you the flourish, never the health.
+    orbTrail     a trail on the orb, using the ordinary trail options
+                 ({ "sprite": "...", "fps": 14 } or just a name).
+    sfx          plays when the health arrives.
+
+  STOCK ANIMATIONS - NAMING THE BASE ANIMATES, NAMING A FRAME DOES NOT
+  --------------------------------------------------------------------
+
+  This is new and it applies EVERYWHERE a sprite name is taken -
+  projectileSprite, trail sprite, beam art, muzzle, impact, and the orb
+  above. The game ships a lot of animations as numbered runs of sprite
+  assets, and until now only ONE frame of such a run was reachable.
+
+      "area_zero_particle_tuff"      all nine frames, animated
+      "area_zero_particle_tuffAnim"  the same, spelled the way a
+                                     CUSTOM animation is spelled
+      "area_zero_particle_tuff_0"    that ONE frozen frame
+
+  THE RULE IS SHAPED BY WHAT IT MUST NOT BREAK. A name ending in
+  _<digits> has to keep meaning exactly that frame, because files
+  already say "part_cyrcle_12" - if that suddenly animated through
+  part_cyrcle_0..16, every one of those weapons would change look on
+  upgrade. So a sequence is asked for by a name that resolves to
+  nothing today: the bare base.
+
+  Gaps end a run rather than being skipped: 0,1,2,7 is far more likely
+  to be two effects sharing a prefix than one animation with a hole.
+  Your own PNG still wins a name clash, as everywhere else.
+
+  PICKING FRAMES AND SPEED, IN THE NAME ITSELF
+  --------------------------------------------
+
+  Every sprite name in this mod takes an optional suffix - all FOURTEEN
+  of them, plus the two icon slots, because it is parsed in the two
+  resolvers they all go through rather than at each key.
+
+      area_zero_particle_tuff          every frame, default speed
+      area_zero_particle_tuff:2-6      frames 2 to 6 only
+      area_zero_particle_tuff:8-0      every frame, REVERSED
+      area_zero_particle_tuff:0,3,5    those three, in that order
+      area_zero_particle_tuff:0-8,7-1  a hand-rolled ping-pong
+      area_zero_particle_tuff:4        one frozen frame
+      area_zero_particle_tuff@24       24 frames per second
+      area_zero_particle_tuff@life     once over each particle's own life
+      area_zero_particle_tuff:8-0@18   both
+
+  "@life" IS FOR PARTICLE KEYS - impactSprite, muzzleSprite, the trail,
+  and the beam's impactSprite. Each particle plays the whole run exactly
+  once over ITS OWN lifetime, so the animation finishes exactly as the
+  particle dies.
+
+  Two reasons to reach for it over a number:
+
+    * IT DOES THE ARITHMETIC. This guide used to tell you to work it
+      out: "a flash lives about 0.4 seconds, a 20-frame animation needs
+      roughly 50 fps to play through once in that time". "@life" is
+      that sum, done by the engine.
+    * A FIXED FPS CANNOT HANDLE A RANDOM LIFETIME, and most stock
+      effects have one. The game's tuff puff lives 1 to 3 seconds per
+      bubble, so whatever number you pick is wrong for most of the
+      burst - some finish early and freeze, others never get there.
+      This is the game's own setting for that effect.
+
+  On a non-particle key (projectileSprite and the five one-sprite keys)
+  there is no particle lifetime to fit to, so it warns and uses the
+  normal fps rather than failing.
+
+  FRAME NUMBERS ARE 0-BASED, and on a stock numbered run that is a real
+  convenience rather than a convention to remember: frame 3 IS
+  area_zero_particle_tuff_3. On your own sheet they are the order its
+  .json lists.
+
+  ALL FOURTEEN KEYS CAN USE THE GAME'S OWN SPRITES, and until
+  2026-08-31 seven of them could NOT. impactSprite, muzzleSprite,
+  gas "sprite", shield "sprite", swipe "sprite", catalyst "nodeSprite"
+  and charge "meterSprite" asked only your sprites folder, so every one
+  of the game's ~450 sprite names was refused with "is not one of your
+  sprites" - a true sentence that read as a typo and actually meant
+  "this key cannot do stock art at all". They all try your art first
+  and the game's second now, the same as projectileSprite always did.
+
+  WHICH KEYS ACTUALLY ANIMATE. The suffix parses everywhere, but what a
+  key DOES with a frame list depends on what draws it. Worth reading
+  before you expect a reversed animation somewhere:
+
+    ANIMATES ON ITS OWN - reverse, trim and speed all just work:
+        projectileSprite      trail.sprite
+        muzzleSprite          impactSprite
+        beam.impactSprite     curveBeam
+        leech.orbSprite
+
+    ANIMATES, WITH ONE RULE - these draw a single sprite, so:
+      * one of YOUR sprite-folder animations (a "...Anim" name) plays
+        on its own. Declaring it an animation in your JSON, with an
+        fps and a loop mode, IS the request - there is no reading of
+        that which wants a still frame.
+      * a STOCK numbered run needs the explicit ask, ":0-8" or "@12",
+        because there a bare name is only a sprite prefix and could
+        honestly have meant one frame.
+        gas.sprite            shield.sprite
+        swipe.sprite          catalyst.nodeSprite
+        charge.meterSprite
+    The swipe blade also RESTARTS from frame 0 on every swing, rather
+    than catching a continuously-running animation part-way.
+
+    PICKS A FRAME, CANNOT ANIMATE - ":4" chooses which frame, "@" does
+    nothing. This is the engine, not a missing feature: a beam is ONE
+    stretched quad with no flipbook, and an icon is assigned once and
+    never ticked again. For a moving beam use "tiling": "repeat", or a
+    curveBeam block - that one puts a different frame on each link so
+    the pattern travels along the beam.
+        beam.fireSprite       beam.warmupSprite
+        module "icon"         catalyst indicator icon
+
+  WHY A SUFFIX AND NOT THREE NEW KEYS. Fourteen keys take a sprite
+  name, so three keys each would be forty-odd new keys and the same
+  paragraph written fourteen times. One suffix works everywhere the
+  moment it is parsed in the two shared resolvers.
+
+  IT CANNOT BREAK AN EXISTING FILE. ":" and "@" are not legal in Unity
+  asset names and appear in none of the game's ~450 sprites nor in any
+  custom one, so a name without a suffix parses to exactly itself.
+
+  WHERE A BLOCK HAS ITS OWN fps KEY - the trail, the muzzle
+  (muzzleSpriteFps), the impact (impactSpriteFps), the leech orb
+  (orbFps) - THAT KEY WINS over "@", and the log says so if both are
+  set. "@" is for the places with no fps key of their own, which is
+  where the gap actually was: a stock run had no speed source at all
+  and silently defaulted to 12.
+
+  A number outside the animation is reported and skipped rather than
+  failing, and if EVERY number is outside it falls back to the whole
+  run and says why - the art appears either way.
+
+  A SINGLE FRAME IS A STILL, NOT A ONE-FRAME ANIMATION. ":4" attaches
+  no animator at all, which is what you want; a one-frame flipbook
+  would sit on every shot doing nothing.
+
+  OUR OWN SPAWNER WEAPON - TOP-LEVEL "spawner" block.
+
+      "spawner": true
+      "spawner": { "enabled": true, "perShot": 3 }
+
+  EVERY MINION-SPAWNER ASSET IN THE GAME IS AN ENEMY'S ATTACK, so a
+  weapon that clones one inherits a boss's numbers. Five of those are
+  plainly broken as a player weapon and are ALREADY corrected for
+  everyone, with no block needed:
+
+      warmupTime 2   -> 0     a spin-up: it refuses to fire until you
+                              have held the trigger that long
+      burstSize 4    -> 1     four minions a click
+      fireRate 0.2   -> 1     shots per SECOND, so one pull every 5s
+      angleVariance 30 -> 0   a 60-degree scatter cone
+      speedVariance clamped   it was wider than the speed, so some came
+                              out barely moving
+
+  THIS BLOCK HANDLES THE THREE THAT ARE NOT BROKEN, just wrong for a
+  player - and it is opt-in, because changing them under a file that
+  never asked would be rewriting a weapon you tuned:
+
+      projectileSpeed 60 -> 14   a boss HURLS larvae across an arena
+      cost 0 -> 1                stock spawners are free; a boss has no
+                                 resource bar
+      minionFacesShootDirection -> true
+
+  ANYTHING YOU SET IN "weapon" YOURSELF IS LEFT ALONE, always. This
+  block only decides which DEFAULTS apply - which is why there is no
+  second spelling of "speed" or "cost" in it.
+
+    perShot  minions per trigger pull as ONE number. The real formula
+             is burstSize x projectileCount and it is easy to get
+             wrong; filling your whole cap in one click looks exactly
+             like a broken cap. Sets projectileCount, so they arrive
+             TOGETHER rather than staggered burstDelay apart. Above 1,
+             set "weapon".spread as well or they come out on top of
+             each other.
+
+  AIMING IS ALREADY FREE IN A WEAPON SLOT. MinionSpawnerWeapon spawns
+  each minion at position + direction x barrelLength and sets its
+  velocity along that direction, and the ship hands it a real barrel.
+  So "they come out where I am pointing" needs no setting at all.
+
+  ON A GADGET KEY IT DID NOT, and that was a base-game limitation: a
+  gadget bypasses Shooter, which is what normally supplies the aim, so
+  the game fabricates a barrel pointing at Vector2.right - DUE EAST,
+  always. Weapon Forge redirects that to your cursor, which fixes it
+  for every gadget-fired weapon, "swipe" included.
+
+  YOUR GRID MODULES STILL REACH THE DRONES. "minion".inheritGrid is ON
+  by default, so the modules around the weapon are installed on each
+  spawned minion - more projectiles, faster fire, tighter spread - the
+  same way the drone gadget does it.
+
+  ONE CONSEQUENCE WORTH KNOWING: a module also modifies the SPAWNER,
+  and on a spawner "projectileCount" means MINIONS per pull. So a
+  "+1 projectile" module gives you MORE DRONES, and with inheritGrid on
+  it ALSO gives each drone's gun more bullets. One module, two effects.
+  The build log names this when it happens, because it is the usual
+  answer to "why did three pop out at once".
 
   MINION WEAPON - TOP-LEVEL "minion" block. MINION SPAWNERS ONLY.
 
@@ -4006,6 +7440,26 @@ PROJECTILE templates also accept:
     maxSpeed   clamp, so a light enemy is not flung across the level.
     maxTargets how many it holds at once. 0 = unlimited.
     holdDistance   "hold" only - where it parks them.
+    holdStiffness
+               "hold" only: how RIGIDLY it pins what it caught to the
+               aim point, 0-1, default 0.65. A proper critically-damped
+               spring - at 0.65 a caught enemy tracks your crosshair
+               closely enough to steer into a wall, at 1 it snaps.
+               0 restores the old soft behaviour (a flat push plus a
+               velocity bleed), which lagged behind the crosshair on
+               anything heavy.
+    grappleDebug
+               TRUE by default: writes one line to the log saying what
+               the grapple ray actually did - found no anchor, anchored
+               on X at N units, already inside grappleStopDistance, or
+               the force applied and the speed that settles at. On
+               while the mode is young, because "it didn't pull my
+               ship" has several possible causes and none are visible
+               in game. Rate-limited to one message every two seconds.
+               Set false once your weapon feels right.
+    enabled    the off switch every block has. false parks a tuned beam
+               in the file without running it, which beats deleting the
+               block and losing the numbers.
     drainPerSecond
                what holding the beam costs from the weapon's own
                resource. A held beam NEVER FIRES A SHOT, so the weapon's
@@ -4384,6 +7838,33 @@ PROJECTILE templates also accept:
     asPickup   drops a real resource pickup where the enemy died for
                you to fly through, instead of granting it instantly.
                More visible, more skill-testing, and missable.
+
+               THE ART DEPENDS ON THE RESOURCE, and nearly everything
+               is covered. NINE pickup prefabs ship with the game:
+
+                 Fuel      blue orb        (prefab "FuelPickup")
+                 Caps      orange orb
+                 Purple    pink orb
+                 White     white
+                 Health    red             (prefab "ResourcePickup_Red")
+                 Tech      purple squares
+                 Money     yellow, three sizes for 10 / 20 / 50
+
+               Two of them are named nothing like their resource, which
+               is worth knowing if you go looking: HEALTH IS
+               "ResourcePickup_Red", and FUEL IS "FuelPickup". You do
+               not type either name - you name the RESOURCE and the
+               right prefab is found for you.
+
+               The only stock resource with no pickup of its own is
+               ELECTRON. Ask for that (or for a modded resource) and you
+               get the orb borrowed and RE-TINTED to that resource's own
+               colour, plus a line in the log saying so. Only the shape
+               is borrowed.
+
+               It always PAYS the resource you asked for either way - if
+               no pickup can be dropped at all, it goes straight into
+               the tank rather than paying nothing.
     chance     0-1 chance to pay out. Rolled BEFORE the per-second cap,
                so a failed roll does not consume it.
     maxPerSecond
@@ -4542,6 +8023,30 @@ PROJECTILE templates also accept:
                out in mid-air leaves nothing at all, which makes this
                a gas grenade rather than a spray - pair it with a slow
                lobbed shot, never with a flamethrower.
+
+               THEY COMBINE NOW. The four words were never four kinds
+               of cloud - they were four points in a cube (does it
+               swell, does it roll, does it only appear on impact) and
+               three corners had no name at all. Write
+
+                 "cloud": "grow drift"     a swelling cloud that rolls
+                 "cloud": "single drift"   one impact cloud that rolls
+                                           away from where it landed
+
+               Space, "+" and "," all separate. Or set the three
+               switches directly, which win over the words:
+
+                 "grows": true / false      radius climbs to growTo
+                 "drifts": true / false     keeps rolling
+                 "impactOnly": true/false   one cloud, where it lands
+
+               NOTE THE KEY NAMES. Not "drift" - that is already the
+               drift SPEED in units per second, and the two would
+               collide.
+
+               A TRAIL drops the impactOnly half (a trail cannot be one
+               cloud) but now KEEPS the drift, which the old "single"
+               mode did not.
     radius     starting radius. For every mode except "grow" this is
                the whole size.
     growTo / growTime
@@ -4749,6 +8254,29 @@ PROJECTILE templates also accept:
                     line, then a bloom. False makes it a pure trail.
                     Useful even without a trail - until now there was no
                     way to suppress the end cloud at all.
+
+    bloomOnImpact   leave the cloud where the shot HITS something rather
+                    than where it finally dies (default false). For an
+                    ordinary shot those are the same instant; this is
+                    for the two cases where they are not. A puff with
+                    impact switched off - which is what
+                    "puffPierceTerrain" does - flies THROUGH a wall and
+                    dies somewhere else entirely, and a piercing shot
+                    carries on past the enemy it hit.
+                    Still one cloud per shot, so this MOVES the cloud to
+                    the first thing hit rather than adding a second.
+
+  A RELATED FIX, and it is why a gas line used to hit one target dozens
+  of times. Re-hitting a single target is rate-limited by
+  "piercingData".damageRepeatDelay and by NOTHING ELSE, and a delay of
+  zero means "no limit" rather than "no repeat". So a puff that flies
+  through an enemy instead of dying on it hit it once per physics step -
+  about fifty times a second, each with its own hit sound. Not too much
+  damage per hit; far too many hits.
+
+  Whenever "puffPierceTerrain" switches impact off, the delay is now set
+  to 0.25s if it was zero - the same figure the game's own beams use.
+  Set "weapon".piercingData.damageRepeatDelay yourself to choose another.
 
   THE ONE BALANCE TRAP: OVERLAP STACKS
   ------------------------------------
@@ -5558,7 +9086,7 @@ DOES NOTHING on a normal projectile - do not waste time on these:
                                           Disc).
   "impactBehaviour.
       destroyVelocityThreshold"           lobbed shots only
-  "cellConvertData"                       hitscan beams only (see 6d)
+  "cellConvertData"                       terraform - ANY weapon (see 6d)
   "maxRotationSpeedWhileShooting"         reads like an aim-speed clamp
                                           while firing, and it IS real -
                                           but only the enemy AI aimer
@@ -5728,13 +9256,18 @@ and damages whatever it touches, so most projectile options do nothing.
   barrel, rotates it toward wherever the ray landed, and sets its WIDTH to
   the whole distance. One sprite, one rectangle, muzzle to target.
 
-  Two consequences:
+  Two consequences, BOTH OF WHICH THE "curveBeam" BLOCK LIFTS:
     * A beam CANNOT BEND as it stands - there is nowhere for a curve to
       live inside a single quad. A bending beam has to be a CHAIN of short
-      quads, which is a separate feature built on top of this one. This
-      block is the foundation it needs: loading and placing beam art.
-    * A beam CANNOT ANIMATE by flipbook. Use "tiling": "repeat" for the
-      illusion of movement instead.
+      quads, and that is exactly what "curveBeam" draws. See section 4p.
+      This block remains the foundation: it loads and places beam art, and
+      it still owns the WARM-UP beam, the material and the impact sprite,
+      which a curve beam does not touch.
+    * A beam CANNOT ANIMATE by flipbook, so only frame 0 of an animation
+      is used here. Use "tiling": "repeat" for the illusion of movement.
+      (A curve beam CAN use every frame - it puts one frame on each link
+      and scrolls the assignment, so the pattern travels along the beam.
+      An animation finally means something there.)
 
   THE PIVOT TRAP, HANDLED FOR YOU. Every stock beam sprite has its pivot
   on the LEFT EDGE, because the quad grows rightward from the muzzle. The
@@ -5820,21 +9353,124 @@ and damages whatever it touches, so most projectile options do nothing.
                 it if your art has a soft or capped end; drop toward 0 for
                 a beam that stops exactly on the target.
 
-  TERRAFORMING BEAM (cellConvertData) - a hidden feature. The beam
-  CONVERTS TERRAIN where it lands. Only one weapon in the game uses it:
-  the Crawler Laser (radius 4, eats 10 different cell types).
+  TERRAFORMING (cellConvertData) - the shot CONVERTS TERRAIN where it
+  lands. Only one weapon in the game uses it: the Crawler Laser, which
+  melts 10 cell types into Hazard at radius 4.
+
+  WORKS ON EVERY WEAPON TYPE NOW. The field sits on every weapon and
+  the base game only ever ran it from HitscanWeapon - so a projectile
+  weapon with it configured did nothing at all, silently. All four
+  paths convert:
+
+    hitscan beam      the game's own, at the hit point
+    plain projectile  where the bullet lands
+    lobbed / physics  at the contact point
+    curve beam        along the WHOLE curved path
+
+  The curve beam is the odd one and it was a gap in this mod rather
+  than the game's: WeaponForge's own curve-beam prefix returns false,
+  so HitscanWeapon.FireSingle never runs and its conversion call never
+  fired either. It converts along the whole path because a bending
+  beam has no single hit point, and carving the curve it travelled is
+  the entire appeal.
+
       "cellConvertData": {
         "enabled": true,
-        "radius": 4,
-        "convertableCells": ["CellType_Mud", "CellType_Moss"],
-        "resultCellType": "CellType_Mud"
+        "radius": 2.5,
+        "convertableCells": ["CellType_Solid", "CellType_Moss"],
+        "resultCellType": "CellType Fog Mist"
       }
     convertableCells   which terrain it may eat (one name, or a list).
-    resultCellType     what it turns into. Point it at a soft/empty cell
-                       to dig tunnels, or a solid one to BUILD walls.
-    Cell names include CellType_Mud, CellType_Moss, CellType_Blob,
-    CellType_Hazard, CellType Bark, CellType Gold, CellType Fog Steam.
-    NOTE cellConvertData exists on every weapon but ONLY hitscan runs it.
+                       A type you leave out is a type your weapon
+                       cannot get through. BLANK MEANS NOTHING is
+                       converted, not everything - the game tests
+                       convertableCells.Contains(...), so an empty list
+                       matches no cell at all.
+    resultCellType     what it turns into.
+
+  FOUR GROUP WORDS SAVE NAMING SIXTEEN THINGS. Instead of a list,
+  convertableCells accepts one of:
+
+      "convertableCells": "all"        every cell type (16)
+      "convertableCells": "solid"      everything you cannot fly
+                                       through (12) - THE DIGGING ONE
+      "convertableCells": "resources"  Tuff + Blob + Gold, the three
+                                       that PAY - A MINING WEAPON
+      "convertableCells": "soft"       Slime and the three Fogs
+
+  "solid" is the right default for a digging weapon: converting a Fog
+  into a Fog spends radius achieving nothing. They expand at load and
+  the log prints the full list it used, so you can always see what you
+  actually asked for. Same words work in Module Forge's "convert".
+
+  resultCellType IS A SINGLE TYPE AND CANNOT BE A LIST. One shot turns
+  terrain into ONE thing - that is the field's type in the game, not a
+  limit of this mod.
+
+  BOTH FIELDS HAVE DROPDOWNS IN THE BUILDER PAGE listing all sixteen
+  types, grouped by whether you can fly through the result.
+  convertableCells has two: one that takes a whole GROUP in one word,
+  and one that ADDS a single type at a time so you can build a list.
+  The page emits a real JSON array. It used to tell you to hand-edit
+  the file for a list, which was really an admission that it could not
+  do it.
+
+  THE SIXTEEN CELL TYPES. The COLLIDER is what decides how the weapon
+  feels. Names are inconsistent in the game's own assets - some use an
+  underscore and some a space - so both are shown.
+
+    SOLID - a wall you cannot fly through
+      CellType Bark        burns 4s
+      CellType Gold        the ore
+      CellType_Blob        burns 2s
+      CellType_Moss        burns 2s
+      CellType_Night       burns 3s
+      CellType_Shard
+      CellType_Solid       burns 15s - most flammable in the game
+      CellType_Tuff
+      CellType_Panel
+      CellType_Obsidian
+      CellType_Mud
+      CellType_Hazard      solid AND 1 contact damage, 10 pushback
+
+    PASSABLE - you fly straight through
+      CellType_Slime       a trigger collider - passable goo
+      CellType Fog Mist    no collider at all
+      CellType Fog Musk    no collider at all
+      CellType Fog Steam   no collider at all
+
+  SO THIS IS HOW YOU DIG: convert a solid type into a FOG and you have
+  cut a real tunnel. Point resultCellType at a solid type instead and
+  the weapon BUILDS walls.
+
+  "EMPTY" IS NOT ON THE LIST AND YOU DO NOT NEED IT. It is cell id 0
+  and a const on the class rather than an asset, so it cannot be named
+  - a Fog does the same job.
+
+  CAREFUL WITH HAZARD: nothing in the game filters cell contact damage
+  by faction, so terrain you create hurts YOU as happily as anything
+  else. That is exactly what the Crawler Laser is for.
+
+  TERRAIN IS WHERE THE RESOURCES COME FROM. A CellType carries its own
+  dropTable, so destroying rock drops resources by itself - A DIGGING
+  WEAPON IS ALREADY A MINING WEAPON. The ones that actually pay:
+
+    CellType_Tuff   -> White / stamina   (the white bubble blocks)
+    CellType_Blob   -> Fuel              (the blue orbs)
+    CellType Gold   -> Money
+
+  So "mine the stamina blocks and leave everything else standing" is a
+  real weapon design and it is one line:
+
+      "convertableCells": ["CellType_Tuff"]
+
+  Worth knowing: the game's own Crawler Laser eats ten cell types and
+  TUFF AND SLIME ARE NOT AMONG THEM - the one stock converter
+  deliberately cannot touch the resource blocks.
+
+  NOT EVERYTHING DESTRUCTIBLE IS TERRAIN. The shocking bulbs near
+  scanner stations are "Fruit White" prefabs on the Fruits layer (13),
+  not cells - nothing here can convert one. Shoot them normally.
 
 WHAT WORKS on a beam:
   damage, BURN (yes - a beam does apply burn), damageRepeatDelay, range,
@@ -5939,12 +9575,27 @@ grid/inventory UI and what it grants when equipped:
                                      top-level displayName)
     "description": "...",
     "level": 2,
-    "icon": "HUD_GridTiles_8",       Module card icon. These are the
-                                     weapon icon sprites; the builder
-                                     page has a dropdown that picks one
-                                     by weapon name. A few: Popper 13,
-                                     Bolt 1, Dart/Rocket 29, Shotgun 7,
-                                     Laser 8, Air Mine 25, Drone 19.
+    "icon": "HUD_GridTiles_8",       Module card icon. The builder page
+                                     has a dropdown that picks one by
+                                     weapon name.
+                                     ALL 81 OF THEM ARE LISTED IN
+                                     "MODULE ICONS.txt", with which
+                                     stock module uses each one - and
+                                     "Module Icons.html" DRAWS them all
+                                     at size so you can see what they
+                                     are. The number tells you nothing
+                                     about the picture, so start there.
+                                     A few, for quick reference: Popper
+                                     13, Bolt 1, Dart/Rocket 29,
+                                     Shotgun 7, Laser 8, Air Mine 25,
+                                     Drone 19, Blades 33, Power Core
+                                     18, Booster Core 20.
+                                     An icon cannot animate - it is
+                                     assigned once and nothing ticks
+                                     it - so naming an animation gets
+                                     its first frame. You can pick
+                                     WHICH frame though: "mysheet:3".
+                                     Works on stock numbered runs too.
     "color": "ColorPurple",          Card color tint - a game
                                      ColorAsset name OR a hex value
                                      like "#7fd4ff" (a new color is
