@@ -362,6 +362,21 @@ projectileSprite  use art YOU drew. Put a PNG in the ""sprites"" folder
                  writes the .json the mod reads. NOTE the name is of a
                  thing INSIDE the sheet, not the file: ""petrolbm"" is
                  one still frame, ""petrolbmAnim"" is the animation.
+
+                 OR NAME ONE OF THE GAME'S OWN SPRITES. If no PNG of
+                 that name is in your folder, the game's ~450 sprites
+                 are searched by name. Your own art always wins a clash,
+                 so this can never change an existing weapon.
+
+                 The little bubbles that pop out of a destroyed white
+                 block are worth knowing about:
+
+                     part_cyrcle_15   the White pickup
+                     part_cyrcle_12   the orb Fuel, Caps and Purple all
+                                      share, tinted three ways
+
+                 ""trailSprite"" and the beam art already accepted stock
+                 names; projectileSprite was the one that did not.
 muzzleSprite     your own art for the MUZZLE FLASH, from the same
                  ""sprites"" folder and by the same names. A still name
                  gives one frame, an ""...Anim"" name plays the flipbook.

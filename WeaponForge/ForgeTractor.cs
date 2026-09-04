@@ -110,6 +110,17 @@ namespace WeaponForge
             public bool slamHitsUnits = true;    // enemy into enemy
             public bool slamHitsPlayer;          // ...and into YOUR hull
 
+            // The tell - a colour worn by whatever is currently slammable, so
+            // you can see who is worth throwing. Same keys and same meaning as
+            // the standalone `slam` block; both go through ForgeUnitTint, so a
+            // tractor tint and the `slow` tint compose rather than fight.
+            public Color slamTint = Color.white;
+            public bool slamHasTint;
+            public float slamTintPulse = 3f;
+
+            // See ForgeUnitTint - 0..1, 1 is the full colour.
+            public float slamTintStrength = 1f;
+
             // ---- look ----------------------------------------------------
             public Color color = new Color(0.6f, 0.9f, 1f, 1f);
             public bool drawBeam = true;

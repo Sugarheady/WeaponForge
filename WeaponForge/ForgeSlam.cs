@@ -40,6 +40,105 @@ namespace WeaponForge
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slam");
 
+        // ------------------------------------------------------------------
+        // "slam" as a top-level block on ANY weapon.
+        //
+        // The machinery below was written for the tractor beam, which is the
+        // only thing that could reach it - and that was a shame, because
+        // "shove them and let the wall do the work" is a whole weapon idea and
+        // the tractor is a held beam. A projectile that pushes is already a
+        // thing the game does (`pushForce`, an impulse applied at the hit
+        // point); the only missing piece was marking what it hit as slammable.
+        //
+        // Registered against the WeaponData, the same shape every other block
+        // uses, and resolved at the hit rather than carried on the prefab -
+        // which sidesteps the config-reference-on-a-prefab trap entirely.
+        public class Spec
+        {
+            public float minSpeed = 6f;
+            public float damagePerSpeed = 1.5f;
+            public float maxDamage = 999f;
+            public float window = 1.5f;
+            public bool hitsUnits = true;
+            public bool hitsPlayer;
+            public Resource damageType;
+
+            // Must the hit that marks them also SHOVE them?
+            //
+            // OFF by default, and that is the whole point of the block being
+            // standalone: "this one is brittle for the next second and a half"
+            // is a debuff, and what throws them into the wall afterwards does
+            // not have to be the same weapon - or a weapon at all. A gravity
+            // well, an explosion, a tractor beam, another gun, their own
+            // charge, or just being flung by something else all count.
+            //
+            // Turn it on for a weapon where the shove IS the point and a
+            // grazing hit should not count.
+            public bool requiresPush;
+
+            // ---- the tell -------------------------------------------------
+            //
+            // A colour worn by whatever is currently slammable, so you can SEE
+            // who is worth throwing. Without it the whole mechanic is
+            // invisible: "brittle for the next second and a half" has no tell
+            // at all, and a player cannot aim at a state they cannot see.
+            //
+            // Off unless asked for. It goes through ForgeUnitTint, so it
+            // composes with the `slow` tint instead of fighting it - which is
+            // the reason this was offered and not built until now.
+            public Color tint = Color.white;
+            public bool hasTint;
+
+            // Throbs per second. A slammable unit is a TEMPORARY state, and a
+            // pulse reads as a timer running out in a way a steady colour
+            // cannot. 0 is steady.
+            public float tintPulse = 3f;
+
+            // HOW HARD THE TINT COMES THROUGH, 0..1. 1 is the full colour and
+            // is what this has always done; 0.35 is a hint of it. Read from
+            // either "tintStrength" or "colorStrength" so the two naming
+            // styles in this mod's blocks both work. See ForgeUnitTint.
+            public float tintStrength = 1f;
+
+            // ---- how the arrival is detected ------------------------------
+            //
+            // OFF by default, deliberately: this is what shipped and it is not
+            // being changed underneath anything already tested.
+            //
+            // The reason it exists: **every unit rigidbody in this game uses
+            // DISCRETE collision detection** (only ammo prefabs use
+            // Continuous) and the fixed timestep is 0.02s, so a body moving
+            // faster than about 50 units/s skips a 1-unit object between
+            // steps. A pushForce of 220 on a common Cross is 44 u/s - already
+            // marginal - and `slow`'s knockback HALVES the mass, taking it to
+            // 88 u/s, or 1.76 units per step. So the hardest, most spectacular
+            // throws are exactly the ones OnCollisionEnter2D can miss.
+            //
+            // On, arrival is found the way the game's own charging enemies
+            // find it: a swept CircleCast along the velocity each physics
+            // step. Expect it to trigger MORE often, including on grazes the
+            // callback never saw.
+            public bool swept;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary
+            <WeaponData, Spec> _weapons =
+                new System.Collections.Generic.Dictionary<WeaponData, Spec>();
+
+        public static void Register(WeaponData weapon, Spec spec)
+        {
+            if (weapon != null && spec != null)
+                _weapons[weapon] = spec;
+        }
+
+        public static bool TryGet(WeaponData weapon, out Spec spec)
+        {
+            spec = null;
+            return weapon != null && _weapons.TryGetValue(weapon, out spec);
+        }
+
+        public static bool Any { get { return _weapons.Count > 0; } }
+
         // Below this closing speed nothing happens. The game's own reference
         // point is 10: every ship prefab carries ImpactDamage at
         // minVelocity 10, which is what it considers a hard crash.
@@ -58,6 +157,11 @@ namespace WeaponForge
         // because "enemies crashing into each other" and "an enemy flung into
         // your hull hurts you" are different games.
         public bool hitsPlayer;
+
+        // Find the arrival by sweeping rather than by waiting for a collision
+        // callback. See Spec.swept for why - in one line: every unit rigidbody
+        // is DISCRETE, so the hardest throws skip right through.
+        public bool swept;
 
         [NonSerialized] public float expiresAt;
         [NonSerialized] public Unit attacker;
@@ -82,6 +186,47 @@ namespace WeaponForge
             if (target == null || cfg == null || !cfg.slam)
                 return null;
 
+            return Mark(target, attacker, weapon, damageType,
+                        cfg.slamMinSpeed, cfg.slamDamagePerSpeed,
+                        cfg.slamMaxDamage, cfg.slamWindow,
+                        cfg.slamHitsUnits, cfg.slamHitsPlayer,
+                        cfg.slamHasTint, cfg.slamTint, cfg.slamTintPulse,
+                        cfg.slamTintStrength,
+                        // The tractor's own slam predates the standalone block
+                        // and keeps the collision route; `swept` is offered on
+                        // the `slam` block only, which is where it was asked
+                        // for.
+                        false);
+        }
+
+        // The projectile / beam route. Same component, same window semantics -
+        // only the numbers arrive from a different block.
+        public static ForgeSlam Mark(
+            Unit target, Spec spec, Unit attacker,
+            WeaponBase weapon, Resource damageType)
+        {
+            if (target == null || spec == null)
+                return null;
+
+            return Mark(target, attacker, weapon,
+                        spec.damageType ?? damageType,
+                        spec.minSpeed, spec.damagePerSpeed, spec.maxDamage,
+                        spec.window, spec.hitsUnits, spec.hitsPlayer,
+                        spec.hasTint, spec.tint, spec.tintPulse,
+                        spec.tintStrength, spec.swept);
+        }
+
+        private static ForgeSlam Mark(
+            Unit target, Unit attacker, WeaponBase weapon,
+            Resource damageType,
+            float minSpeed, float damagePerSpeed, float maxDamage,
+            float window, bool hitsUnits, bool hitsPlayer,
+            bool hasTint, Color tint, float tintPulse, float tintStrength,
+            bool swept)
+        {
+            if (target == null)
+                return null;
+
             try
             {
                 // Must live on the object that carries the Rigidbody2D, or
@@ -95,15 +240,35 @@ namespace WeaponForge
                 if (s == null)
                     s = host.AddComponent<ForgeSlam>();
 
-                s.minSpeed = cfg.slamMinSpeed;
-                s.damagePerSpeed = cfg.slamDamagePerSpeed;
-                s.maxDamage = cfg.slamMaxDamage;
-                s.hitsUnits = cfg.slamHitsUnits;
-                s.hitsPlayer = cfg.slamHitsPlayer;
+                s.minSpeed = minSpeed;
+                s.damagePerSpeed = damagePerSpeed;
+                s.maxDamage = maxDamage;
+                s.hitsUnits = hitsUnits;
+                s.hitsPlayer = hitsPlayer;
                 s.damageType = damageType;
                 s.attacker = attacker;
                 s.weapon = weapon;
-                s.expiresAt = Time.time + Mathf.Max(0.1f, cfg.slamWindow);
+                s.swept = swept;
+                float life = Mathf.Max(0.1f, window);
+
+                s.expiresAt = Time.time + life;
+
+                // THE TELL. Timed to the same window rather than cleared when
+                // the marker component dies, because the marker deliberately
+                // lingers a second past expiry before tidying itself up - a
+                // colour that outlived the state it advertises would be worse
+                // than no colour at all.
+                //
+                // Re-marking refreshes it: ForgeUnitTint replaces a layer with
+                // the same key rather than adding a second one, so being held
+                // in a tractor beam keeps the tint steady instead of stacking
+                // it darker and darker.
+                if (hasTint)
+                {
+                    ForgeUnitTint.Set(
+                        target, ForgeUnitTint.Slam, tint, life, tintPulse,
+                        tintStrength);
+                }
 
                 return s;
             }
@@ -181,7 +346,17 @@ namespace WeaponForge
                 d.amount = amount;
                 d.damageType = damageType;
 
-                hb.TakeDamage(d);
+                // Opt this damage into crit. Off unless the weapon's file says
+                // "crit": { "onExtras": true } - see ForgeCrit.
+                WeaponBase critPrev = ForgeCrit.Begin(weapon);
+                try
+                {
+                    hb.TakeDamage(d);
+                }
+                finally
+                {
+                    ForgeCrit.End(critPrev);
+                }
 
                 // Nothing in the game credits a kill from mod-side damage, so
                 // this has to register it properly - otherwise an onKill reward
@@ -228,6 +403,109 @@ namespace WeaponForge
             // enemy is dead weight on every collision it ever has.
             if (Time.time > expiresAt + 1f)
                 Destroy(this);
+        }
+
+        // ------------------------------------------------------------------
+        // The swept route, off unless `slam.swept` asked for it.
+        //
+        // Copied from the game's own ChargerHead, which is what the four
+        // charging enemies use INSTEAD of collision callbacks - because a
+        // discrete rigidbody moving at charge speed steps straight over the
+        // thing it is charging at. Same problem, same answer.
+        // ------------------------------------------------------------------
+        private Rigidbody2D sweptBody;
+        private int sweptMask;
+        private float sweptRadius;
+        private bool sweptReady;
+
+        private static readonly RaycastHit2D[] _sweep = new RaycastHit2D[16];
+        private static ContactFilter2D _sweepFilter = new ContactFilter2D();
+
+        private void FixedUpdate()
+        {
+            if (!swept || !Live)
+                return;
+
+            try
+            {
+                if (!sweptReady)
+                {
+                    sweptReady = true;
+
+                    sweptBody = GetComponent<Rigidbody2D>();
+
+                    var col = GetComponentInChildren<Collider2D>();
+
+                    sweptRadius = (col != null)
+                        ? Mathf.Max(0.1f, col.bounds.extents.magnitude * 0.7f)
+                        : 0.5f;
+
+                    sweptMask = LayerMask.GetMask("Ground", "Entities", "Fruits");
+
+                    if (hitsPlayer)
+                        sweptMask |= LayerMask.GetMask("Player");
+                }
+
+                if (sweptBody == null || Time.time < nextHitAt)
+                    return;
+
+                Vector2 v = sweptBody.linearVelocity;
+                float speed = v.magnitude;
+
+                if (speed < minSpeed)
+                    return;
+
+                _sweepFilter.useTriggers = Physics2D.queriesHitTriggers;
+                _sweepFilter.SetLayerMask(sweptMask);
+
+                int n = Physics2D.CircleCast(
+                    transform.position, sweptRadius, v / speed, _sweepFilter,
+                    _sweep, speed * Time.fixedDeltaTime);
+
+                for (int i = 0; i < n && i < _sweep.Length; i++)
+                {
+                    Collider2D col = _sweep[i].collider;
+
+                    if (col == null)
+                        continue;
+
+                    Unit other = col.GetComponentInParent<Unit>();
+
+                    if (other != null && ReferenceEquals(other, self))
+                        continue;
+
+                    Land(other, speed);
+                    return;
+                }
+            }
+            catch (Exception e)
+            {
+                Log.LogError("A swept slam failed: " + e);
+                swept = false;
+            }
+        }
+
+        // The shared payout, so the swept route and the collision route can
+        // never drift apart on what an arrival costs.
+        private void Land(Unit other, float speed)
+        {
+            nextHitAt = Time.time + 0.15f;
+
+            float amount = Mathf.Min(
+                maxDamage, (speed - minSpeed) * damagePerSpeed);
+
+            if (amount <= 0f)
+                return;
+
+            Hurt(self, amount);
+
+            if (!hitsUnits || other == null || ReferenceEquals(other, self))
+                return;
+
+            if (!hitsPlayer && attacker != null && ReferenceEquals(attacker, other))
+                return;
+
+            Hurt(other, amount);
         }
     }
 }

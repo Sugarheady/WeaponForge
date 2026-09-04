@@ -89,6 +89,7 @@ namespace WeaponForge
             // ---- feedback ----
             public bool tintMuzzle = true;   // the default, by request
             public Color hotColor = new Color(1f, 0.35f, 0.16f, 1f);
+            public float tintStrength = 1f;  // 0..1, same scale as every tint
             public string overheatSfx = "";
             public string recoverSfx = "";
             public bool showHeat;            // the buff HUD is off by default

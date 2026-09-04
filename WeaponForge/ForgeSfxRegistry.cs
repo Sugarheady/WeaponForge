@@ -63,8 +63,24 @@ namespace WeaponForge
 
             string name = soundName.Trim();
 
+            // CUSTOM FIRST, THEN THE GAME'S OWN - the same order every sprite
+            // key uses, and for the same reason it had to be added there.
+            //
+            // Until 2026-09-02 this returned null for anything that was not a
+            // custom file, and the only other thing a sound field would accept
+            // was a raw Sfx **guid** (`Find` matches `s.guid` and nothing
+            // else). So all 259 of the game's own sounds were reachable only by
+            // typing a string like
+            // "0db9a68c-7055-43bf-8490-dd42f1409f4c", and nothing anywhere
+            // mapped a name to one. That is why he asked *"what is the SFX for
+            // popping the bubble that provides fuel?"* - there was no way to
+            // find out and no way to say it.
+            //
+            // Exactly the shape of the seven sprite keys that could not see
+            // stock art: **a lookup that can only search half its namespace.**
+            // See SOUNDS.txt for the list.
             if (!ForgeSoundLibrary.Has(name))
-                return null;
+                return StockGuid(name, fileName);
 
             AudioDatabase db = Database();
 
@@ -205,6 +221,58 @@ namespace WeaponForge
                 return true;
 
             return Find(db, guid) != null;
+        }
+
+        // One of the GAME's own sounds, named the way the audio database names
+        // it - "Cells/Fuel", "Weapons/Popper/Shoot", "UI/Click". Returns its
+        // guid, which is what a weapon field actually holds.
+        //
+        // Case-insensitive, and a raw guid still works, so nothing already
+        // written changes. A "/" in the name is the giveaway that somebody
+        // meant a game sound rather than a file.
+        public static string StockGuid(string name, string fileName)
+        {
+            AudioDatabase db = Database();
+
+            if (db == null || string.IsNullOrEmpty(name))
+                return null;
+
+            Sfx found = null;
+
+            foreach (Sfx s in db.sfxs)
+            {
+                if (s == null || string.IsNullOrEmpty(s.name))
+                    continue;
+
+                if (string.Equals(s.name, name,
+                                  StringComparison.OrdinalIgnoreCase))
+                {
+                    found = s;
+                    break;
+                }
+            }
+
+            if (found == null)
+                return null;
+
+            // 70 OF THE 259 ENTRIES HAVE NO CLIP AT ALL. They are declared in
+            // the database and silent - `Items/Resources/Fuel`,
+            // `Weapons/Popper/Impact` and 68 others. Naming one resolves
+            // perfectly and plays nothing, which is the silent-fallback shape
+            // that costs a test round, so it is called out here rather than
+            // discovered in game.
+            if (found.audioClips == null || found.audioClips.Items == null ||
+                found.audioClips.Items.Count == 0)
+            {
+                Log.LogWarning(
+                    fileName + ": '" + found.name + "' is a real sound in the " +
+                    "game's audio database but it has NO CLIP - 70 of the " +
+                    "259 entries are declared and empty like this, so it " +
+                    "will be silent. See SOUNDS.txt, which marks every empty " +
+                    "one.");
+            }
+
+            return found.guid;
         }
 
         private static Sfx Find(AudioDatabase db, string guid)

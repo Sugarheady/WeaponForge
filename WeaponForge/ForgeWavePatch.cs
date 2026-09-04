@@ -26,20 +26,16 @@ namespace WeaponForge
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
 
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
-        private static bool _ready;
-
         // Alternates 0 / 180 across successive shots so "helix" weaves.
         private static int _counter;
 
-        private static void Ensure()
-        {
-            if (_ready)
-                return;
-            _idealRef = AccessTools.FieldRefAccess<Projectile, Vector2>(
-                "idealDirection");
-            _ready = true;
-        }
+        // `idealDirection` comes from ForgeSteer, which owns it. This file held
+        // its own copy of the reflection until the steering audit, and that copy
+        // had a bug the shared one does not: it set its `_ready` latch AFTER the
+        // call that can throw, so a lookup failure would never latch. Every
+        // waving projectile would then retry the reflection and log an error
+        // EVERY FRAME - a flood, not a warning. The rule the other four copies
+        // already followed is to latch first and let the failure be permanent.
 
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot
@@ -52,7 +48,6 @@ namespace WeaponForge
                     if (w == null)
                         return;
 
-                    Ensure();
                     w.shot = true;
                     w.startTime = Time.time;
                     // Half a CYCLE, not pi: the shape functions all work in
@@ -81,12 +76,12 @@ namespace WeaponForge
                     if (w == null || !w.shot)
                         return;
 
-                    Ensure();
-                    if (_idealRef == null)
-                        return;
+                    // False both when the field is unreachable and when it is
+                    // still zero (not shot yet) - the two cases the two checks
+                    // here used to cover separately.
+                    Vector2 ideal;
 
-                    Vector2 ideal = _idealRef(__instance);
-                    if (ideal == Vector2.zero)
+                    if (!ForgeSteer.TryGetIdeal(__instance, out ideal))
                         return;
 
                     // single: phase from this shot; synced/helix: shared clock.

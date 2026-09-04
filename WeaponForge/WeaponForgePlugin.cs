@@ -137,6 +137,11 @@ namespace WeaponForge
 
             harmony.PatchAll();
 
+            // Patched by hand, because `ChargerHead` is not visible to this
+            // assembly at compile time - there is no typeof() for PatchAll to
+            // find. Stops a friendly rammer headbutting its own swarm to death.
+            ForgeMinionRamGuard.Apply(harmony);
+
             Logger.LogInfo("Weapon Forge patches applied");
         }
     }

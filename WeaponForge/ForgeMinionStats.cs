@@ -101,8 +101,52 @@ namespace WeaponForge
         // the whole point: a BoosterCore raises the spawner's level, and the
         // minion's internal module knows nothing about it. Reading the minion's
         // own level would make every per-level setting a silent no-op.
+        // A RECALCULATION IS EXPENSIVE AND THE CALLER MAY WANT TO OWN IT.
+        //
+        // `RecalculateStats` zeroes and rebuilds every tank from the module
+        // effects, and the spawn path used to run it TWICE per minion: once at
+        // the end of `ForgeSwarm.InheritGrid` and again here, microseconds
+        // later, with the first result thrown away. That is dead work by
+        // construction rather than by measurement.
+        //
+        // It cannot simply be deleted from one of them, because both have
+        // early returns - `Apply` bails immediately when a config has no stats
+        // at all (Kamikaze), and then InheritGrid's is the only one that runs.
+        // So the honest fix is for whoever calls both to do it once, and
+        // `ForgeMinionPatch.Prepare` does.
+        public static void Recalculate(Unit minion)
+        {
+            if (minion == null)
+                return;
+
+            try
+            {
+                var gridOwner =
+                    minion.GetComponentInChildren<ModuleGridOwner>(true);
+
+                if (gridOwner == null || gridOwner.ModuleGrid == null)
+                    return;
+
+                minion.ComponentData.RecalculateStats(gridOwner.ModuleGrid);
+                minion.ComponentData.RefillResources();
+            }
+            catch (Exception e)
+            {
+                Log.LogError(
+                    "minion stats: recalculating '" + minion.name +
+                    "' failed, so its tanks may be inconsistent: " + e);
+            }
+        }
+
         public static void Apply(
             Unit minion, Unit owner, ForgeMinion.Config cfg, int spawnerLevel)
+        {
+            Apply(minion, owner, cfg, spawnerLevel, true);
+        }
+
+        public static void Apply(
+            Unit minion, Unit owner, ForgeMinion.Config cfg, int spawnerLevel,
+            bool recalculate)
         {
             if (minion == null || cfg == null || !cfg.HasStats)
                 return;
@@ -118,7 +162,7 @@ namespace WeaponForge
 
                 Ai(minion, cfg, k);
                 Body(minion, cfg);
-                Tanks(minion, cfg, Mathf.Max(1, spawnerLevel));
+                Tanks(minion, cfg, Mathf.Max(1, spawnerLevel), recalculate);
             }
             catch (Exception e)
             {
@@ -528,7 +572,7 @@ namespace WeaponForge
 
         private static int ClearVisionOverride(Unit minion, string typeName)
         {
-            Type t = AccessTools.TypeByName(typeName);
+            Type t = TypeOf(typeName);
 
             if (t == null)
                 return 0;
@@ -563,7 +607,7 @@ namespace WeaponForge
 
         private static void AttackRange(Unit minion, ForgeMinion.Config cfg)
         {
-            Type t = AccessTools.TypeByName("ShootAction");
+            Type t = TypeOf("ShootAction");
             FieldInfo f = t == null ? null : Field(t, "shootingDistance");
 
             if (f == null)
@@ -620,7 +664,7 @@ namespace WeaponForge
 
         private static void Leash(Unit minion, ForgeMinion.Config cfg, float k)
         {
-            Type t = AccessTools.TypeByName("OwnerIsWithinRangeCondition");
+            Type t = TypeOf("OwnerIsWithinRangeCondition");
             FieldInfo f = t == null ? null : Field(t, "maxDistance");
 
             if (f == null)
@@ -677,7 +721,7 @@ namespace WeaponForge
 
         private static void FollowDistance(Unit minion, ForgeMinion.Config cfg)
         {
-            Type t = AccessTools.TypeByName("MoveAroundOwnerAction");
+            Type t = TypeOf("MoveAroundOwnerAction");
             FieldInfo f = t == null ? null : Field(t, "distance");
 
             if (f == null)
@@ -796,7 +840,8 @@ namespace WeaponForge
 
         // ---- health, tanks, regen, shields -------------------------------
         private static void Tanks(
-            Unit minion, ForgeMinion.Config cfg, int spawnerLevel)
+            Unit minion, ForgeMinion.Config cfg, int spawnerLevel,
+            bool recalculate)
         {
             if (!cfg.health.set && cfg.resources == null && cfg.regen == null &&
                 !cfg.hasShield && !cfg.fuelForLifetime)
@@ -881,6 +926,9 @@ namespace WeaponForge
             // value. Setting MainModule (which is how the weapon gets swapped)
             // raises only ModulesRefreshed, NOT ModuleInstalled, so nothing else
             // schedules this for us on the weapon path.
+            if (!recalculate)
+                return;      // the caller is doing it once, after everything
+
             try
             {
                 minion.ComponentData.RecalculateStats(gridOwner.ModuleGrid);
@@ -1180,6 +1228,37 @@ namespace WeaponForge
                 return;
             }
 
+            // ---- the ART -----------------------------------------------------
+            //
+            // Shield.Setup does _material.SetFloat("_Radius", firstShieldSize +
+            // index), and firstShieldSize is 0 on 70 of the game's 84 shield
+            // prefabs. A radius-0 bubble draws nothing while absorbing damage
+            // perfectly, because TakeDamage never looks at radius - which is
+            // exactly the "the shield works but I never saw it" report.
+            //
+            // Left alone unless asked, because the handful that DO ship a
+            // radius (the flying drones at 4, the ships at 4, Fly Zapper 8,
+            // Turret_Seeker 15) already look right and should not change.
+            if (cfg.shieldShow.HasValue)
+            {
+                dmg.firstShieldSize =
+                    cfg.shieldShow.Value ? Mathf.Max(0.01f, cfg.shieldSize) : 0f;
+            }
+
+            if (cfg.hasShieldColor)
+            {
+                // On the UNIT, not the shield: OnStatsRecalculated destroys
+                // and rebuilds every Shield, so anything held on one is gone
+                // by the next recalculation.
+                var tint = minion.GetComponent<ForgeMinionShield>();
+
+                if (tint == null)
+                    tint = minion.gameObject.AddComponent<ForgeMinionShield>();
+
+                tint.resource = cfg.shieldResource;
+                tint.color = cfg.shieldColor;
+            }
+
             var added = new AddShieldEffect();
             added.resource = cfg.shieldResource;
 
@@ -1248,6 +1327,50 @@ namespace WeaponForge
 
         private static readonly Dictionary<string, FieldInfo> _fields =
             new Dictionary<string, FieldInfo>();
+
+        // TYPE LOOKUPS ARE CACHED FOR THE SAME REASON FieldInfo IS, and this
+        // one was measured rather than guessed.
+        //
+        // `AccessTools.TypeByName` SCANS EVERY LOADED ASSEMBLY. BepInEx reports
+        // "202 assemblies discovered" on this machine, and this file called it
+        // FIVE times per minion spawn - EnemyVisibleCondition,
+        // TargetVisibleCondition, ShootAction, OwnerIsWithinRangeCondition and
+        // MoveAroundOwnerAction - none of them cached.
+        //
+        // The SPAWN COST instrument put 150-229 ms per spawn in the `stats`
+        // stage while `recalc` next to it measured 0.06 ms, which is what
+        // pointed here: the expensive thing was never the game's stat rebuild,
+        // it was five assembly scans. That is the whole of the "huge lag spike
+        // every time i spawn a larva" report.
+        //
+        // A null result is cached too - a type the game does not have must not
+        // re-scan 202 assemblies on every future spawn just to fail again.
+        private static readonly Dictionary<string, Type> _types =
+            new Dictionary<string, Type>();
+
+        private static Type TypeOf(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            Type found;
+
+            if (_types.TryGetValue(name, out found))
+                return found;
+
+            try
+            {
+                found = AccessTools.TypeByName(name);
+            }
+            catch
+            {
+                found = null;
+            }
+
+            _types[name] = found;
+
+            return found;
+        }
 
         private static readonly HashSet<string> _warned =
             new HashSet<string>();

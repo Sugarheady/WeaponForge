@@ -52,6 +52,251 @@ namespace WeaponForge
         {
             public Sprite sprite;      // static art, or the animation's frame 0
             public SpriteAnim animation;   // null when it is just a sprite
+
+            // What the NAME asked for, kept so a consumer can tell an
+            // animation the author requested from one they merely inherited by
+            // naming a sheet. Never null from either resolver. See OptInFrames.
+            public ForgeSpriteSpec spec;
+
+            // Resolved from the CUSTOM animation table - the author wrote a
+            // sprites JSON that declares this an animation, with its own fps and
+            // loop mode, and then named it. That is an explicit request to
+            // animate, unlike a stock numbered run where the bare name meaning
+            // "the whole run" is a convention this mod invented. See OptInFrames.
+            public bool fromCustomAnim;
+        }
+
+        // CUSTOM ART FIRST, THEN THE GAME'S OWN - the resolution every sprite
+        // key should have had, and seven of them did not.
+        //
+        // Found 2026-08-31 from his round 11 log, which named it outright:
+        //   gas "sprite": 'area_zero_particle_tuff:0-8' is not one of your sprites
+        //   impactSprite 'area_zero_particle_tuff' is not one of your sprites
+        // Both are real GAME sprites. Only `projectileSprite` and the leech orb
+        // ever tried `TryGetStockArt`; `impactSprite`, `muzzleSprite`,
+        // `gas.sprite`, `shield.sprite`, `swipe.sprite`, `catalyst.nodeSprite`
+        // and `charge.meterSprite` asked ONLY the custom library, so every one
+        // of the game's ~450 sprites was unreachable through them.
+        //
+        // WHY IT SURVIVED: the failure is loud - each site warns and names the
+        // string - so it never looked like a silent bug. What made it invisible
+        // was the WORDING. "is not one of your sprites" is a true sentence that
+        // reads as "you typo'd", when the real meaning was "this key cannot do
+        // stock art at all". Two R11 tests were written telling him to put stock
+        // art on two of these keys, and the docs claimed the frame suffix worked
+        // on all fourteen - true of the parsing, false of the resolution.
+        //
+        // LESSON, and it generalises past sprites: a warning that names the
+        // input but not the CAPABILITY sends the reader to check their spelling
+        // instead of the feature. When a lookup can only search half its
+        // namespace, the message has to say which half.
+        public static bool TryGetAnyArt(string name, out Art art)
+        {
+            return TryGetArt(name, out art) || TryGetStockArt(name, out art);
+        }
+
+        // The tail of a "could not find that sprite" warning.
+        //
+        // Deliberately NOT the whole list. It used to be `string.Join(", ",
+        // Names)` at every site, which with his 156 sprites made single log
+        // lines about 2,000 characters long - two of them dominated the round 11
+        // log and buried the useful ones. A count plus a handful is enough to
+        // tell "the folder loaded" from "the folder is empty", which is the only
+        // question the list was ever answering.
+        public static string NotFoundHint()
+        {
+            if (Count == 0)
+            {
+                return " There is no art in the sprites folder yet, and it is " +
+                       "not one of the game's own sprite names either.";
+            }
+
+            var some = new List<string>();
+
+            foreach (string n in Names)
+            {
+                some.Add(n);
+
+                if (some.Count == 6)
+                    break;
+            }
+
+            return " Checked your " + Count + " sprite(s) (" +
+                   string.Join(", ", some.ToArray()) +
+                   (Count > some.Count ? ", ..." : "") +
+                   ") and the game's own art. Custom names are whatever your " +
+                   "sprites JSON calls them; game names look like " +
+                   "\"part_cyrcle_12\" or \"area_zero_particle_tuff\".";
+        }
+
+        // WHAT SPEED A PARTICLE SYSTEM SHOULD ANIMATE AT - one owner for the
+        // rule, four callers (impactSprite, muzzleSprite, trail.sprite and the
+        // beam's impactSprite).
+        //
+        // A NULL RETURN MEANS "TIE THE FRAMES TO EACH PARTICLE'S OWN LIFETIME",
+        // which `ApplyParticleSprite` turns into `timeMode = Lifetime`. That is
+        // the game's own idiom for these effects and the only correct answer
+        // when a system's lifetime is a random RANGE: `ImpactParticle Cell Tuff`
+        // lives 1-3 seconds, so no single fps pops every bubble in the burst
+        // over its own life.
+        //
+        // THE `fallback` PARAMETER EXISTS BECAUSE THE FOUR CALLERS DISAGREE, and
+        // that disagreement predates this method rather than being introduced by
+        // it. The trail has always passed its `@`/block fps straight through, so
+        // a trail with neither set already animates by lifetime. Impact and
+        // muzzle have always passed `art.animation.fps`, which for a STOCK run
+        // is a fabricated 12 - so they could never reach Lifetime at all, which
+        // is exactly what made the tuff bubbles finish popping in 9/12 = 0.75s
+        // and then sit as a 4px dot for the rest of a 1-3 second life.
+        // Unifying the defaults would change how weapons already written look,
+        // so the fix is the explicit `@life` spelling and each caller keeps
+        // stating its own default out loud.
+        public static float? ParticleFps(
+            Art art,
+            float? blockKey,
+            float? fallback,
+            string what,
+            string fileName)
+        {
+            bool wantsLife =
+                art != null && art.spec != null && art.spec.fitLifetime;
+
+            float? nameFps =
+                (art != null && art.spec != null && art.spec.HasFps)
+                    ? art.spec.fps
+                    : (float?)null;
+
+            // The block's own key is the more specific statement and wins - but
+            // a name that asked for a speed and did not get it must not be
+            // ignored in silence.
+            if (blockKey.HasValue)
+            {
+                if (wantsLife)
+                {
+                    Log.LogInfo(
+                        fileName + ": " + what + " asks for \"@life\" and the " +
+                        "block's own fps key says " +
+                        blockKey.Value.ToString("0.##") + ". The key wins - " +
+                        "drop whichever one you did not mean.");
+                }
+                else if (nameFps.HasValue &&
+                         Mathf.Abs(nameFps.Value - blockKey.Value) > 0.001f)
+                {
+                    Log.LogInfo(
+                        fileName + ": " + what + " NAME asks for " +
+                        nameFps.Value.ToString("0.##") + " fps and the block's " +
+                        "own fps key says " + blockKey.Value.ToString("0.##") +
+                        ". The key wins - drop whichever one you did not mean.");
+                }
+
+                return blockKey;
+            }
+
+            if (wantsLife)
+                return null;
+
+            if (nameFps.HasValue)
+                return nameFps;
+
+            return fallback;
+        }
+
+        // OPT-IN ANIMATION, for the sprite keys whose consumer draws exactly
+        // ONE sprite: the gas puff, the shield arc, the swipe blade, the
+        // catalyst node and the charge meter.
+        //
+        // WHY IT IS OPT-IN AND NOT SIMPLY ON. Those five resolve art through
+        // `TryGetArt` like everything else, so a multi-frame sheet has ALWAYS
+        // arrived with its frames attached - they just took `.sprite` and threw
+        // the rest away. Animating them unconditionally would therefore change
+        // weapons that are already written: a file saying
+        // `"sprite": "area_zero_particle_tuff"` in its gas block renders one
+        // still frame today and would silently start moving on the next launch,
+        // with no edit to the file. So the NAME has to ask - `:0-8` or `@12` -
+        // and a bare name keeps exactly the look it has now.
+        //
+        // Returns null when there is nothing to animate, which is the common
+        // case; the caller then does what it always did.
+        public static Sprite[] OptInFrames(Art art, out float fps)
+        {
+            fps = 12f;
+
+            if (art == null || art.spec == null)
+                return null;
+
+            // NARROWED 2026-08-31, from round 11 test 48: *"looks like its stuck
+            // on the first animation where the swipe is small."* His swipe named
+            // `wf_swipeAnim` - 4 frames at 24 fps, declared in his own sprites
+            // JSON - and got one frozen frame.
+            //
+            // The original rule ("a bare name never animates") was too broad. It
+            // was written to protect files already on disk, and for a STOCK run
+            // that protection is real: `area_zero_particle_tuff` is just a
+            // sprite prefix, and "the bare name means the whole run" is a
+            // convention this mod invented, so a file naming it could genuinely
+            // have meant one frame.
+            //
+            // A CUSTOM animation is not ambiguous in that way. To have a name at
+            // all somebody wrote a JSON entry declaring it an animation, gave it
+            // an fps and a loop mode, and then typed that name rather than the
+            // sheet's. There is no reading of that which wants a still frame -
+            // and the library elsewhere already treats the two names as
+            // different intents, warning "if you wanted the shot to animate, use
+            // '<sheet>Anim' instead". So this honours it.
+            //
+            // The cost is honest and small: a weapon already naming a custom
+            // animation on one of these five keys starts animating. That is a
+            // FIX for those files, not a regression - nobody named `...Anim` and
+            // wanted frame 0.
+            if (art.spec.IsPlain && !art.fromCustomAnim)
+                return null;
+
+            bool haveRun =
+                art.animation != null &&
+                art.animation.frames != null &&
+                art.animation.frames.Length > 1;
+
+            if (!haveRun)
+            {
+                // Asking for a SPEED and getting a still is the one shape here
+                // worth a word: `:4` is a deliberate single frame, but `@24` on
+                // something with no run behind it is a file that expected
+                // movement and will not get any.
+                if (art.spec.HasFps || art.spec.fitLifetime)
+                {
+                    Log.LogWarning(
+                        "a frame rate was asked for with '@" +
+                        (art.spec.fitLifetime
+                            ? "life"
+                            : art.spec.fps.ToString("0.##")) +
+                        "', but this name resolves to a single sprite, so " +
+                        "there is nothing to animate. For stock art the run " +
+                        "is the BARE name (\"area_zero_particle_tuff\", not " +
+                        "\"area_zero_particle_tuff_0\"); for your own art it " +
+                        "is the name its sprites JSON gives the animation.");
+                }
+
+                return null;
+            }
+
+            // `@life` has no meaning on a SpriteRenderer - there is no particle
+            // whose lifetime could drive it. Say so rather than defaulting
+            // quietly: the author asked for a timing they are not getting.
+            if (art.spec.fitLifetime)
+            {
+                Log.LogWarning(
+                    "'@life' fits an animation to a PARTICLE's lifetime, and " +
+                    "this art is drawn by a sprite renderer instead. It works " +
+                    "on impactSprite, muzzleSprite, the trail and the beam's " +
+                    "impactSprite. Using " +
+                    ((art.animation.fps > 0f) ? art.animation.fps : 12f)
+                        .ToString("0.##") + " fps here - set a speed with " +
+                    "\"@12\" if that is not what you want.");
+            }
+
+            fps = (art.animation.fps > 0f) ? art.animation.fps : 12f;
+
+            return art.animation.frames;
         }
 
         private static readonly Dictionary<string, Sprite> _sprites =
@@ -71,6 +316,236 @@ namespace WeaponForge
             new Dictionary<string, Sprite>(StringComparer.OrdinalIgnoreCase);
 
         private static bool _loaded;
+
+        // ------------------------------------------------------------------
+        // STOCK ART, by the name the game gives it
+        // ------------------------------------------------------------------
+        //
+        // Asked for as *"theres little bubbles that show up when you destroy
+        // white bubble blocks... Would it be possible to turn those bubbles
+        // into a projectile?"* - and the answer was no, for a silly reason:
+        // `projectileSprite` read THIS dictionary and stopped. The mod already
+        // resolves stock assets by name everywhere else (module icons do it),
+        // so the game's ~450 sprites were one lookup away the whole time.
+        //
+        // The bubbles specifically are `part_cyrcle_15` (the White pickup) and
+        // `part_cyrcle_12` - the orb that Fuel, Caps and Purple all share and
+        // tint three different ways, which is why the same art shows up in
+        // several colours around the level.
+        //
+        // ORDER MATTERS AND CUSTOM WINS. A file that already says
+        // "projectileSprite": "myBullet" must keep meaning the PNG in the
+        // sprites folder even if the game happens to ship a sprite of that
+        // name - so this is only ever consulted after the custom lookup misses.
+        // That keeps the original guarantee in this file's header intact: a
+        // custom name can never be shadowed by a stock one.
+        //
+        // DELEGATED to `JsonFieldMapper.FindAsset` rather than given its own
+        // scan and cache. `ForgeTrail.ResolveFrames` already resolves stock
+        // sprites through exactly that call - its comment even claimed it was
+        // doing "the same order and same namespace rules as projectileSprite",
+        // which was describing behaviour projectileSprite did not have. One
+        // owner per mechanic: a second cache here could only ever disagree with
+        // the first. It runs at weapon-build time, not per frame.
+        public static bool TryGetStockArt(string name, out Art art)
+        {
+            art = null;
+
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            try
+            {
+                string raw = name.Trim();
+                string key;
+                ForgeSpriteSpec spec = ForgeSpriteSpec.Split(raw, out key);
+
+                // A NUMBERED SEQUENCE, when the name asks for one. See
+                // TryGetStockFrames for why this can never change what an
+                // existing file means.
+                Sprite[] frames;
+
+                if (TryGetStockFrames(key, out frames) && frames.Length > 1)
+                {
+                    frames = spec.Apply(frames, raw);
+
+                    art = new Art
+                    {
+                        sprite = frames[0],
+                        animation = (frames.Length > 1)
+                            ? new SpriteAnim
+                            {
+                                frames = frames,
+                                fps = spec.HasFps ? spec.fps : 12f
+                            }
+                            : null,
+                        spec = spec
+                    };
+
+                    return true;
+                }
+
+                var s = JsonFieldMapper.FindAsset(
+                    typeof(Sprite), key) as Sprite;
+
+                if (s == null)
+                    return false;
+
+                art = new Art { sprite = s, spec = spec };
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogError("Looking for a stock sprite failed: " + e);
+                return false;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // STOCK ANIMATIONS - a numbered run of sprite assets as one flipbook
+        // ------------------------------------------------------------------
+        //
+        // Asked for as *"ideally i would love the bubble effect from
+        // area_zero_particle_tuff_0 to be the projectile and trailing sprite
+        // (at least the animation on the trailing sprite)"*. The gap: stock art
+        // resolved as exactly ONE sprite everywhere - `TryGetStockArt` returned
+        // a single Art and `ForgeTrail.ResolveFrames` literally returned
+        // `new[] { stock }` - while CUSTOM art could be a multi-frame flipbook.
+        // So a stock animation was unreachable, and the game ships a lot of them
+        // (the tuff bubbles are nine frames, `_0` to `_8`).
+        //
+        // IT CANNOT CHANGE WHAT AN EXISTING FILE MEANS, and that constraint is
+        // what decides the naming rule. A name ending in `_<digits>` keeps
+        // meaning EXACTLY that one frame - otherwise `"part_cyrcle_12"`, which
+        // real files already use, would suddenly animate through
+        // `part_cyrcle_0..16` and every one of those weapons would change look
+        // on upgrade. So a sequence has to be asked for by a name that resolves
+        // to nothing today:
+        //
+        //     "area_zero_particle_tuff_0"    ONE frozen frame (unchanged)
+        //     "area_zero_particle_tuff"      all nine frames, animated
+        //     "area_zero_particle_tuffAnim"  the same, spelled the way a
+        //                                    CUSTOM animation is spelled
+        //
+        // ONE SCAN, NOT N PROBES. `JsonFieldMapper.FindAsset` runs a full
+        // `Resources.FindObjectsOfTypeAll` per call, so probing `_0`, `_1`, `_2`
+        // one at a time would be one whole-project scan per frame. This is a
+        // different question anyway - "gather everything with this prefix"
+        // rather than "find this exact name" - so it does the prefix pass
+        // itself. That is not a second cache for the first question; the exact
+        // -name path above still delegates, as its own comment requires.
+        private static readonly Dictionary<string, Sprite[]> _stockRuns =
+            new Dictionary<string, Sprite[]>(StringComparer.OrdinalIgnoreCase);
+
+        public static bool TryGetStockFrames(string name, out Sprite[] frames)
+        {
+            frames = null;
+
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            // Stripped here too, defensively: this is public and a caller that
+            // has not been through Split would otherwise probe for a run called
+            // "tuff:2-6" and find nothing.
+            string key;
+            ForgeSpriteSpec.Split(name, out key);
+
+            // Ends in _<digits>? That is a request for one specific frame, and
+            // it must stay one specific frame.
+            if (EndsInFrameNumber(key))
+                return false;
+
+            if (key.EndsWith("Anim", StringComparison.OrdinalIgnoreCase) &&
+                key.Length > 4)
+            {
+                key = key.Substring(0, key.Length - 4);
+            }
+
+            if (_stockRuns.TryGetValue(key, out frames))
+                return frames != null && frames.Length > 0;
+
+            try
+            {
+                frames = GatherRun(key);
+            }
+            catch (Exception e)
+            {
+                Log.LogError("Looking for a stock animation failed: " + e);
+                frames = null;
+            }
+
+            _stockRuns[key] = frames;
+            return frames != null && frames.Length > 0;
+        }
+
+        private static bool EndsInFrameNumber(string name)
+        {
+            int i = name.LastIndexOf('_');
+
+            if (i < 0 || i == name.Length - 1)
+                return false;
+
+            for (int c = i + 1; c < name.Length; c++)
+            {
+                if (!char.IsDigit(name[c]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        // Every `<baseName>_<n>` in one pass, ordered by n. Gaps end the run
+        // rather than being skipped over: a run that jumps 0,1,2,7 is far more
+        // likely to be two different effects sharing a prefix than one
+        // nine-frame animation with a hole in it.
+        private static Sprite[] GatherRun(string baseName)
+        {
+            var byIndex = new Dictionary<int, Sprite>();
+            string prefix = baseName + "_";
+
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(Sprite));
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                var s = all[i] as Sprite;
+
+                if (s == null || s.name == null ||
+                    !s.name.StartsWith(
+                        prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string tail = s.name.Substring(prefix.Length);
+                int n;
+
+                if (!int.TryParse(tail, out n) || n < 0)
+                    continue;
+
+                // First one wins a duplicate index - two Sprite objects can
+                // share a name across atlases and picking either is arbitrary,
+                // but picking a DIFFERENT one on a later run would make the
+                // animation change between sessions.
+                if (!byIndex.ContainsKey(n))
+                    byIndex[n] = s;
+            }
+
+            if (byIndex.Count == 0)
+                return null;
+
+            var run = new List<Sprite>();
+
+            for (int n = 0; byIndex.ContainsKey(n); n++)
+                run.Add(byIndex[n]);
+
+            // No frame 0 means there is no run to speak of, whatever else
+            // matched - the numbering the game uses always starts at 0.
+            if (run.Count == 0)
+                return null;
+
+            return run.ToArray();
+        }
 
         public static string SpritesFolder()
         {
@@ -103,6 +578,18 @@ namespace WeaponForge
         }
 
         // Resolve a name to either an animation or a static sprite.
+        //
+        // THE FRAME SUFFIX IS HANDLED HERE, and that placement is the whole
+        // design: all fourteen sprite keys come through this method or
+        // TryGetStockArt below, so `:2-6`, `:8-0` and `@24` are parsed once
+        // rather than at fourteen call sites.
+        //
+        // PARSING IT EVERYWHERE IS NOT THE SAME AS HONOURING IT EVERYWHERE.
+        // Seven keys hand the frame list to something that flips through it;
+        // five draw a single renderer and animate only on request
+        // (`OptInFrames`); two beam slots and the icons can only ever show one
+        // frame, by engine limit. `ForgeSpriteSpec`'s header has the full split
+        // - check it before telling anyone a key will animate.
         public static bool TryGetArt(string name, out Art art)
         {
             art = null;
@@ -110,24 +597,42 @@ namespace WeaponForge
             if (string.IsNullOrEmpty(name))
                 return false;
 
-            string key = name.Trim();
+            string raw = name.Trim();
+            string key;
+            ForgeSpriteSpec spec = ForgeSpriteSpec.Split(raw, out key);
 
             SpriteAnim anim;
             if (_anims.TryGetValue(key, out anim))
             {
+                Sprite[] frames = spec.Apply(anim.frames, raw);
+
                 art = new Art
                 {
-                    animation = anim,
-                    sprite = (anim.frames != null && anim.frames.Length > 0)
-                        ? anim.frames[0] : null
+                    animation = new SpriteAnim
+                    {
+                        frames = frames,
+                        fps = spec.HasFps ? spec.fps : anim.fps,
+                        loop = anim.loop,
+                        randomStart = anim.randomStart
+                    },
+                    sprite = (frames != null && frames.Length > 0)
+                        ? frames[0] : null,
+                    spec = spec,
+                    fromCustomAnim = true
                 };
+
+                // A single frame is a still, not a one-frame animation - and the
+                // animator would otherwise sit on the shot doing nothing.
+                if (frames != null && frames.Length == 1)
+                    art.animation = null;
+
                 return art.sprite != null;
             }
 
             Sprite sprite;
             if (_sprites.TryGetValue(key, out sprite))
             {
-                art = new Art { sprite = sprite };
+                art = new Art { sprite = sprite, spec = spec };
 
                 // Naming a single frame when you meant the flipbook is an easy
                 // slip - the tool auto-names an animation "<sheet>Anim" while
@@ -200,17 +705,23 @@ namespace WeaponForge
             // Module Forge may ask before anything here has run. Idempotent.
             LoadAll();
 
-            string key = name.Trim();
+            string raw = name.Trim();
 
             Sprite cached;
-            if (_icons.TryGetValue(key, out cached))
+            if (_icons.TryGetValue(raw, out cached))
                 return cached;
 
+            // The frame suffix works here too, and it is the ONLY way to
+            // choose which frame of a run an icon shows. An icon still cannot
+            // animate - the widget assigns a sprite and nothing ever ticks it -
+            // so `:frames` is a picker rather than a flipbook and `@fps` is
+            // meaningless. Cached under the RAW name so `sheet:2` and `sheet:5`
+            // are two icons rather than one.
+            string key;
+            ForgeSpriteSpec spec = ForgeSpriteSpec.Split(raw, out key);
+
             // Deliberately NOT TryGetArt: it emits a "did you mean the
-            // animation?" hint that only makes sense for a projectile. An
-            // icon cannot animate - the widget assigns a sprite and nothing
-            // ever ticks it - so an animation name resolves to its first
-            // frame, quietly.
+            // animation?" hint that only makes sense for a projectile.
             Sprite source;
 
             if (!_sprites.TryGetValue(key, out source))
@@ -223,11 +734,20 @@ namespace WeaponForge
                     return null;
                 }
 
-                source = anim.frames[0];
+                Sprite[] frames = spec.Apply(anim.frames, raw);
 
-                Log.LogInfo(
-                    "Icon '" + key + "' is an animation; module icons cannot " +
-                    "animate, so its first frame is used.");
+                if (frames == null || frames.Length == 0)
+                    return null;
+
+                source = frames[0];
+
+                if (!spec.HasOrder)
+                {
+                    Log.LogInfo(
+                        "Icon '" + key + "' is an animation; module icons " +
+                        "cannot animate, so its first frame is used. Add " +
+                        "\":3\" to the name to pick a different one.");
+                }
             }
 
             if (source == null || source.texture == null)
@@ -251,10 +771,12 @@ namespace WeaponForge
             if (icon == null)
                 return null;
 
-            icon.name = "Forge Icon " + key;
+            icon.name = "Forge Icon " + raw;
             icon.hideFlags = HideFlags.HideAndDontSave;
 
-            _icons[key] = icon;
+            // Keyed by the RAW name, matching the lookup above: two frames of
+            // one sheet are two different icons.
+            _icons[raw] = icon;
 
             if (Mathf.Abs(rect.width - rect.height) > 0.5f)
             {
@@ -267,6 +789,26 @@ namespace WeaponForge
             }
 
             return icon;
+        }
+
+        // A GAME sprite for use as an icon, frame-suffix aware.
+        //
+        // The two icon call sites used to reach `JsonFieldMapper.FindAsset`
+        // with the whole string, so `"HUD_GridTiles_04:2"` matched no asset and
+        // the icon fell through to "no sprite named ..." - loudly, but with the
+        // suffix as the reason and no way to guess that. Going through
+        // TryGetStockArt gives icons the same syntax as everything else: it
+        // splits the name, resolves a numbered run, applies `:frames` and hands
+        // back frame 0 of whatever was chosen.
+        //
+        // NOT rebuilt to the icon footprint, deliberately - unlike custom art,
+        // a stock sprite is already authored at the size the game draws icons
+        // at, which is why the old call site used the raw asset too.
+        public static Sprite ResolveStockIcon(string name)
+        {
+            Art art;
+
+            return TryGetStockArt(name, out art) ? art.sprite : null;
         }
 
         // Scan the folder once. Safe to call repeatedly.

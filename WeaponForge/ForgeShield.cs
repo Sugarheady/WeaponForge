@@ -179,6 +179,11 @@ namespace WeaponForge
 
             // ---- resolved at build time --------------------------------
             [System.NonSerialized] public Sprite art;
+
+            // Opt-in animation - see ForgeSpriteLibrary.OptInFrames. Only a
+            // NAMED sprite can animate; the generated arc is one built shape.
+            [System.NonSerialized] public Sprite[] artFrames;
+            [System.NonSerialized] public float artFps;
             [System.NonSerialized] public Material material;
             [System.NonSerialized] public int sortingLayerId;
             [System.NonSerialized] public int sortingOrder;

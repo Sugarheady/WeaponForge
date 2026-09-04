@@ -93,6 +93,24 @@ namespace WeaponForge
             public float speed = 1f;        // multiplier on the parent's speed
             public float scale = 1f;        // fragment size (art AND hitbox)
 
+            // Fragments inherit the parent's rangeData, and `slowDown` on it
+            // means "coast to a dead stop at your range" - which the stock
+            // White Popper, the most-copied template in this mod, ships ON.
+            // A fragment inheriting it decelerates from birth and clumps in a
+            // slow cloud a few units from the burst, which reads as the shards
+            // being broken rather than as an inherited setting.
+            //
+            // ON by default, and that is a judgement: the parent wanted to
+            // stop at ITS range, and a fragment is a new shot with its own.
+            // TWO things now, and the second is the one that was actually
+            // asked for: the fragment does not decelerate, AND it launches at
+            // the parent's FIRING speed rather than whatever the parent had
+            // decayed to by the time it split. See `Burst`.
+            //
+            // `"resetSlowdown": false` inherits it, which is worth having for
+            // a deliberate cloud of hanging shards.
+            public bool resetSlowdown = true;
+
             public int generations = 1;     // how many times a shot may split
             public int maxPerShot = 8;      // budget for repeatable triggers
             public bool consumeParent = true;   // time/distance: parent is used up
@@ -315,6 +333,42 @@ namespace WeaponForge
             if (parentSpeed <= 0.01f)
                 parentSpeed = 12f;
 
+            // ================================================================
+            // AND THE SPEED IS THE OTHER HALF OF THE SAME BUG - fixed 2026-08-27
+            // ================================================================
+            //
+            // Everything above is about the parent's HEADING at zero velocity.
+            // Its SPEED has exactly the same problem and it was left unfixed:
+            // a `slowDown` shot dying of range is travelling at essentially
+            // nothing, so `LastSpeed` is whatever it was on the last frame above
+            // the 0.5 u/s floor. Multiply the author's `"speed": 1.1` by that
+            // and the shards leave at about half a unit per second.
+            //
+            // Reported as *"the speed once the flechette splits retains the
+            // original speed of the parent projectile"*, and the expectation was
+            // right: `resetSlowdown` should mean "launch these properly".
+            //
+            // What `resetSlowdown` did before was clear the fragment's OWN
+            // `rangeData.slowDown` (see `Ranged` below) - which stops it
+            // decelerating and cannot give back speed it was never given. That
+            // is why switching the PARENT's slowDown off was the only thing that
+            // helped: it kept the parent fast enough to die fast.
+            //
+            // `Projectile.StartSpeed` is public and is the speed the shot was
+            // fired at, so `"speed"` finally means the same thing wherever in
+            // the flight the split happens.
+            if (cfg.resetSlowdown)
+            {
+                float launch = LaunchSpeed(shot);
+
+                // Only ever RAISES it. A split triggered early on a shot that
+                // had not slowed yet must not be dragged back down, and a
+                // deliberately fast parent (a bounce that gained speed) keeps
+                // what it earned.
+                if (launch > parentSpeed)
+                    parentSpeed = launch;
+            }
+
             List<AimAssistTarget> targets = null;
 
             if (cfg.aim != AimFan)
@@ -458,9 +512,9 @@ namespace WeaponForge
                 to.DischargeData = plainFrom.DischargeData;
                 to.Burn = plainFrom.Burn;
                 to.ImpactBehaviour = plainFrom.ImpactBehaviour;
-                to.RangeData = plainFrom.RangeData;
+                to.RangeData = Ranged(plainFrom.RangeData, s.cfg);
                 to.LifetimeData = Bounded(
-                    plainFrom.LifetimeData, plainFrom.RangeData);
+                    plainFrom.LifetimeData, to.RangeData);
                 to.RotationData = plainFrom.RotationData;
                 to.PushForce = plainFrom.PushForce;
                 to.PiercingData = plainFrom.PiercingData;
@@ -492,9 +546,9 @@ namespace WeaponForge
                 to.DischargeData = physFrom.DischargeData;
                 to.Burn = physFrom.Burn;
                 to.ImpactBehaviour = physFrom.ImpactBehaviour;
-                to.RangeData = physFrom.RangeData;
+                to.RangeData = Ranged(physFrom.RangeData, s.cfg);
                 to.LifetimeData = Bounded(
-                    physFrom.LifetimeData, physFrom.RangeData);
+                    physFrom.LifetimeData, to.RangeData);
                 to.HomingData = physFrom.HomingData;
                 to.PushForce = physFrom.PushForce;
                 to.SubEmitters = physFrom.SubEmitters;
@@ -511,11 +565,51 @@ namespace WeaponForge
             return null;
         }
 
+        // The speed the parent was FIRED at, or 0 when that cannot be known.
+        //
+        // `Projectile.startSpeed` is captured once at `Shoot` from
+        // `Velocity.magnitude` and is exactly what the game's own deceleration
+        // lerps down from:
+        //
+        //     Velocity = dir * Lerp(StartSpeed, 0, elapsed / timeToReachRange)
+        //
+        // A lobbed shot is a different class with no equivalent, and it has no
+        // `rangeData` deceleration either - the game computes a range time for
+        // one and then never reads the field again - so there is nothing to
+        // undo there and 0 is the honest answer.
+        private static float LaunchSpeed(Component shot)
+        {
+            try
+            {
+                var plain = shot as Projectile;
+                return (plain != null) ? plain.StartSpeed : 0f;
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
         // A fragment has to die of something. Normally it inherits whatever
         // bounded the parent, but a shot with BOTH range and lifetime switched
         // off relies on hitting the world - and multiplying that by `count`
         // every time anything splits is how a level fills with invisible
         // bullets. Only touches the case where nothing else would.
+        // The parent's range, with its deceleration dropped unless the file
+        // asked to keep it. `range` itself is left alone: a fragment travelling
+        // the parent's distance is the sane default, and `split.range` is what
+        // changes it.
+        private static ProjectileRangeData Ranged(
+            ProjectileRangeData from, Config cfg)
+        {
+            if (!cfg.resetSlowdown || !from.enabled || !from.slowDown)
+                return from;
+
+            ProjectileRangeData to = from;
+            to.slowDown = false;
+            return to;
+        }
+
         private static ProjectileLifetimeData Bounded(
             ProjectileLifetimeData lifetime, ProjectileRangeData range)
         {
@@ -793,7 +887,8 @@ namespace WeaponForge
             for (int i = 0; i < want; i++)
             {
                 AimAssistTarget t = ForgeHomingPatch.FindNearestTarget(
-                    ip.Owner, here, cfg.range, mask, seen, cfg.targetObjects);
+                    ip.Owner, here, cfg.range, mask, seen, cfg.targetObjects,
+                    ForgeTargeting.For(shot));
 
                 if (t == null)
                     break;

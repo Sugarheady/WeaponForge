@@ -35,7 +35,8 @@ namespace WeaponForge
         // idealDirection is what movementNoiseData and the wave patch measure
         // from, so scatter/seek have to move it in step with Velocity or a
         // ricocheting wave beam would weave around a heading it no longer has.
-        private static AccessTools.FieldRef<Projectile, Vector2> _idealRef;
+        // That field is reached through `ForgeSteer`, which owns it - this file
+        // carried its own copy of the reflection until the steering audit.
 
         // SpawnExplosion / FireSub are private on Projectile, and re-creating
         // what they do would mean duplicating explosion + sub-emitter wiring
@@ -55,18 +56,15 @@ namespace WeaponForge
 
             _ready = true;
 
-            try
-            {
-                _idealRef =
-                    AccessTools.FieldRefAccess<Projectile, Vector2>(
-                        "idealDirection");
-            }
-            catch (Exception e)
+            // ForgeSteer has already said WHY it could not reach the field;
+            // this says what it costs ricochet specifically, which is the
+            // division of labour that file's header asks for.
+            if (!ForgeSteer.Available)
             {
                 Log.LogWarning(
-                    "Could not reach Projectile.idealDirection (" + e.Message +
-                    ") - ricochet still works, but a ricocheting wave/wobble " +
-                    "shot will weave around its pre-bounce heading.");
+                    "Ricochet cannot reach Projectile.idealDirection - " +
+                    "bounces still work, but a ricocheting wave/wobble shot " +
+                    "will weave around its pre-bounce heading.");
             }
 
             _spawnExplosion =
@@ -173,6 +171,43 @@ namespace WeaponForge
             }
         }
 
+        // Capture the shot's damage as fired, the way growth and the ramp do.
+        //
+        // Capturing lazily at the first bounce would usually work and would
+        // occasionally be wrong: if anything else has already scaled Damage by
+        // then, that scaled figure becomes the "base" and the other feature's
+        // contribution is counted twice. Shoot is the one moment the number is
+        // unambiguously the weapon's own.
+        //
+        // Gated on the multiplier actually being set, because Capture goes
+        // through ForgeDamageStack.For, which AddComponents on a miss - and
+        // most ricochets never touch damage at all. No reason to give every
+        // bouncing bullet in a firefight a component it will never read.
+        [HarmonyPatch(typeof(Projectile), "Shoot")]
+        public class OnShoot
+        {
+            static void Postfix(Projectile __instance)
+            {
+                try
+                {
+                    var ric = __instance.GetComponent<ForgeRicochet>();
+
+                    if (ric == null || ric.damageMultiplier == 1f)
+                        return;
+
+                    ForgeDamageStack.For(__instance)
+                        .Capture(__instance.Damage.amount);
+                }
+                catch (Exception e)
+                {
+                    // A shot that cannot record its base damage should still
+                    // be a shot. Worst case the multiplier does nothing, which
+                    // is exactly what it did before this existed.
+                    Log.LogError("Ricochet damage capture failed: " + e);
+                }
+            }
+        }
+
         [HarmonyPatch(typeof(Projectile), "Reflect")]
         public class OnReflect
         {
@@ -200,9 +235,25 @@ namespace WeaponForge
 
                     if (ric.damageMultiplier != 1f)
                     {
-                        Damage d = __instance.Damage;
-                        d.amount *= ric.damageMultiplier;
-                        __instance.Damage = d;
+                        // Through the shared stack, never straight onto
+                        // Damage. A ricocheting shot can also be growing or
+                        // ramping, and those rebuild the amount from their
+                        // captured base every FixedUpdate - so a direct write
+                        // here survived only until the next frame, silently.
+                        //
+                        // `used` was incremented just above, so the first
+                        // bounce is already multiplied once. That is what this
+                        // has always done, and it is deliberately NOT the same
+                        // convention as the lobbed `bounce` block, whose
+                        // falloff starts on the second bounce. Matching them
+                        // up would quietly rebalance every ricochet weapon
+                        // that already exists.
+                        var stack = ForgeDamageStack.For(__instance);
+
+                        stack.Capture(__instance.Damage.amount);
+                        stack.ricochet =
+                            Mathf.Pow(ric.damageMultiplier, ric.used);
+                        stack.Apply(__instance);
                     }
                 }
                 catch (Exception e)
@@ -296,10 +347,7 @@ namespace WeaponForge
                 dir = Quaternion.AngleAxis(jitter, Vector3.forward) * dir;
             }
 
-            p.Velocity = dir * speed;
-
-            if (_idealRef != null)
-                _idealRef(p) = dir;
+            ForgeSteer.SetHeading(p, dir, speed);
 
             // Keep the sprite pointing where it is now going. Projectile only
             // sets its rotation at Shoot, so without this a ricocheted shot

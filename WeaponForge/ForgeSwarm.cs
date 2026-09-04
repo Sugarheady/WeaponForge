@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using BepInEx.Logging;
+using HarmonyLib;
 using UnityEngine;
 
 namespace WeaponForge
@@ -254,6 +257,59 @@ namespace WeaponForge
             return cap > 0 && Count(weapon) >= cap;
         }
 
+        // Stamp the Shooter's fire-rate clock as though a shot had happened.
+        //
+        // For a pull the cap REFUSED. `lastShootTime` is private and there is
+        // no setter, but it is the only thing `FireRatePassed` reads - and
+        // because a skipping prefix never reaches the line that stamps it, a
+        // blocked weapon is asked to fire again every single frame. See the
+        // long note at ForgeMinionPatch.OnShoot for what that did.
+        //
+        // Reflection is resolved once and cached. If the field ever moves this
+        // degrades to the old behaviour rather than throwing on every frame -
+        // and says so once, because a silent fallback on a timing path is
+        // exactly the shape that costs a test round.
+        private static FieldInfo _lastShootTime;
+        private static bool _lookedForClock;
+        private static bool _warnedNoClock;
+
+        public static void ConsumePull(Shooter shooter)
+        {
+            if (shooter == null)
+                return;
+
+            if (!_lookedForClock)
+            {
+                _lookedForClock = true;
+                _lastShootTime = AccessTools.Field(
+                    typeof(Shooter), "lastShootTime");
+            }
+
+            if (_lastShootTime == null)
+            {
+                if (!_warnedNoClock)
+                {
+                    _warnedNoClock = true;
+                    Log.LogWarning(
+                        "Shooter.lastShootTime was not found, so a swarm " +
+                        "held at its cap will retry every frame and can " +
+                        "spawn faster than its \"fireRate\" the moment a " +
+                        "slot frees up. Harmless but not what the build log " +
+                        "promises.");
+                }
+
+                return;
+            }
+
+            try
+            {
+                _lastShootTime.SetValue(shooter, Time.time);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         // Called just before a minion is created. Returns false to suppress the
         // spawn entirely (Fizzle).
         public static bool AllowSpawn(WeaponBase weapon, ForgeMinion.Config cfg)
@@ -315,6 +371,16 @@ namespace WeaponForge
         // ------------------------------------------------------------------
         public static void InheritGrid(WeaponBase weapon, Unit minion)
         {
+            InheritGrid(weapon, minion, true);
+        }
+
+        // `recalculate: false` when the caller is going to recalculate anyway.
+        // The spawn path used to do it here AND again in the stats pass a
+        // moment later, throwing the first result away - see
+        // ForgeMinionStats.Recalculate.
+        public static void InheritGrid(
+            WeaponBase weapon, Unit minion, bool recalculate)
+        {
             IModuleCluster cluster = ClusterFor(weapon);
 
             if (cluster == null || minion == null)
@@ -354,6 +420,9 @@ namespace WeaponForge
                         ? ClusterType.PrimaryWeapon
                         : ClusterType.Passive);
             }
+
+            if (!recalculate)
+                return;
 
             minion.ComponentData.RecalculateStats(gridOwner.ModuleGrid);
             minion.ComponentData.RefillResources();

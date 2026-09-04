@@ -160,6 +160,27 @@ namespace WeaponForge
 
             if (string.IsNullOrEmpty(templateName))
             {
+                // A MODULE FORGE FILE IN THE WEAPONS FOLDER IS THE COMMON CAUSE,
+                // and "missing required template" sends you to look for a typo
+                // instead. Round 11's log carried this error four times over for
+                // `overdrive.json`, a file Module Forge was building perfectly
+                // well from its own folder - so the reader had a red ERROR line
+                // about a file that was not broken and not theirs to fix here.
+                //
+                // A module has no "template" and always has "effects"; that pair
+                // is enough to name it without guessing.
+                if (root["effects"] != null)
+                {
+                    Log.LogWarning(
+                        fileName + " looks like a MODULE FORGE module, not a " +
+                        "weapon - it has \"effects\" and no \"template\". It " +
+                        "belongs in the \"modules\" folder next to " +
+                        "ModuleForge.dll; this is the \"weapons\" folder. " +
+                        "Skipped, and Module Forge will have built it from its " +
+                        "own copy already. Delete this one to quiet the log.");
+                    return null;
+                }
+
                 Log.LogError(
                     fileName + ": missing required \"template\" " +
                     "(a weapon module like \"Module Weapon White " +
@@ -295,6 +316,8 @@ namespace WeaponForge
             string impactSfxOn = null;
             string impactSprite = null;
             float? impactSpriteFps = null;
+            float? impactLifetime = null;
+            float? impactGravity = null;
             string projectileSprite = null;
             string subEmitterName = null;
             bool spriteOnly = false;
@@ -309,6 +332,7 @@ namespace WeaponForge
             // how many puffs, how big, and whether they turn with the
             // emitter. Not real weapon fields, so pulled out by hand.
             int? muzzleCount = null;
+            float? muzzleLifetime = null;
             float? muzzleSize = null;
             bool? muzzleRotate = null;
             float? muzzleSpread = null;
@@ -360,6 +384,7 @@ namespace WeaponForge
                 muzzleSpriteFps =
                     (float?)weaponJson["muzzleSpriteFps"];
                 muzzleCount = (int?)weaponJson["muzzleCount"];
+                muzzleLifetime = (float?)weaponJson["muzzleLifetime"];
                 muzzleSize = (float?)weaponJson["muzzleSize"];
                 muzzleRotate = (bool?)weaponJson["muzzleRotate"];
                 muzzleSpread = (float?)weaponJson["muzzleSpread"];
@@ -370,6 +395,8 @@ namespace WeaponForge
                 impactSprite = (string)weaponJson["impactSprite"];
                 impactSpriteFps =
                     (float?)weaponJson["impactSpriteFps"];
+                impactLifetime = (float?)weaponJson["impactLifetime"];
+                impactGravity = (float?)weaponJson["impactGravity"];
                 impactCount = (int?)weaponJson["impactCount"];
                 impactSize = (float?)weaponJson["impactSize"];
                 impactRotate = (bool?)weaponJson["impactRotate"];
@@ -414,6 +441,14 @@ namespace WeaponForge
                 weaponJson.Remove("muzzleSprite");
                 weaponJson.Remove("muzzleSpriteFps");
                 weaponJson.Remove("muzzleCount");
+                // Was MISSING while every one of its neighbours was here, so
+                // the flash lifetime applied correctly and the log ALSO said
+                // "muzzleLifetime does not match any field on
+                // ProjectileWeaponData - skipped" in the same run. A warning
+                // about a key that worked is worse than no warning: it teaches
+                // you to distrust the log. Found in Sugarheady's R10 part 4
+                // log, where it fired for CurveStream and RiotWave.
+                weaponJson.Remove("muzzleLifetime");
                 weaponJson.Remove("muzzleSize");
                 weaponJson.Remove("muzzleRotate");
                 weaponJson.Remove("muzzleSpread");
@@ -422,6 +457,8 @@ namespace WeaponForge
                 weaponJson.Remove("impactSfxOn");
                 weaponJson.Remove("impactSprite");
                 weaponJson.Remove("impactSpriteFps");
+                weaponJson.Remove("impactLifetime");
+                weaponJson.Remove("impactGravity");
                 weaponJson.Remove("impactCount");
                 weaponJson.Remove("impactSize");
                 weaponJson.Remove("impactRotate");
@@ -440,6 +477,13 @@ namespace WeaponForge
                 weaponJson.Remove("burnColor");
                 weaponJson.Remove("burnRgbSpeed");
                 weaponJson.Remove("burnColorTerrain");
+
+                // "convertableCells": "all" and friends. Expanded HERE, before
+                // the mapper sees it, because that field is a List<CellType>
+                // filled by reflection - there is no per-field hook to put a
+                // keyword in, and the mapper would look for one CellType asset
+                // literally called "all".
+                ExpandCellKeywords(weaponJson, name);
 
                 JsonFieldMapper.Apply(
                     weapon,
@@ -523,6 +567,8 @@ namespace WeaponForge
                 impactSfxOn,
                 impactSprite,
                 impactSpriteFps,
+                impactLifetime,
+                impactGravity,
                 impactCount,
                 impactSize,
                 impactRotate,
@@ -558,6 +604,7 @@ namespace WeaponForge
                 muzzleRotate,
                 muzzleSpread,
                 muzzleFollow,
+                muzzleLifetime,
                 fileName);
 
             ApplyBurn(
@@ -592,6 +639,20 @@ namespace WeaponForge
             ApplyGrowth(weapon, root, fileName);
 
             ApplyDamageRamp(weapon, root, fileName);
+            ApplySpeedRamp(weapon, root, fileName);
+            ApplyCrit(weapon, root, fileName);
+            ApplyExecute(weapon, root, fileName);
+            ApplySpiral(weapon, root, isGadget, fileName);
+            ApplyGuided(weapon, root, fileName);
+            ApplyStun(weapon, root, fileName);
+            ApplyWallRide(weapon, root, fileName);
+            ApplyCharm(weapon, root, fileName);
+            ApplyAdaptive(weapon, root, fileName);
+            ApplyLeech(weapon, root, fileName);
+
+            // Reads the JSON only, so it does not care what order the blocks
+            // above parsed their colours in. See the method.
+            WarnUnusedTintStrengths(root, fileName);
 
             ApplyChain(weapon, root, fileName);
 
@@ -603,15 +664,33 @@ namespace WeaponForge
 
             ApplyBounce(weapon, root, fileName);
 
-            ApplySticky(weapon, root, fileName);
+            ApplySticky(weapon, root, isGadget, fileName);
 
             ApplyTether(weapon, root, fileName);
 
             ApplyGravity(weapon, root, fileName);
-            ApplyTractor(weapon, root, fileName);
+            ApplyTractor(weapon, root, isGadget, fileName);
+            // BEFORE ApplyMinion, so the "minion FIRING" line it prints reports
+            // the tamed numbers rather than the enemy's.
+            TameSpawner(weapon, root, fileName);
+            // AFTER TameSpawner - the opt-in block finishes what taming starts,
+            // and its own "did the file mention this" tests must see the file's
+            // values, not the tamed ones.
+            ApplySpawner(weapon, root, fileName);
             ApplyMinion(weapon, root, fileName);
+            ApplyFade(weapon, root, fileName);
+            ApplySlam(weapon, root, fileName);
+            ApplySwipe(weapon, root, fileName);
+            ApplyCurveBeam(weapon, root, fileName);
+            ApplyContactDamage(weapon, root, fileName);
+            ApplyHitSound(weapon, root, fileName);
             ApplySlow(weapon, root, fileName);
             ApplyOverheat(weapon, root, slot, fileName);
+            // AFTER ApplyOverheat, so its "these compose" line reads as a
+            // follow-up to the heat model rather than preceding it. Neither
+            // parses the other's config - both read the raw JSON - so the order
+            // is presentational only.
+            ApplySpinUp(weapon, root, slot, fileName);
 
             ApplyCatalyst(weapon, root, fileName);
 
@@ -630,12 +709,19 @@ namespace WeaponForge
             // AFTER the reflectors, because it attaches itself to whichever of
             // them the file configured.
             ApplyRally(weapon, root, fileName);
+            ApplyTargeting(weapon, root, fileName);
 
             // Last of all: the charge meter borrows the weapon's own bullet
             // art, and every motion feature above re-clones the projectile
             // prefab. Running here means it reads the final one rather than a
             // clone something else has already replaced.
             ApplyCharge(weapon, root, isGadget, fileName);
+
+            // AFTER ApplyCharge, and that ordering is load-bearing: the lunge
+            // rides the charge block's hold/release, so it checks that one is
+            // registered and refuses loudly when it is not. Run before
+            // ApplyCharge, that check would fail on every weapon.
+            ApplyLunge(weapon, root, fileName);
 
             var moduleJson = root["module"] as JObject;
 
@@ -952,6 +1038,7 @@ namespace WeaponForge
                     (string)minionJson["colorMode"],
                     Mathf.Max(0f, (float?)minionJson["scale"] ?? 1f),
                     (string)minionJson["scaleMode"],
+                    (string)minionJson["trailColor"],
                     fileName);
 
                 ReadMinionStats(cfg, minionJson, fileName);
@@ -968,9 +1055,10 @@ namespace WeaponForge
                 if (!string.IsNullOrEmpty(cfg.weapon) ||
                     cfg.lifetime > 0f ||
                     cfg.hasColor || cfg.scale != 1f ||
+                    cfg.hasTrailColor || cfg.trailMatchesBody ||
                     cfg.HasStats ||
                     cfg.defaultWeaponModule != null ||
-                    !cfg.hurtsOwner || !cfg.hurtsAllies ||
+                    !cfg.hurtsOwner || !cfg.hurtsAllies || !cfg.solidToOwner ||
                     !string.Equals(cfg.faction, "keep",
                         System.StringComparison.OrdinalIgnoreCase))
                 {
@@ -1456,17 +1544,37 @@ namespace WeaponForge
                 if (!ForgeSpriteLibrary.TryGetArt(
                         projectileSpriteName, out customArt))
                 {
-                    string known = ForgeSpriteLibrary.Count > 0
-                        ? " Loaded sprites: " +
-                          string.Join(", ",
-                              System.Linq.Enumerable.ToArray(
-                                  ForgeSpriteLibrary.Names))
-                        : " No custom sprites loaded at all - is there a " +
-                          "PNG in the 'sprites' folder next to the DLL?";
+                    // Fall back to the GAME's own sprites, by the name the game
+                    // gives them - so "part_cyrcle_12" gets you the little orb
+                    // that pops out of a white block. Custom art is tried first
+                    // and always wins a name clash, so no existing file can
+                    // change meaning by this being added.
+                    if (ForgeSpriteLibrary.TryGetStockArt(
+                            projectileSpriteName, out customArt))
+                    {
+                        Log.LogInfo(
+                            fileName + ": projectileSprite '" +
+                            projectileSpriteName + "' is one of the GAME's own " +
+                            "sprites (there is no PNG of that name in your " +
+                            "sprites folder). Using it.");
+                    }
+                    else
+                    {
+                        string known = ForgeSpriteLibrary.Count > 0
+                            ? " Loaded sprites: " +
+                              string.Join(", ",
+                                  System.Linq.Enumerable.ToArray(
+                                      ForgeSpriteLibrary.Names))
+                            : " No custom sprites loaded at all - is there a " +
+                              "PNG in the 'sprites' folder next to the DLL?";
 
-                    Log.LogWarning(
-                        fileName + ": projectileSprite '" +
-                        projectileSpriteName + "' was not found." + known);
+                        Log.LogWarning(
+                            fileName + ": projectileSprite '" +
+                            projectileSpriteName + "' was not found." + known +
+                            " It is not one of the game's own sprite names " +
+                            "either - those are things like 'part_cyrcle_12' " +
+                            "(the little orb from a white block).");
+                    }
                 }
             }
 
@@ -1983,10 +2091,14 @@ namespace WeaponForge
 
                 Log.LogWarning(
                     fileName + ": " + slot + " is set to '" + current +
-                    "', which is neither a custom sound nor a sound id this " +
-                    "game has, so that slot will be SILENT." + known +
+                    "', which is not a custom sound, not one of the GAME's " +
+                    "own sound names, and not a sound id - so that slot will " +
+                    "be SILENT." + known +
                     " A custom sound is named after its file, without the " +
-                    "extension.");
+                    "extension. A game sound is named the way the audio " +
+                    "database names it, with slashes - \"Weapons/Popper/" +
+                    "Shoot\", \"Cells/Fuel\", \"UI/Click\". All 259 of them " +
+                    "are listed in SOUNDS.txt next to this mod.");
             }
 
             return current;
@@ -2020,6 +2132,8 @@ namespace WeaponForge
             string impactSfxOn,
             string impactSprite,
             float? impactSpriteFps,
+            float? impactLifetime,
+            float? impactGravity,
             int? impactCount,
             float? impactSize,
             bool? impactRotate,
@@ -2044,7 +2158,8 @@ namespace WeaponForge
             // custom art is named.
             bool wantShape =
                 impactCount.HasValue || impactSize.HasValue ||
-                impactRotate.HasValue || impactSpread.HasValue;
+                impactRotate.HasValue || impactSpread.HasValue ||
+                impactLifetime.HasValue || impactGravity.HasValue;
 
             // Recolouring the stock puff is the commonest of these by far, and
             // for a long time it was the one thing you could not do. A weapon
@@ -2147,16 +2262,12 @@ namespace WeaponForge
             {
                 ForgeSpriteLibrary.LoadAll();
 
-                if (!ForgeSpriteLibrary.TryGetArt(impactSprite, out art))
+                if (!ForgeSpriteLibrary.TryGetAnyArt(impactSprite, out art))
                 {
-                    string known = ForgeSpriteLibrary.Count > 0
-                        ? " Loaded custom art: " +
-                          string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                        : " There is no art in the sprites folder yet.";
-
                     Log.LogWarning(
                         fileName + ": impactSprite '" + impactSprite +
-                        "' is not one of your sprites." + known +
+                        "' is not a sprite I can find." +
+                        ForgeSpriteLibrary.NotFoundHint() +
                         " Impact effects are left alone.");
 
                     wantArt = false;
@@ -2222,10 +2333,13 @@ namespace WeaponForge
                         ? art.animation.frames
                         : new[] { art.sprite };
 
-                fps = impactSpriteFps.HasValue
-                    ? impactSpriteFps
-                    : (art.animation != null
-                        ? (float?)art.animation.fps : null);
+                fps = ForgeSpriteLibrary.ParticleFps(
+                    art,
+                    impactSpriteFps,
+                    art.animation != null
+                        ? (float?)art.animation.fps : null,
+                    "impactSprite",
+                    fileName);
             }
 
             var hitscan = weapon as HitscanWeaponData;
@@ -2411,17 +2525,20 @@ namespace WeaponForge
                 changed += ApplyImpactArt(
                     ref pw.impactBehaviour, frames, fps, "impact", fileName,
                     impactCount, impactSize, rotate, impactSpread,
-                    wantColor, tint, rainbow, impactRgbSpeed, replace);
+                    wantColor, tint, rainbow, impactRgbSpeed, replace,
+                    impactLifetime, impactGravity);
 
                 changed += ApplyRangeArt(
                     ref pw.rangeData, frames, fps, fileName,
                     impactCount, impactSize, rotate, impactSpread,
-                    wantColor, tint, rainbow, impactRgbSpeed, replace);
+                    wantColor, tint, rainbow, impactRgbSpeed, replace,
+                    impactLifetime, impactGravity);
 
                 changed += ApplyLifetimeArt(
                     ref pw.lifetimeData, frames, fps, fileName,
                     impactCount, impactSize, rotate, impactSpread,
-                    wantColor, tint, rainbow, impactRgbSpeed, replace);
+                    wantColor, tint, rainbow, impactRgbSpeed, replace,
+                    impactLifetime, impactGravity);
 
                 if (changed == 0)
                 {
@@ -2460,7 +2577,9 @@ namespace WeaponForge
             Sprite[] frames, float? fps, string slot, string fileName,
             int? count, float? size, bool? rotate, float? spread,
             bool color, Color tint, bool rainbow, float rgbSpeed,
-            bool replace)
+            bool replace,
+            float? lifetime = null,
+            float? gravity = null)
         {
             if (data.destroyEffect == null)
                 return 0;
@@ -2468,7 +2587,7 @@ namespace WeaponForge
             GameObject art = CloneEffectAndPaint(
                 data.destroyEffect, frames, fps, slot, fileName,
                 count, size, rotate, spread, color, tint, rainbow, rgbSpeed,
-                replace);
+                replace, lifetime, gravity);
 
             if (art == null)
                 return 0;
@@ -2482,7 +2601,9 @@ namespace WeaponForge
             Sprite[] frames, float? fps, string fileName,
             int? count, float? size, bool? rotate, float? spread,
             bool color, Color tint, bool rainbow, float rgbSpeed,
-            bool replace)
+            bool replace,
+            float? lifetime = null,
+            float? gravity = null)
         {
             if (data.destroyEffect == null)
                 return 0;
@@ -2490,7 +2611,7 @@ namespace WeaponForge
             GameObject art = CloneEffectAndPaint(
                 data.destroyEffect, frames, fps, "out-of-range", fileName,
                 count, size, rotate, spread, color, tint, rainbow, rgbSpeed,
-                replace);
+                replace, lifetime, gravity);
 
             if (art == null)
                 return 0;
@@ -2504,7 +2625,9 @@ namespace WeaponForge
             Sprite[] frames, float? fps, string fileName,
             int? count, float? size, bool? rotate, float? spread,
             bool color, Color tint, bool rainbow, float rgbSpeed,
-            bool replace)
+            bool replace,
+            float? lifetime = null,
+            float? gravity = null)
         {
             if (data.spawnOnTimeDown == null)
                 return 0;
@@ -2512,7 +2635,7 @@ namespace WeaponForge
             GameObject art = CloneEffectAndPaint(
                 data.spawnOnTimeDown, frames, fps, "end-of-life", fileName,
                 count, size, rotate, spread, color, tint, rainbow, rgbSpeed,
-                replace);
+                replace, lifetime, gravity);
 
             if (art == null)
                 return 0;
@@ -2541,7 +2664,9 @@ namespace WeaponForge
             Color tint,
             bool rainbow,
             float rgbSpeed,
-            bool replace)
+            bool replace,
+            float? lifetime = null,
+            float? gravity = null)
         {
             GameObject clone = VisualCustomizer.ClonePrefab(original);
 
@@ -2599,7 +2724,7 @@ namespace WeaponForge
             }
 
             string shaped = VisualCustomizer.ShapeParticles(
-                clone, count, size, rotate, spread);
+                clone, count, size, rotate, spread, lifetime, gravity);
 
             Log.LogInfo(
                 fileName + ": " + slot + " effect '" + original.name +
@@ -2639,6 +2764,7 @@ namespace WeaponForge
             bool? muzzleRotate,
             float? muzzleSpread,
             bool? muzzleFollow,
+            float? muzzleLifetime,
             string fileName)
         {
             bool wantColor = !string.IsNullOrEmpty(muzzleColor);
@@ -2646,7 +2772,7 @@ namespace WeaponForge
 
             bool wantShape = muzzleCount.HasValue || muzzleSize.HasValue ||
                              muzzleRotate.HasValue || muzzleFollow.HasValue ||
-                             muzzleSpread.HasValue;
+                             muzzleSpread.HasValue || muzzleLifetime.HasValue;
 
             if (weapon == null || (!wantColor && !wantSprite && !wantShape))
                 return;
@@ -2671,16 +2797,12 @@ namespace WeaponForge
             {
                 ForgeSpriteLibrary.LoadAll();
 
-                if (!ForgeSpriteLibrary.TryGetArt(muzzleSprite, out art))
+                if (!ForgeSpriteLibrary.TryGetAnyArt(muzzleSprite, out art))
                 {
-                    string known = ForgeSpriteLibrary.Count > 0
-                        ? " Loaded custom art: " +
-                          string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                        : " There is no art in the sprites folder yet.";
-
                     Log.LogWarning(
                         fileName + ": muzzleSprite '" + muzzleSprite +
-                        "' is not one of your sprites." + known +
+                        "' is not a sprite I can find." +
+                        ForgeSpriteLibrary.NotFoundHint() +
                         " The flash is left alone.");
 
                     wantSprite = false;
@@ -2774,10 +2896,13 @@ namespace WeaponForge
                         ? art.animation.frames
                         : new[] { art.sprite };
 
-                float? fps = muzzleSpriteFps.HasValue
-                    ? muzzleSpriteFps
-                    : (art.animation != null
-                        ? (float?)art.animation.fps : null);
+                float? fps = ForgeSpriteLibrary.ParticleFps(
+                    art,
+                    muzzleSpriteFps,
+                    art.animation != null
+                        ? (float?)art.animation.fps : null,
+                    "muzzleSprite",
+                    fileName);
 
                 for (int i = 0; i < systems.Length; i++)
                 {
@@ -2797,6 +2922,76 @@ namespace WeaponForge
                     ") applied to " + systems.Length + " particle system" +
                     (systems.Length == 1 ? "" : "s") + " of '" +
                     weapon.muzzleParticlePrefab.name + "'.");
+            }
+
+            // HOW LONG EACH PUFF LIVES, and why it is worth a knob.
+            //
+            // `WeaponBase.DoShoot` calls `Play()` on the SAME particle system
+            // instance every shot - one instance per projectileCount, reused -
+            // and Play() on a system that is already running ADDS a burst
+            // rather than restarting. So if a puff outlives the gap between
+            // shots, a fast weapon stacks flashes on top of each other: with
+            // alpha blending that darkens toward black, and with a drawn sprite
+            // it reads as smeared art rather than as one flash. That is
+            // "when you fire real quickly the muzzle sprite stacks ontop of
+            // itself and turns black".
+            //
+            // The lifetime is not otherwise reachable - it is a particle
+            // property, not a weapon field - so there was no way to fix it from
+            // a file at all.
+            {
+                var systems =
+                    clone.GetComponentsInChildren<ParticleSystem>(true);
+
+                float longest = 0f;
+
+                for (int i = 0; i < systems.Length; i++)
+                {
+                    if (systems[i] == null)
+                        continue;
+
+                    ParticleSystem.MainModule main = systems[i].main;
+
+                    if (muzzleLifetime.HasValue)
+                    {
+                        main.startLifetime =
+                            new ParticleSystem.MinMaxCurve(
+                                Mathf.Max(0.01f, muzzleLifetime.Value));
+                    }
+
+                    longest = Mathf.Max(
+                        longest, main.startLifetime.constantMax);
+                }
+
+                float gap = weapon.fireRate > 0f ? 1f / weapon.fireRate : 0f;
+
+                if (muzzleLifetime.HasValue)
+                {
+                    Log.LogInfo(
+                        fileName + ": muzzle flash lifetime " +
+                        muzzleLifetime.Value.ToString("0.###") + "s across " +
+                        systems.Length + " system(s).");
+                }
+
+                // Only worth saying when the weapon is fast enough for it to
+                // matter, and only for a weapon whose flash was customised at
+                // all - the stock puffs are tuned for their own guns.
+                if (gap > 0f && longest > gap * 1.5f &&
+                    (wantSprite || wantColor))
+                {
+                    Log.LogWarning(
+                        fileName + ": muzzle flash - each puff lives " +
+                        longest.ToString("0.###") + "s but this weapon fires " +
+                        "every " + gap.ToString("0.###") + "s, so up to " +
+                        Mathf.CeilToInt(longest / gap) + " flashes are on " +
+                        "screen at once, drawn over each other. The game " +
+                        "re-Plays the same particle system rather than " +
+                        "restarting it, so they stack rather than replace - " +
+                        "which darkens an alpha-blended sprite and smears a " +
+                        "drawn one. Set \"muzzleLifetime\": " +
+                        (gap * 0.8f).ToString("0.###") + " (or less) for one " +
+                        "flash at a time.");
+                }
             }
 
             if (wantColor)
@@ -3384,11 +3579,11 @@ namespace WeaponForge
 
                 if (mode == "reflect" || mode == "return" || mode == "bounce")
                 {
-                    d.mode = 1;
+                    d.mode = ForgeDeflect.ModeReflect;
                 }
                 else
                 {
-                    d.mode = 0;
+                    d.mode = ForgeDeflect.ModeDestroy;
 
                     if (mode != "destroy" && mode != "block" &&
                         mode != "clear")
@@ -3436,7 +3631,7 @@ namespace WeaponForge
 
             Log.LogInfo(
                 fileName + ": deflector (" +
-                (d.mode == 1
+                (d.mode == ForgeDeflect.ModeReflect
                     ? "reflects enemy fire " +
                       (d.aim == 1 ? "at the nearest enemy" : "back the way it came")
                     : "destroys enemy fire") +
@@ -3444,7 +3639,7 @@ namespace WeaponForge
                 (d.maxTotal > 0
                     ? ", up to " + d.maxTotal + " per shot"
                     : ", no limit per shot") +
-                (d.mode == 1 && d.damageMultiplier != 1f
+                (d.mode == ForgeDeflect.ModeReflect && d.damageMultiplier != 1f
                     ? ", x" + d.damageMultiplier + " damage" : "") + ").");
         }
 
@@ -5432,6 +5627,924 @@ namespace WeaponForge
                 (r.curve != 1f ? ", curve " + r.curve : "") + ".");
         }
 
+        // "convertableCells": "all" | "solid" | "resources" | "soft"
+        //
+        // Naming sixteen cell types by hand to say "everything" is exactly the
+        // kind of thing nobody should have to do, and the list is not
+        // discoverable from inside the game. These keywords expand to real
+        // name lists before the field is mapped.
+        //
+        // WHY IT IS DONE ON THE JSON RATHER THAN ON THE FIELD: the field is a
+        // `List<CellType>` filled by `JsonFieldMapper` through reflection.
+        // That mapper has no per-field hooks - it looks up each entry as an
+        // asset name - so a keyword left in place would send it hunting for a
+        // CellType asset called "all". Rewriting the token first means the
+        // mapper sees an ordinary list and needs to know nothing about this.
+        //
+        // The groups are chosen from the COLLIDER and the DROP TABLE, which
+        // are the two things that actually decide what a terraforming weapon
+        // does:
+        //
+        //   all        every cell type in the game (16)
+        //   solid      only the ones you cannot fly through (12) - the right
+        //              answer for a digging weapon, since converting a Fog
+        //              into a Fog spends radius achieving nothing
+        //   resources  Tuff (White/stamina), Blob (Fuel), Gold (Money) - the
+        //              three that PAY when destroyed, i.e. a mining weapon
+        //   soft       Slime and the three Fogs - the already-passable ones
+        private static readonly string[] CellsSolid =
+        {
+            "CellType Bark", "CellType Gold", "CellType_Blob",
+            "CellType_Hazard", "CellType_Moss", "CellType_Night",
+            "CellType_Shard", "CellType_Solid", "CellType_Tuff",
+            "CellType_Panel", "CellType_Obsidian", "CellType_Mud"
+        };
+
+        private static readonly string[] CellsSoft =
+        {
+            "CellType_Slime", "CellType Fog Mist",
+            "CellType Fog Musk", "CellType Fog Steam"
+        };
+
+        // Ordered most-valuable first, purely so the log reads sensibly.
+        private static readonly string[] CellsResources =
+        {
+            "CellType_Tuff", "CellType_Blob", "CellType Gold"
+        };
+
+        private static void ExpandCellKeywords(JObject weaponJson, string name)
+        {
+            if (weaponJson == null)
+                return;
+
+            var ccd = weaponJson["cellConvertData"] as JObject;
+
+            if (ccd == null)
+                return;
+
+            JToken token = ccd["convertableCells"];
+
+            if (token == null || token.Type != JTokenType.String)
+                return;
+
+            string key = ((string)token ?? "").Trim().ToLowerInvariant();
+            string[] names;
+
+            switch (key)
+            {
+                case "all":
+                case "everything":
+                    names = new string[CellsSolid.Length + CellsSoft.Length];
+                    CellsSolid.CopyTo(names, 0);
+                    CellsSoft.CopyTo(names, CellsSolid.Length);
+                    break;
+
+                case "solid":
+                case "walls":
+                case "rock":
+                    names = CellsSolid;
+                    break;
+
+                case "resources":
+                case "resource":
+                case "ore":
+                case "mine":
+                    names = CellsResources;
+                    break;
+
+                case "soft":
+                case "passable":
+                    names = CellsSoft;
+                    break;
+
+                default:
+                    return;   // an ordinary asset name - leave it alone
+            }
+
+            var array = new JArray();
+
+            for (int i = 0; i < names.Length; i++)
+                array.Add(names[i]);
+
+            ccd["convertableCells"] = array;
+
+            Log.LogInfo(
+                name + ": cellConvertData \"convertableCells\": \"" + key +
+                "\" expanded to " + names.Length + " cell type(s) - " +
+                string.Join(", ", names) + ".");
+
+            // The one combination that spends its whole radius doing nothing.
+            var resultToken = ccd["resultCellType"];
+
+            if (resultToken != null && resultToken.Type == JTokenType.String)
+            {
+                string result = ((string)resultToken ?? "").Trim();
+
+                for (int i = 0; i < names.Length; i++)
+                {
+                    if (!string.Equals(names[i], result,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    Log.LogInfo(
+                        name + ": '" + result + "' is in that list AND is what " +
+                        "the terrain becomes, so those cells are rewritten to " +
+                        "what they already were. Harmless, just wasted.");
+                    break;
+                }
+            }
+        }
+
+        // "speedRamp": a shot whose SPEED changes while it flies.
+        //
+        //   "speedRamp": true
+        //   "speedRamp": { "from": 0.3, "to": 2.5, "over": "distance",
+        //                  "span": 0, "curve": 2, "clamp": true,
+        //                  "minSpeed": 0, "maxSpeed": 50 }
+        //
+        // Deliberately the same keys as "damageRamp", because they are the same
+        // idea on a different quantity and a file that reads one should be able
+        // to guess the other. Values are multipliers of the shot's LAUNCH speed,
+        // so a module that raised projectileSpeed still counts.
+        // "crit": { "chance": 0.15, "multiplier": 2, "roll": "hit",
+        //           "overflow": true, "impact": true, "impactScale": 2,
+        //           "sfx": "", "color": "#ffd27f", "colorSeconds": 0.25,
+        //           "shake": false, "onExtras": false }
+        //
+        // Applies to ordinary weapon damage - shots, beams and explosions -
+        // because those are the three routes that report which weapon fired.
+        // Burn and gas ticks report none and so never crit, which is the
+        // intended behaviour rather than a limitation.
+        private static void ApplyCrit(
+            WeaponData weapon,
+            JObject root,
+            string fileName)
+        {
+            JToken token = root["crit"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var o = token as JObject;
+
+            if (o == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"crit\" should be an object like " +
+                    "{ \"chance\": 0.15, \"multiplier\": 2 } - ignored.");
+                return;
+            }
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var cfg = new ForgeCrit.Config();
+
+            float chance = (float?)o["chance"] ?? 0f;
+
+            // A percent-looking number is almost certainly meant as a percent.
+            // 15 would otherwise be "always crit, fifteen stacks deep", which
+            // is not a thing anybody typed on purpose.
+            if (chance > 1f)
+            {
+                Log.LogInfo(
+                    fileName + ": crit \"chance\": " +
+                    chance.ToString("0.###") + " reads as a PERCENT, so it is " +
+                    "being used as " + (chance / 100f).ToString("0.###") +
+                    " (" + chance.ToString("0.#") + "%). Write it as a " +
+                    "fraction (0." + Mathf.RoundToInt(chance).ToString() +
+                    ") to silence this. Values above 1 as a FRACTION are also " +
+                    "meaningful - see \"overflow\" - so this guess only " +
+                    "applies above 1.");
+
+                chance = chance / 100f;
+            }
+
+            cfg.chance = Mathf.Max(0f, chance);
+            cfg.multiplier = Mathf.Max(1f, (float?)o["multiplier"] ?? 2f);
+            cfg.overflow = (bool?)o["overflow"] ?? true;
+
+            string rollText = ((string)o["roll"] ?? "hit")
+                .Trim().ToLowerInvariant();
+
+            if (rollText == "shot")
+                cfg.roll = ForgeCrit.Roll.Shot;
+            else if (rollText == "pull" || rollText == "volley")
+                cfg.roll = ForgeCrit.Roll.Pull;
+            else
+                cfg.roll = ForgeCrit.Roll.Hit;
+
+            cfg.impact = (bool?)o["impact"] ?? true;
+            cfg.impactScale = Mathf.Max(1.05f, (float?)o["impactScale"] ?? 2f);
+            cfg.shake = (bool?)o["shake"] ?? false;
+            cfg.onExtras = (bool?)o["onExtras"] ?? false;
+
+            string sfx = (string)o["sfx"];
+
+            if (!string.IsNullOrEmpty(sfx))
+            {
+                cfg.sfxGuid = ForgeSfxRegistry.Resolve(
+                    sfx, null, false, fileName);
+
+                if (string.IsNullOrEmpty(cfg.sfxGuid))
+                {
+                    Log.LogWarning(
+                        fileName + ": crit \"sfx\": '" + sfx + "' is not a " +
+                        "sound I know, so the crit will be silent. Custom " +
+                        "sounds go in the mod's sounds folder; the startup log " +
+                        "lists what loaded.");
+                }
+            }
+
+            string colorText = (string)o["color"];
+
+            if (!string.IsNullOrEmpty(colorText))
+            {
+                Color c;
+
+                if (VisualCustomizer.TryParseColor(colorText, out c))
+                {
+                    cfg.hasColor = true;
+                    cfg.color = c;
+                }
+                else
+                {
+                    Log.LogWarning(
+                        fileName + ": crit \"color\": '" + colorText +
+                        "' is not a colour I can read, so no crit tint.");
+                }
+            }
+
+            cfg.colorSeconds = Mathf.Max(0.05f, (float?)o["colorSeconds"] ?? 0.25f);
+            cfg.colorPulse = Mathf.Max(0f, (float?)o["colorPulse"] ?? 0f);
+            cfg.tintStrength = TintStrength(o, fileName, "crit", 1f);
+
+            if (cfg.chance <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": \"crit\" has no \"chance\", so nothing will " +
+                    "ever crit. Set \"chance\": 0.15 for 15%.");
+                return;
+            }
+
+            ForgeCrit.Register(weapon, cfg);
+
+            // Say what it means in play, not just what was parsed - a chance
+            // and a multiplier are hard to feel without the average.
+            float avg = 1f +
+                Mathf.Min(cfg.chance, 8f) * (cfg.multiplier - 1f);
+
+            string rollWord =
+                cfg.roll == ForgeCrit.Roll.Shot ? "once per SHOT (a shotgun " +
+                    "rolls per pellet)" :
+                cfg.roll == ForgeCrit.Roll.Pull ? "once per TRIGGER PULL (a " +
+                    "whole blast crits together)" :
+                    "once per THING HIT (a piercing shot rolls again for each " +
+                    "enemy)";
+
+            Log.LogInfo(
+                fileName + ": crit - " +
+                (cfg.chance * 100f).ToString("0.#") + "% for x" +
+                cfg.multiplier.ToString("0.##") + ", rolled " + rollWord +
+                ". Average damage is about x" + avg.ToString("0.##") +
+                " over time." +
+                (cfg.overflow && cfg.chance > 1f
+                    ? " Chance is above 100%, so it ALWAYS crits and " +
+                      ((cfg.chance - Mathf.Floor(cfg.chance)) * 100f)
+                          .ToString("0.#") +
+                      "% of the time crits twice (stacks add the bonus, so " +
+                      "two stacks of x" + cfg.multiplier.ToString("0.##") +
+                      " is x" + ForgeCrit.Factor(2, cfg.multiplier)
+                          .ToString("0.##") + ")."
+                    : ""));
+
+            // The game has no damage numbers anywhere, so a crit with every
+            // feedback switched off is genuinely invisible. Worth saying.
+            if (!cfg.impact && !cfg.hasColor && !cfg.shake &&
+                string.IsNullOrEmpty(cfg.sfxGuid))
+            {
+                Log.LogWarning(
+                    fileName + ": crit has EVERY feedback switched off, and " +
+                    "this game has no floating damage numbers - so a crit will " +
+                    "be completely invisible. Turn \"impact\" back on, or set " +
+                    "\"color\" / \"sfx\" / \"shake\".");
+            }
+
+            if (cfg.onExtras)
+            {
+                // Names exactly what is wired, because "this mod's own damage"
+                // would be a promise five other features do not keep.
+                Log.LogInfo(
+                    fileName + ": crit \"onExtras\" is on. FOUR of this mod's " +
+                    "own damage sources can crit: the GAS cloud, the SWIPE " +
+                    "blade, CONTACT damage (which is also how a ram and a " +
+                    "lunge hurt what they hit), and SLAM. Not wired: orbit " +
+                    "rings, tethers, turrets, gravity wells and the shield - " +
+                    "say the word if you want any of those too. " +
+                    "The lunge's own crash damage to YOU is deliberately " +
+                    "excluded; a critical hit on your own self-damage is a bug, " +
+                    "not a feature. Note the gas cloud ticks several times a " +
+                    "second, so a crit there fires often and reads as noise " +
+                    "rather than as a payoff - which is why this is off by " +
+                    "default.");
+            }
+        }
+
+        // "leech" - your hits heal you, and an absorb orb flies back from the
+        // enemy to your ship.
+        private static void ApplyLeech(
+            WeaponData weapon,
+            JObject root,
+            string fileName)
+        {
+            JToken token = root["leech"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            JObject o = token as JObject;
+
+            if (o == null)
+            {
+                // "leech": true is a complete config - the defaults are a
+                // playable weapon.
+                bool on;
+
+                if (token.Type == JTokenType.Boolean)
+                {
+                    on = (bool)token;
+
+                    if (!on)
+                        return;
+                }
+                else
+                {
+                    Log.LogWarning(
+                        fileName + ": \"leech\" should be true or an object " +
+                        "like { \"fraction\": 0.15 } - ignored.");
+                    return;
+                }
+            }
+            else if (!((bool?)o["enabled"] ?? true))
+            {
+                return;
+            }
+
+            var cfg = new ForgeLeech.Config();
+
+            // "leech": true means "heal me for a tenth of what I deal", which is
+            // a sane weapon rather than a placeholder.
+            cfg.fraction = 0.1f;
+
+            if (o != null)
+            {
+                cfg.fraction = Mathf.Max(
+                    0f, (float?)o["fraction"] ?? (float?)o["percent"] ?? 0.1f);
+
+                cfg.flat = Mathf.Max(0f, (float?)o["flat"] ?? 0f);
+                cfg.resource = (string)o["resource"] ?? "";
+
+                cfg.maxPerSecond =
+                    Mathf.Max(0f, (float?)o["maxPerSecond"] ?? 0f);
+                cfg.perEnemyDelay =
+                    Mathf.Max(0f, (float?)o["perEnemyDelay"] ?? 0f);
+
+                cfg.onExtras = (bool?)o["onExtras"] ?? false;
+
+                cfg.orb = (bool?)o["orb"] ?? true;
+                cfg.orbSprite = (string)o["orbSprite"] ?? cfg.orbSprite;
+                cfg.orbFps = Mathf.Max(1f, (float?)o["orbFps"] ?? 14f);
+                cfg.orbScale = Mathf.Max(0.01f, (float?)o["orbScale"] ?? 1f);
+                cfg.orbSpeed = Mathf.Max(1f, (float?)o["orbSpeed"] ?? 22f);
+                cfg.orbArc = Mathf.Max(0f, (float?)o["orbArc"] ?? 0.7f);
+                cfg.orbSpin = (float?)o["orbSpin"] ?? 0f;
+                cfg.orbLifetime =
+                    Mathf.Max(0.2f, (float?)o["orbLifetime"] ?? 2.5f);
+                cfg.maxOrbs = Mathf.Max(1, (int?)o["maxOrbs"] ?? 14);
+
+                string healOnText = ((string)o["healOn"] ?? "arrival")
+                    .Trim().ToLowerInvariant();
+
+                if (healOnText == "hit" || healOnText == "instant" ||
+                    healOnText == "immediate" || healOnText == "now")
+                {
+                    cfg.healOn = ForgeLeech.HealOn.Hit;
+                }
+                else
+                {
+                    cfg.healOn = ForgeLeech.HealOn.Arrival;
+                }
+
+                cfg.sfxGuid = ResolveChargeSfx(
+                    (string)o["sfx"], null, false, "leech sfx", fileName);
+
+                string colorText = (string)o["orbColor"] ?? (string)o["color"];
+
+                if (!string.IsNullOrEmpty(colorText))
+                {
+                    Color c;
+
+                    if (VisualCustomizer.TryParseColor(colorText, out c))
+                    {
+                        cfg.orbHasColor = true;
+                        cfg.orbColor = c;
+                    }
+                    else
+                    {
+                        Log.LogWarning(
+                            fileName + ": leech \"orbColor\": '" + colorText +
+                            "' is not a colour I can read, so the orb keeps " +
+                            "the sprite's own colours.");
+                    }
+                }
+
+                JToken trailToken = o["orbTrail"] ?? o["trail"];
+
+                if (trailToken != null && trailToken.Type != JTokenType.Null)
+                    cfg.orbTrail = ForgeTrail.Parse(trailToken, fileName);
+            }
+
+            // A FRACTION ABOVE 1 IS NOT CONVERTED, and that is a deliberate
+            // difference from crit's "chance". There, 15 could only ever have
+            // meant 15%, so it is divided by 100. Here "heal me for more than I
+            // dealt" is a real (if silly) build, and silently dividing would
+            // make it unreachable. So the number is used as written and the log
+            // says what it will do, loudly enough to catch a typo on the first
+            // shot.
+            if (cfg.fraction > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": leech \"fraction\": " +
+                    cfg.fraction.ToString("0.##") + " is a FRACTION, not a " +
+                    "percent - so this heals you " +
+                    (cfg.fraction * 100f).ToString("0.#") + "% of the damage " +
+                    "you deal, which is more than you dealt. If you meant " +
+                    (cfg.fraction).ToString("0.#") + "%, write \"fraction\": " +
+                    (cfg.fraction / 100f).ToString("0.###") + ". Unlike crit's " +
+                    "\"chance\" this is NOT auto-corrected, because a leech " +
+                    "above 100% is a legitimate thing to build.");
+            }
+
+            if (!string.IsNullOrEmpty(cfg.resource))
+            {
+                cfg.resourceAsset =
+                    JsonFieldMapper.FindAsset(typeof(Resource), cfg.resource)
+                        as Resource;
+
+                if (cfg.resourceAsset == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": leech \"resource\": '" + cfg.resource +
+                        "' is not a resource I know - falling back to your " +
+                        "ship's own health pool.");
+                }
+            }
+
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": leech heals nothing - set \"fraction\" (a " +
+                    "share of the damage you deal) or \"flat\" (a fixed amount " +
+                    "per hit). Skipped.");
+                return;
+            }
+
+            if (cfg.orb)
+                ResolveLeechOrbArt(cfg, fileName);
+
+            // `healOn: "arrival"` with no orb to arrive would heal NEVER. The
+            // config degrades to healing on the hit by itself; this is the line
+            // that stops that being invisible.
+            if (cfg.healOn == ForgeLeech.HealOn.Arrival &&
+                cfg.EffectiveHealOn == ForgeLeech.HealOn.Hit)
+            {
+                Log.LogInfo(
+                    fileName + ": leech asks to heal when the orb ARRIVES, but " +
+                    "there is no orb (\"orb\": false, or its art could not be " +
+                    "found). Healing on the HIT instead - the alternative would " +
+                    "be healing never.");
+            }
+
+            ForgeLeech.Register(weapon, cfg);
+
+            LogLeech(cfg, weapon, fileName);
+        }
+
+        // The orb's art. Custom PNG first (its own namespace, as everywhere
+        // else), then the game's own sprites - where a NUMBERED RUN animates, so
+        // "area_zero_particle_tuff" is the nine-frame tuff bubble rather than one
+        // frozen frame of it.
+        private static void ResolveLeechOrbArt(
+            ForgeLeech.Config cfg, string fileName)
+        {
+            string name = (cfg.orbSprite ?? "").Trim();
+
+            if (name.Length > 0)
+            {
+                ForgeSpriteLibrary.Art art;
+
+                if (ForgeSpriteLibrary.TryGetArt(name, out art) ||
+                    ForgeSpriteLibrary.TryGetStockArt(name, out art))
+                {
+                    cfg.orbFrames =
+                        (art.animation != null &&
+                         art.animation.frames != null &&
+                         art.animation.frames.Length > 0)
+                            ? art.animation.frames
+                            : new[] { art.sprite };
+                }
+            }
+
+            if (cfg.orbFrames != null && cfg.orbFrames.Length > 0)
+                return;
+
+            // A NAMED FALLBACK, not an arbitrary one: part_cyrcle_12 is the orb
+            // that pops out of a white block, so a leech weapon whose art went
+            // missing still looks like something being collected. Falling through
+            // to "no orb" would silently turn "heal on arrival" into "heal on
+            // hit" and change the feel of the weapon over a typo.
+            var backup = JsonFieldMapper.FindAsset(
+                typeof(Sprite), "part_cyrcle_12") as Sprite;
+
+            if (backup != null)
+            {
+                cfg.orbFrames = new[] { backup };
+
+                Log.LogWarning(
+                    fileName + ": leech \"orbSprite\": '" + name + "' was not " +
+                    "found, so the orb is using the game's own white-block orb " +
+                    "(part_cyrcle_12) instead. For the tuff bubbles write " +
+                    "\"area_zero_particle_tuff\" - naming the BASE animates all " +
+                    "nine frames, while \"area_zero_particle_tuff_0\" is just " +
+                    "frame one.");
+
+                return;
+            }
+
+            Log.LogWarning(
+                fileName + ": leech could not resolve any orb art, so there " +
+                "will be no orb. The healing still works.");
+        }
+
+        private static void LogLeech(
+            ForgeLeech.Config cfg, WeaponData weapon, string fileName)
+        {
+            string pool = (cfg.resourceAsset != null)
+                ? cfg.resourceAsset.name
+                : "your ship's own health pool";
+
+            string per = (cfg.fraction > 0f)
+                ? (cfg.fraction * 100f).ToString("0.#") + "% of the damage dealt"
+                : "";
+
+            if (cfg.flat > 0f)
+            {
+                per += (per.Length > 0 ? " plus " : "") +
+                       cfg.flat.ToString("0.##") + " a hit";
+            }
+
+            Log.LogInfo(
+                fileName + ": leech - heals " + per + " into " + pool + ", " +
+                (cfg.EffectiveHealOn == ForgeLeech.HealOn.Arrival
+                    ? "arriving when the absorb orb reaches your ship"
+                    : "the instant the hit lands") +
+                ". Works on EVERY weapon type (bullet, lobbed, beam, explosion, " +
+                "missile) because it measures the victim's own tank rather than " +
+                "hooking a projectile." +
+                (cfg.maxPerSecond > 0f
+                    ? " Capped at " + cfg.maxPerSecond.ToString("0.##") +
+                      " healing a second."
+                    : "") +
+                (cfg.perEnemyDelay > 0f
+                    ? " At most once every " +
+                      cfg.perEnemyDelay.ToString("0.##") +
+                      "s from the same enemy."
+                    : ""));
+
+            // THE ONE THAT WILL BITE, and it is arithmetic rather than a bug.
+            if (cfg.maxPerSecond <= 0f)
+            {
+                bool beam = weapon is HitscanWeaponData;
+
+                Log.LogWarning(
+                    fileName + ": leech has NO \"maxPerSecond\" cap." +
+                    (beam
+                        ? " This is a BEAM, which is the worst case: a beam " +
+                          "damages its target every damageRepeatDelay (0.08s on " +
+                          "the stock Caps Laser), and a piercing one does that " +
+                          "to every enemy it threads - roughly 75 heals a " +
+                          "second through six enemies. Expect to be effectively " +
+                          "immortal until you set a cap."
+                        : " A fast or piercing weapon can heal many times a " +
+                          "second, so this may be much stronger than it looks " +
+                          "on paper.") +
+                    " Set \"maxPerSecond\" to the most healing a second you " +
+                    "want this weapon to be worth.");
+            }
+
+            if (cfg.onExtras)
+            {
+                Log.LogInfo(
+                    fileName + ": leech \"onExtras\" is on, so FOUR of this " +
+                    "mod's own damage sources also feed you: the GAS cloud, the " +
+                    "SWIPE blade, CONTACT damage (which is how a ram and a " +
+                    "lunge hurt what they hit), and SLAM. Not wired: orbit " +
+                    "rings, tethers, turrets, gravity wells, the shield. NOTE " +
+                    "that a gas cloud ticks several times a second, so leech on " +
+                    "gas is a very large sustain - the cap matters more here, " +
+                    "not less.");
+            }
+
+            // Burn and gas ticks report no weapon at all, so they are excluded
+            // for free rather than by a rule. Worth stating, because "my burn
+            // does not heal me" reads as a bug otherwise.
+            Log.LogInfo(
+                fileName + ": leech does NOT trigger on burn ticks or terrain " +
+                "damage - those report no weapon, so there is nothing to credit. " +
+                "Only damage a weapon actually dealt counts, and only what " +
+                "LANDED: a hit blocked by invincibility, refused by i-frames, or " +
+                "aimed at an enemy with no tank of that damage type heals you " +
+                "nothing. Overkill does not pay either - a 200-damage rocket " +
+                "into a 5-health fly leeches off 5.");
+        }
+
+        private static void ApplySpeedRamp(
+            WeaponData weapon,
+            JObject root,
+            string fileName)
+        {
+            JToken token = root["speedRamp"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var o = token as JObject;
+
+            if (o == null)
+            {
+                if (token.Type != JTokenType.Boolean || !(bool)token)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"speedRamp\" should be true or an " +
+                        "object - ignored.");
+                    return;
+                }
+            }
+            else if (!((bool?)o["enabled"] ?? true))
+            {
+                return;
+            }
+
+            var pw = weapon as ProjectileWeaponData;
+
+            if (!ProjectileTargetOk(
+                    pw, "speedRamp", fileName, true,
+                    " A beam arrives instantly at any range, so there is no " +
+                    "flight to speed up."))
+            {
+                return;
+            }
+
+            bool physics = pw.usePhysics;
+
+            string over = (o != null)
+                ? ((string)o["over"] ?? "distance").Trim().ToLowerInvariant()
+                : "distance";
+
+            ForgeSpeedRamp.Over mode;
+
+            switch (over)
+            {
+                case "time": mode = ForgeSpeedRamp.Over.Time; break;
+                case "pierce":
+                case "pierces":
+                case "hits": mode = ForgeSpeedRamp.Over.Pierce; break;
+                case "bounce":
+                case "bounces":
+                case "ricochet": mode = ForgeSpeedRamp.Over.Bounce; break;
+                case "distance":
+                case "range": mode = ForgeSpeedRamp.Over.Distance; break;
+                default:
+                    Log.LogWarning(
+                        fileName + ": speedRamp \"over\": '" + over +
+                        "' is not one of distance / time / pierce / bounce - " +
+                        "using distance.");
+                    mode = ForgeSpeedRamp.Over.Distance;
+                    break;
+            }
+
+            // Pierce and bounce are counted by patches on Projectile.TryHit and
+            // Projectile.Reflect. A PhysicsProjectile is a different class that
+            // goes through neither, so those two modes would sit at their
+            // starting multiplier forever - say so rather than look broken.
+            // Same rule, same wording, as damageRamp.
+            if (physics &&
+                (mode == ForgeSpeedRamp.Over.Pierce ||
+                 mode == ForgeSpeedRamp.Over.Bounce))
+            {
+                Log.LogWarning(
+                    fileName + ": speedRamp \"over\": \"" + over + "\" does " +
+                    "not work on a LOBBED (usePhysics) weapon - a lobbed shot " +
+                    "neither pierces nor reflects through the code this " +
+                    "counts. Using \"distance\" instead, which does work.");
+                mode = ForgeSpeedRamp.Over.Distance;
+            }
+
+            // RANGEDATA AND A SPEED RAMP FIGHT EACH OTHER, and nothing said so.
+            //
+            // Round 11 test 110, which he could not classify: *"First I didn't
+            // have rangedata at all and it fired normally. No ramp or anything.
+            // Added rangedata: enabled true with slowdown false, no projectile at
+            // all... then turning enabled to false its behaving like it should.
+            // This feels really janky."* Every one of those three observations is
+            // the same mechanism.
+            //
+            // While `RangeData.enabled` is true, `Projectile.FixedUpdate`
+            // REWRITES Velocity from `startSpeed` and the range clock every
+            // frame - the same fact that makes the boomerang pivot free and that
+            // forces a mid-flight turn to switch RangeData off. So a ramp
+            // writing Velocity is overwritten before it is ever drawn, and a ramp
+            // starting at `from: 0.01` hands the range clock a shot travelling at
+            // 1% speed, which reaches its range almost immediately - hence "no
+            // projectile at all", and hence damage only to whatever was already
+            // touching the barrel.
+            //
+            // Named at build time because the runtime behaviour is not
+            // interpretable: three different settings produced three different
+            // wrong-looking results and none of them pointed at range.
+            if (!physics)
+            {
+                ProjectileRangeData rd = pw.rangeData;
+
+                if (rd.enabled)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"speedRamp\" and \"rangeData\": " +
+                        "{ \"enabled\": true } cannot both work on the same " +
+                        "weapon. While range is on, the game rewrites the " +
+                        "shot's velocity from its ORIGINAL speed every frame, " +
+                        "so the ramp is overwritten before you see it - and a " +
+                        "low \"from\" makes the shot reach its range almost at " +
+                        "once, which looks like no projectile at all. Set " +
+                        "\"rangeData\": { \"enabled\": false } and bound the " +
+                        "shot with \"lifetimeData\" instead; the ramp then " +
+                        "works as written.");
+                }
+            }
+
+            // A lobbed weapon's `projectilePrefab` is NULL - the shot lives on
+            // `physicsProjectilePrefab` and reading the wrong one is how eight
+            // features silently refused to work once before.
+            GameObject clone = VisualCustomizer.ClonePrefab(
+                physics
+                    ? pw.physicsProjectilePrefab.gameObject
+                    : pw.projectilePrefab.gameObject);
+
+            Component comp = physics
+                ? (Component)clone.GetComponentInChildren<PhysicsProjectile>(true)
+                : clone.GetComponentInChildren<Projectile>(true);
+
+            if (comp == null)
+            {
+                Log.LogWarning(
+                    fileName + ": speedRamp - no " +
+                    (physics ? "PhysicsProjectile" : "Projectile") +
+                    " on the prefab. Ignored.");
+                UnityEngine.Object.Destroy(clone);
+                return;
+            }
+
+            var r = comp.GetComponent<ForgeSpeedRamp>();
+
+            if (r == null)
+                r = comp.gameObject.AddComponent<ForgeSpeedRamp>();
+
+            r.over = mode;
+
+            if (o != null)
+            {
+                r.from = (float?)o["from"] ?? 1f;
+                r.to = (float?)o["to"] ?? 3f;
+                r.span = (float?)o["span"] ?? 0f;
+                r.curve = (float?)o["curve"] ?? 1f;
+                r.clamp = (bool?)o["clamp"] ?? true;
+                r.minSpeed = Mathf.Max(0f, (float?)o["minSpeed"] ?? 0f);
+                r.maxSpeed = Mathf.Max(0f, (float?)o["maxSpeed"] ?? 0f);
+            }
+
+            if (physics)
+                pw.physicsProjectilePrefab = (PhysicsProjectile)comp;
+            else
+                pw.projectilePrefab = (Projectile)comp;
+
+            if (r.from == r.to)
+            {
+                Log.LogWarning(
+                    fileName + ": speedRamp has from == to (" + r.from +
+                    "), so speed never changes. Set them differently - from " +
+                    "0.3 to 2 means the shot leaves slowly and arrives fast.");
+            }
+
+            // A LOBBED SHOT STOPS BEING A PARABOLA, and that is worth saying
+            // out loud rather than letting someone wonder why their grenade
+            // flies further than it used to. Gravity still bends it - this runs
+            // after the physics step and only changes the LENGTH of the
+            // velocity - but the shot no longer trades speed for height, so a
+            // ramp up flies flatter and a ramp down drops hard.
+            if (physics)
+            {
+                Log.LogInfo(
+                    fileName + ": speedRamp on a LOBBED shot - it still arcs " +
+                    "(gravity is applied first and this only changes the " +
+                    "SPEED, not the direction), but it no longer trades speed " +
+                    "for height, so expect a flatter, longer throw on a ramp " +
+                    "up and a hard drop on a ramp down. The game's own " +
+                    "\"homingData\": { \"acceleration\", \"maxSpeed\" } is " +
+                    "constant thrust along the shot's facing and works on " +
+                    "these with no target and no homing enabled, if that suits " +
+                    "the weapon better - this block runs afterwards, so it " +
+                    "wins if you set both.");
+            }
+
+            // THE ONE REAL CLASH, and it is on the most-copied template in the
+            // mod. `rangeData.slowDown` is the game's own "coast to a dead stop
+            // at your range", and the White Popper ships it ON. The ramp runs
+            // as a postfix so it wins the argument every frame - but the file
+            // is then asking for two opposite things and the loser is silent.
+            if (!physics && pw.rangeData.enabled && pw.rangeData.slowDown)
+            {
+                Log.LogWarning(
+                    fileName + ": speedRamp is fighting \"rangeData\": " +
+                    "{ \"slowDown\": true }, which decelerates the shot to " +
+                    "ZERO at its range. The ramp runs afterwards so the ramp " +
+                    "wins - but set \"rangeData\": { \"slowDown\": false } so " +
+                    "the file says what it means. (The stock White Popper " +
+                    "template ships slowDown ON, which is where this usually " +
+                    "comes from.)");
+            }
+
+            // THE REAL TRAP IS THE SLOW END, NOT THE FAST ONE.
+            //
+            // Going fast is safe here: `Projectile.FixedUpdate` finds its hits
+            // with a SWEPT `Physics2D.CircleCast` along
+            // `Velocity * Time.deltaTime`, so the whole step is tested and a
+            // fast shot cannot step over a wall. (A fast MINION can, because a
+            // minion moves by rigidbody physics with Discrete detection - a
+            // different mechanism that does not apply to this.)
+            //
+            // Going slow is the one that bites, and it bites twice: a shot that
+            // ramps down to nearly nothing hangs in the air until its range or
+            // lifetime ends - and on a DISTANCE ramp it also stops making
+            // progress through its own ramp, so it freezes at whatever
+            // multiplier stalled it. `minSpeed` is the fix and it is worth
+            // naming, because that self-reference is not obvious.
+            float floor = pw.projectileSpeed * Mathf.Min(r.from, r.to);
+
+            if (r.minSpeed <= 0f && floor < 2f)
+            {
+                Log.LogWarning(
+                    fileName + ": speedRamp bottoms out around " +
+                    floor.ToString("0.##") + " units/second (projectileSpeed " +
+                    pw.projectileSpeed.ToString("0.##") + " x " +
+                    Mathf.Min(r.from, r.to).ToString("0.##") +
+                    "), which is close to a standstill - the shot will hang in " +
+                    "the air until its range or lifetime ends." +
+                    (mode == ForgeSpeedRamp.Over.Distance
+                        ? " And because this is a DISTANCE ramp, a stalled shot " +
+                          "stops advancing through its own ramp, so it stays " +
+                          "stalled."
+                        : "") +
+                    " Set \"minSpeed\" to a few units/second to give it a floor.");
+            }
+
+            string span = (r.span > 0f)
+                ? r.span.ToString("0.##")
+                : (mode == ForgeSpeedRamp.Over.Distance
+                    ? "the weapon's range"
+                    : "1");
+
+            Log.LogInfo(
+                fileName + ": speed ramp x" + r.from + " -> x" + r.to +
+                " over " + span + " " +
+                (mode == ForgeSpeedRamp.Over.Distance ? "units of travel"
+                 : mode == ForgeSpeedRamp.Over.Time ? "seconds"
+                 : mode == ForgeSpeedRamp.Over.Pierce ? "pierced enemies"
+                 : "bounces") +
+                " (launch speed " + pw.projectileSpeed.ToString("0.##") +
+                ", so " + (pw.projectileSpeed * r.from).ToString("0.#") +
+                " -> " + (pw.projectileSpeed * r.to).ToString("0.#") +
+                " units/second)" +
+                (r.clamp ? "" : ", UNCLAMPED (keeps climbing past 'to')") +
+                (r.curve != 1f ? ", curve " + r.curve : "") +
+                (r.maxSpeed > 0f
+                    ? ", capped at " + r.maxSpeed.ToString("0.##") : "") +
+                (r.minSpeed > 0f
+                    ? ", floored at " + r.minSpeed.ToString("0.##") : "") +
+                ".");
+        }
+
         // "orbitGrow": orbs that change SIZE while the ring runs.
         //
         // Deliberately its own block rather than reusing the projectile
@@ -5616,6 +6729,1688 @@ namespace WeaponForge
         // names is very often another Forge weapon, and file order decides
         // whether that one has been built yet. Resolving now would work or fail
         // depending on filenames, which is the worst kind of bug to explain.
+        // "swipe": a melee swing for the ship.
+        //
+        // NOTHING IN THIS GAME DOES CONTACT DAMAGE. HealthBase's only entry
+        // points are projectile / explosion / hitscan / hazard / electricity /
+        // cell collision, there is no melee component anywhere, and there is no
+        // OnCollisionStay2D or OnTriggerStay2D in the whole assembly - flying
+        // into an enemy is free. So a blade runs its own overlap query and
+        // deals its own damage, which is also why it has to credit its own
+        // kills.
+        //
+        // Works in a weapon slot AND on a gadget key with no extra code: the
+        // trigger hook is `WeaponBase.DoShoot`, which is on the path of every
+        // shot from either direction. See ForgeSwipePatch.
+        // THE CHARGE LUNGE - wind up, then launch yourself.
+        //
+        // Modelled on the Maggot, which he pointed me at. Its wind-up is not a
+        // timer, it is `maxSpeed: 1` - it telegraphs by almost STOPPING - and
+        // its commitment is `maxAngularVelocity: 0.3`, so once launched it can
+        // barely steer. Both are copied; see ForgeLunge.
+        private static void ApplyLunge(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var o = root["lunge"] as JObject;
+
+            if (o == null)
+                return;
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var cfg = new ForgeLunge.Config();
+
+            cfg.windSpeed = Mathf.Clamp((float?)o["windSpeed"] ?? 0.3f, 0.02f, 1f);
+            cfg.windAccel = Mathf.Clamp((float?)o["windAccel"] ?? 0.4f, 0.02f, 1f);
+            cfg.windCurve = Mathf.Clamp((float?)o["windCurve"] ?? 1f, 0.05f, 6f);
+
+            cfg.force = Mathf.Max(0f, (float?)o["force"] ?? 60f);
+            cfg.minForce = Mathf.Max(0f, (float?)o["minForce"] ?? 0f);
+            cfg.aim = ForgeLunge.ParseAim((string)o["aim"]);
+
+            cfg.commit = Mathf.Max(0.02f, (float?)o["commit"] ?? 0.3f);
+            cfg.commitSteer = Mathf.Clamp01((float?)o["commitSteer"] ?? 0f);
+
+            cfg.fires = (bool?)o["fires"] ?? true;
+
+            cfg.damage = Mathf.Max(0f, (float?)o["damage"] ?? 0f);
+            cfg.push = (float?)o["push"] ?? 40f;
+            cfg.recoil = (float?)o["recoil"] ?? 0f;
+            cfg.repeatDelay = Mathf.Max(0.02f, (float?)o["repeatDelay"] ?? 0.3f);
+            cfg.radius = Mathf.Max(0f, (float?)o["radius"] ?? 0f);
+            cfg.hitsPlayer = (bool?)o["hitsPlayer"] ?? false;
+
+            cfg.selfDamage = Mathf.Max(0f, (float?)o["selfDamage"] ?? 0f);
+
+            cfg.sfx = ResolveChargeSfx(
+                (string)o["sfx"], null, false, "lunge sfx", fileName) ?? "";
+
+            string type = (string)o["damageType"];
+
+            if (!string.IsNullOrEmpty(type))
+            {
+                var res = JsonFieldMapper.FindAsset(
+                    typeof(Resource), type) as Resource;
+
+                if (res != null)
+                    cfg.damageType = res;
+                else
+                    Log.LogWarning(
+                        fileName + ": lunge \"damageType\": '" + type +
+                        "' is not a resource this game has. Using the " +
+                        "weapon's own.");
+            }
+
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": \"lunge\" has \"force\": 0, so nothing " +
+                    "launches. The ship's mass is 1, so force IS the speed in " +
+                    "units/second - and the ship's own top speed is 12.5, so " +
+                    "60 is a real launch.");
+                return;
+            }
+
+            // THE ONE HARD REQUIREMENT, and it is worth failing loudly on.
+            // The lunge rides the charge block's hold/release rather than
+            // growing its own, which is what gets it the meter, the minimum
+            // charge, the curve and the ready sound for nothing.
+            ForgeCharge.Config charge;
+
+            if (!ForgeCharge.TryGet(weapon, out charge))
+            {
+                Log.LogWarning(
+                    fileName + ": \"lunge\" needs a \"charge\" block and this " +
+                    "weapon has none, so nothing will ever launch. The lunge " +
+                    "fires when a charge is RELEASED - that is where the " +
+                    "wind-up, the meter and the release moment all come from. " +
+                    "Add a \"charge\" block with \"mode\": \"release\".");
+                return;
+            }
+
+            if (charge.mode == ForgeCharge.Mode.Auto)
+            {
+                Log.LogWarning(
+                    fileName + ": \"lunge\" with \"charge\": \"mode\": " +
+                    "\"auto\" will never launch - an auto weapon fires " +
+                    "continuously and has no release. Use \"release\" mode.");
+                return;
+            }
+
+            ForgeLunge.Register(weapon, cfg);
+
+            Log.LogInfo(
+                fileName + ": lunge - winds up to " +
+                (cfg.windSpeed * 100f).ToString("0") + "% speed and " +
+                (cfg.windAccel * 100f).ToString("0") + "% acceleration, then " +
+                "launches at " + cfg.force.ToString("0.#") +
+                " units/second " + ForgeLunge.AimWord(cfg.aim) +
+                ", committed for " + cfg.commit.ToString("0.##") + "s at " +
+                (cfg.commitSteer * 100f).ToString("0") + "% steering" +
+                (cfg.damage > 0f
+                    ? ", dealing " + cfg.damage.ToString("0.#") +
+                      " on contact"
+                    : ", with the hurting left to a \"contactDamage\" block") +
+                ".");
+
+            if (cfg.damage <= 0f)
+            {
+                ForgeContact.Config ignored;
+
+                if (!ForgeContact.TryGet(weapon, out ignored))
+                {
+                    Log.LogWarning(
+                        fileName + ": \"lunge\" has no \"damage\" of its own " +
+                        "AND this weapon has no \"contactDamage\" block, so " +
+                        "the launch will move you but hurt nothing. Set " +
+                        "\"lunge\": \"damage\", or add a \"contactDamage\" " +
+                        "block with \"who\": \"ship\".");
+                }
+            }
+
+            // ---- pure melee, the same route SWIPE takes --------------------
+            if (!cfg.fires)
+            {
+                var pw = weapon as ProjectileWeaponData;
+
+                if (pw != null && pw.projectileCount > 0f)
+                {
+                    pw.projectileCount = 0f;
+
+                    Log.LogInfo(
+                        fileName + ": lunge \"fires\": false - projectileCount " +
+                        "set to 0, so the charge releases into a pure lunge. " +
+                        "Cost, fire rate and the shoot sound are all still " +
+                        "taken, because they happen inside the shot rather " +
+                        "than in the projectile. The price is no muzzle flash " +
+                        "either, since one is built per pellet.");
+                }
+            }
+        }
+
+        // CONTACT DAMAGE - making a unit dangerous to touch.
+        //
+        // From his R9 test 50: "it really messes with the enemies mass and when
+        // i hit them knocks them super far out! Would be fun to enable damage
+        // on collison for the enemies in this case."
+        //
+        // He was also right that the game already has this, which I had denied
+        // in three files - see ForgeContact for the correction and for the two
+        // systems it actually has.
+        private static void ApplyContactDamage(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var o = root["contactDamage"] as JObject;
+
+            if (o == null)
+                return;
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var cfg = new ForgeContact.Config();
+
+            cfg.who = ForgeContact.ParseWho((string)o["who"]);
+            cfg.window = Mathf.Max(0.1f, (float?)o["window"] ?? 1.5f);
+
+            cfg.damage = Mathf.Max(0f, (float?)o["damage"] ?? 3f);
+
+            cfg.scaleBySpeed = (bool?)o["scaleBySpeed"] ?? false;
+            cfg.damagePerSpeed =
+                Mathf.Max(0f, (float?)o["damagePerSpeed"] ?? 1f);
+            cfg.minSpeed = Mathf.Max(0f, (float?)o["minSpeed"] ?? 6f);
+            cfg.maxDamage = Mathf.Max(0f, (float?)o["maxDamage"] ?? 999f);
+
+            cfg.push = (float?)o["push"] ?? 0f;
+            cfg.recoil = (float?)o["recoil"] ?? 0f;
+
+            cfg.repeatDelay = Mathf.Max(0.02f, (float?)o["repeatDelay"] ?? 0.3f);
+
+            cfg.detect = ForgeContact.ParseDetect((string)o["detect"]);
+            cfg.radius = Mathf.Max(0f, (float?)o["radius"] ?? 0f);
+
+            cfg.hitsEnemies = (bool?)o["hitsEnemies"] ?? true;
+            cfg.hitsPlayer = (bool?)o["hitsPlayer"] ?? false;
+
+            string type = (string)o["damageType"];
+
+            if (!string.IsNullOrEmpty(type))
+            {
+                var res = JsonFieldMapper.FindAsset(
+                    typeof(Resource), type) as Resource;
+
+                if (res != null)
+                    cfg.damageType = res;
+                else
+                    Log.LogWarning(
+                        fileName + ": contactDamage \"damageType\": '" + type +
+                        "' is not a resource this game has. Using the weapon's " +
+                        "own.");
+            }
+
+            // RESOLVED HERE, NOT AT DAMAGE TIME, and this is a bug fix rather
+            // than a tidy-up. `ForgeContactController.Hurt` needs a damage type
+            // and used to fall back to `weapon.Damage.damageType` at runtime -
+            // but the ALWAYS-ON modes ("enemies", "ship", "all") are given to a
+            // unit by the sweeper with **no weapon at all**, so that fallback
+            // resolved to null and `Hurt` returned without dealing any damage.
+            // Silently: no log, nothing on screen.
+            //
+            // That is what made R10 tests 73 and 74 fail while 70 passed - the
+            // marked mode is the only one that carries a weapon. Same family as
+            // the prefab-config trap: a null reference that disables a whole
+            // feature while everything upstream reports success.
+            if (cfg.damageType == null)
+            {
+                cfg.damageType = weapon.damage.damageType;
+
+                if (cfg.damageType == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"contactDamage\" has no " +
+                        "\"damageType\" and this weapon's own damage has no " +
+                        "type either, so there is nothing to deal the damage " +
+                        "AS and it would silently do nothing. Name a " +
+                        "\"damageType\" (\"Resource White\", \"Resource " +
+                        "Caps\", ...). Ignored.");
+                    return;
+                }
+            }
+
+            cfg.tintPulse = Mathf.Max(0f, (float?)o["tintPulse"] ?? 0f);
+            cfg.tintStrength =
+                TintStrength(o, fileName, "contactDamage", 1f);
+
+            string tint = (string)o["tint"];
+
+            if (!string.IsNullOrEmpty(tint))
+            {
+                Color c = Color.white;
+
+                if (ReadColor(tint, "contactDamage \"tint\"", fileName, ref c))
+                {
+                    cfg.tint = c;
+                    cfg.hasTint = true;
+                }
+            }
+
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": \"contactDamage\" does nothing - no damage, " +
+                    "no push and no recoil. Note damage 0 with a push is a " +
+                    "legitimate weapon (the game's own Fly Alfa and Fly Zapper " +
+                    "are exactly that: 0 damage, 30 push), so set one of them " +
+                    "on purpose.");
+                return;
+            }
+
+            if (!cfg.hitsEnemies && !cfg.hitsPlayer)
+            {
+                Log.LogWarning(
+                    fileName + ": \"contactDamage\" has both \"hitsEnemies\" " +
+                    "and \"hitsPlayer\" off, so it can never touch anything. " +
+                    "Ignored.");
+                return;
+            }
+
+            ForgeContact.Register(weapon, cfg);
+
+            Log.LogInfo(
+                fileName + ": contactDamage - " +
+                ForgeContact.WhoWord(cfg.who) +
+                (cfg.who == ForgeContact.WhoMarked
+                    ? " for " + cfg.window.ToString("0.##") + "s"
+                    : " (permanent)") +
+                ", " +
+                (cfg.scaleBySpeed
+                    ? "damage scaled by impact speed above " +
+                      cfg.minSpeed.ToString("0.#")
+                    : "a flat " + cfg.damage.ToString("0.#") + " damage") +
+                ", detected by " + ForgeContact.DetectWord(cfg.detect) +
+                ", at most one hit per target every " +
+                cfg.repeatDelay.ToString("0.##") + "s.");
+
+            if (cfg.who == ForgeContact.WhoEnemies ||
+                cfg.who == ForgeContact.WhoAll)
+            {
+                Log.LogWarning(
+                    fileName + ": contactDamage \"who\" is a WORLD RULE - " +
+                    "every enemy in the run becomes dangerous to every other " +
+                    "one, whether this weapon was involved or not. That is a " +
+                    "big change to how the game plays, and only one weapon can " +
+                    "own it. Use \"marked\" if you wanted a weapon property.");
+            }
+
+            if (cfg.hitsPlayer)
+            {
+                Log.LogWarning(
+                    fileName + ": contactDamage \"hitsPlayer\" is ON, so " +
+                    "anything carrying this can hurt YOU by touching you. " +
+                    "Fine on purpose - just say so out loud.");
+            }
+        }
+
+        // THE HIT "TICK" - the little sound something makes when you damage it.
+        //
+        // EVERY DEFAULT HERE IS THE GAME'S OWN BEHAVIOUR, at his request. A
+        // block that only sets "scope" changes nothing. That includes leaving
+        // the tick UNTHROTTLED, which is the one thing genuinely wrong with it
+        // - so the log says so rather than quietly fixing it.
+        private static void ApplyHitSound(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var o = root["hitSound"] as JObject;
+
+            if (o == null)
+                return;
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var cfg = new ForgeHitSound.Config();
+
+            cfg.scope = ForgeHitSound.ParseScope((string)o["scope"]);
+
+            // ---- the sound -------------------------------------------------
+            string want = ((string)o["sfx"] ?? "").Trim();
+            string lower = want.ToLowerInvariant();
+
+            if (lower == "none" || lower == "off" || lower == "silent" ||
+                lower == "silence" || lower == "mute")
+            {
+                cfg.silence = true;
+            }
+            else if (want.Length > 0)
+            {
+                string guid = ResolveChargeSfx(
+                    want, null, false, "hitSound sfx", fileName);
+
+                if (!string.IsNullOrEmpty(guid))
+                    cfg.sfx = guid;
+            }
+
+            cfg.volume = Mathf.Clamp((float?)o["volume"] ?? 1f, 0f, 4f);
+
+            // ---- the throttle ----------------------------------------------
+            cfg.minInterval = Mathf.Max(0f, (float?)o["minInterval"] ?? 0f);
+            cfg.perTarget = (bool?)o["perTarget"] ?? false;
+
+            // ---- pitch -----------------------------------------------------
+            cfg.pitchMode = ForgeHitSound.ParsePitch((string)o["pitch"]);
+            cfg.pitchLow = Mathf.Clamp((float?)o["pitchLow"] ?? 0.85f, 0.25f, 3f);
+            cfg.pitchHigh = Mathf.Clamp((float?)o["pitchHigh"] ?? 1.25f, 0.25f, 3f);
+            cfg.damageAt = Mathf.Max(0.01f, (float?)o["damageAt"] ?? 10f);
+            cfg.vary = Mathf.Clamp((float?)o["vary"] ?? 0f, 0f, 1f);
+
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": \"hitSound\" does nothing - every key is at " +
+                    "the game's own default. Set \"sfx\" to replace the sound " +
+                    "(or \"none\" to silence it), \"minInterval\" to stop it " +
+                    "machine-gunning, \"pitch\" to make it carry information, " +
+                    "or \"vary\" to stop identical repeats grating.");
+                return;
+            }
+
+            ForgeHitSound.Register(weapon, cfg, fileName);
+            ForgeHitSound.Invalidate();
+
+            Log.LogInfo(
+                fileName + ": hitSound - " +
+                (cfg.silence
+                    ? "SILENCED"
+                    : (!string.IsNullOrEmpty(cfg.sfx)
+                        ? "replaced with your own sound"
+                        : "the game's own sound")) +
+                ", applying to " + ForgeHitSound.ScopeWord(cfg.scope) +
+                ", pitch " + ForgeHitSound.PitchWord(cfg.pitchMode) +
+                (cfg.vary > 0f
+                    ? " (+/- " + cfg.vary.ToString("0.##") + " jitter)"
+                    : "") +
+                ", throttle " +
+                (cfg.minInterval > 0f
+                    ? cfg.minInterval.ToString("0.###") + "s " +
+                      (cfg.perTarget ? "per target" : "overall")
+                    : "NONE (the game's own behaviour)") +
+                ".");
+
+            // THE ONE THING WORTH SAYING OUT LOUD. iFrameDuration is 0 on all
+            // 84 damageable prefabs, so the tick has no per-victim gate at
+            // all - the only limiter is a GLOBAL 100-per-second cap in the
+            // audio database. A shotgun plays one per pellet that connects.
+            if (cfg.minInterval <= 0f && !cfg.silence)
+            {
+                var pw = weapon as ProjectileWeaponData;
+
+                bool multi = weapon.projectileCount > 1f ||
+                             (pw != null && pw.piercingData.enabled);
+
+                if (multi)
+                {
+                    Log.LogInfo(
+                        fileName + ": this weapon fires " +
+                        weapon.projectileCount.ToString("0") + " projectiles" +
+                        ((pw != null && pw.piercingData.enabled)
+                            ? " and pierces" : "") +
+                        ", and the hit tick has NO throttle of its own - the " +
+                        "game's iFrameDuration is 0 on every enemy, so each " +
+                        "pellet that connects plays its own. If it sounds " +
+                        "like a buzz, that is why: try " +
+                        "\"minInterval\": 0.06.");
+                }
+            }
+        }
+
+        // THE CURVE BEAM. A hitscan beam that locks onto one unit, bends its
+        // way there around terrain, and damages everything it threads through.
+        //
+        // Three things the stock beam physically cannot do, so all three are
+        // ours: the visual is ONE stretched quad (no room for a curve), the
+        // damage cast hits exactly the FIRST thing in the way (no piercing),
+        // and damage and visuals were two independent raycasts. See
+        // ForgeCurveBeam for how the third stops being a problem.
+        private static void ApplyCurveBeam(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var o = root["curveBeam"] as JObject;
+
+            if (o == null)
+                return;
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var hs = weapon as HitscanWeaponData;
+
+            if (hs == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"curveBeam\" only works on a BEAM weapon, " +
+                    "and this template is not one - so it is ignored. Build " +
+                    "on a hitscan template such as " +
+                    "\"Module Weapon Caps Laser\". " +
+                    "(For a bullet that curves toward a target, the block you " +
+                    "want is \"homing\".)");
+                return;
+            }
+
+            var cfg = new ForgeCurveBeam.Config();
+
+            // ---- the lock ---------------------------------------------------
+            cfg.lockMode = ForgeCurveBeam.ParseLock((string)o["lock"]);
+            cfg.lockRange = Mathf.Max(0f, (float?)o["lockRange"] ?? 0f);
+            cfg.lockCone = Mathf.Clamp((float?)o["lockCone"] ?? 60f, 1f, 360f);
+            cfg.objectsToo = (bool?)o["objectsToo"] ?? false;
+            cfg.holdLock = (bool?)o["holdLock"] ?? true;
+            cfg.reacquire = (bool?)o["reacquire"] ?? true;
+
+            // ---- the curve --------------------------------------------------
+            cfg.turnRate = Mathf.Clamp((float?)o["turnRate"] ?? 40f, 0f, 720f);
+            cfg.segment = Mathf.Clamp((float?)o["segment"] ?? 0.4f, 0.1f, 4f);
+            cfg.maxLength = Mathf.Max(0f, (float?)o["maxLength"] ?? 0f);
+            cfg.smoothing = Mathf.Clamp01((float?)o["smoothing"] ?? 0.35f);
+
+            // ---- weaving ----------------------------------------------------
+            cfg.weave = (bool?)o["weave"] ?? false;
+            cfg.weaveRange = Mathf.Clamp((float?)o["weaveRange"] ?? 4f, 0.5f, 30f);
+            cfg.weaveMax = Mathf.Clamp((int?)o["weaveMax"] ?? 3, 0, 12);
+
+            // ---- terrain ----------------------------------------------------
+            cfg.route = ForgeCurveBeam.ParseRoute((string)o["route"]);
+            cfg.lookAhead = Mathf.Max(0.2f, (float?)o["lookAhead"] ?? 1.4f);
+            cfg.clearance = Mathf.Clamp((float?)o["clearance"] ?? 0.45f, 0.05f, 4f);
+
+            // ---- damage -----------------------------------------------------
+            cfg.pierce = (bool?)o["pierce"] ?? true;
+            cfg.bystander = Mathf.Max(0f, (float?)o["bystander"] ?? 1f);
+            cfg.maxTargets = Mathf.Max(0, (int?)o["maxTargets"] ?? 0);
+            cfg.push = Mathf.Max(0f, (float?)o["push"] ?? 0f);
+
+            // ---- art --------------------------------------------------------
+            cfg.sprite = ((string)o["sprite"] ?? "").Trim();
+            cfg.frames = Mathf.Clamp((int?)o["frames"] ?? 4, 1, 16);
+            cfg.flow = (float?)o["flow"] ?? 6f;
+            cfg.thickness = Mathf.Clamp((float?)o["thickness"] ?? 0.35f, 0.02f, 8f);
+            cfg.overlap = Mathf.Clamp((float?)o["overlap"] ?? 0.35f, 0f, 2f);
+            cfg.taper = Mathf.Clamp01((float?)o["taper"] ?? 0f);
+            cfg.endPuff = (bool?)o["endPuff"] ?? true;
+
+            cfg.explodeOnTarget = (bool?)o["explodeOnTarget"] ?? false;
+            cfg.explodeInterval =
+                Mathf.Max(0.05f, (float?)o["explodeInterval"] ?? 0.25f);
+
+            string colour = (string)o["color"];
+
+            if (!string.IsNullOrEmpty(colour))
+            {
+                Color c = Color.white;
+
+                if (ReadColor(colour, "curveBeam \"color\"", fileName, ref c))
+                {
+                    cfg.color = c;
+                    cfg.hasColor = true;
+                }
+            }
+
+            // ---- the things worth saying out loud ---------------------------
+            //
+            // A LOOPING BEAM IS LONGER THAN ITS REACH. maxLength is the length
+            // of the beam, not the distance to the target - the whole point of
+            // a curve beam is that it does not travel in a straight line - so
+            // leaving it at the weapon's range means a beam that curls twice
+            // runs out well before an enemy it could see.
+            float reach = (cfg.maxLength > 0f) ? cfg.maxLength : hs.range;
+
+            if (cfg.maxLength <= 0f)
+            {
+                Log.LogInfo(
+                    fileName + ": curveBeam has no \"maxLength\", so it uses " +
+                    "the weapon's range (" + hs.range.ToString("0.#") + "). " +
+                    "Note that is the length of the BEAM, not how far away it " +
+                    "can reach - a beam that loops spends length on the loop. " +
+                    "If it keeps stopping short, raise maxLength rather than " +
+                    "range.");
+            }
+
+            // The path is capped at 160 links whatever the numbers say, so a
+            // small segment silently shortens the beam. Better to say so than
+            // to let someone tune a number that has stopped doing anything.
+            float reachable = ForgeCurveBeamPath.MaxPoints * cfg.Segment;
+
+            if (reachable < reach - 0.01f)
+            {
+                Log.LogWarning(
+                    fileName + ": curveBeam \"segment\": " +
+                    cfg.Segment.ToString("0.##") + " gives at most " +
+                    reachable.ToString("0.#") + " units of beam (there is a " +
+                    "hard cap of " + ForgeCurveBeamPath.MaxPoints + " links), " +
+                    "but this weapon wants " + reach.ToString("0.#") + ". The " +
+                    "beam will stop short. Use a longer \"segment\" for a " +
+                    "longer beam - the curve stays smooth because the turn " +
+                    "limit is per unit of length, not per link.");
+            }
+
+            if (cfg.weave && cfg.lockMode == ForgeCurveBeam.LockNone)
+            {
+                Log.LogWarning(
+                    fileName + ": curveBeam \"weave\" needs something to weave " +
+                    "TOWARD, and \"lock\": \"none\" gives it no destination - " +
+                    "so there is no path for a detour to be on. Weaving is " +
+                    "ignored. Use \"nearest\" or \"forward\".");
+            }
+
+            if (cfg.weave && cfg.route == ForgeCurveBeam.RoutePath)
+            {
+                Log.LogInfo(
+                    fileName + ": curveBeam has both \"weave\" and " +
+                    "\"route\": \"path\" - weaving wins, because routing a " +
+                    "corridor to each detour in turn would be several " +
+                    "searches per frame. Terrain is still avoided by the " +
+                    "steering between detours, and \"steerThenPath\" still " +
+                    "rescues a weave that dead-ends.");
+            }
+
+            if (cfg.weave && !cfg.pierce)
+            {
+                Log.LogWarning(
+                    fileName + ": curveBeam \"weave\" with \"pierce\" off " +
+                    "will route through other enemies and then only damage " +
+                    "the FIRST one it reaches. That is a legitimate weapon - " +
+                    "a beam that visibly threads a crowd to reach one target " +
+                    "- but if you wanted it to hurt them all, turn pierce on.");
+            }
+
+            if (cfg.route == ForgeCurveBeam.RoutePath &&
+                cfg.lockMode == ForgeCurveBeam.LockNone)
+            {
+                Log.LogWarning(
+                    fileName + ": curveBeam \"route\": \"path\" with " +
+                    "\"lock\": \"none\" has nothing to route TO - pathfinding " +
+                    "needs a destination. It will steer instead, which still " +
+                    "slides around terrain.");
+            }
+
+            if (!cfg.pierce && cfg.bystander != 1f)
+            {
+                Log.LogInfo(
+                    fileName + ": curveBeam \"bystander\" is set but " +
+                    "\"pierce\" is off, so the beam only ever damages one " +
+                    "thing and the multiplier never applies.");
+            }
+
+            ForgeCurveBeam.Register(weapon, cfg);
+
+            Log.LogInfo(
+                fileName + ": curveBeam - locks onto " +
+                ForgeCurveBeam.LockWord(cfg.lockMode) + ", " +
+                (cfg.weave
+                    ? "WEAVING through up to " + cfg.weaveMax +
+                      " other target(s) within " +
+                      cfg.weaveRange.ToString("0.#") +
+                      " units of its path, "
+                    : "") +
+                ForgeCurveBeam.RouteWord(cfg.route) + ", turning up to " +
+                cfg.Turn.ToString("0.#") + " degrees per unit (tightest loop " +
+                "about " + (cfg.Turn > 0.01f
+                    ? (360f / cfg.Turn).ToString("0.#")
+                    : "n/a") +
+                " units around), " +
+                (cfg.pierce ? "piercing" : "hitting one target") +
+                (cfg.pierce && cfg.maxTargets > 0
+                    ? " up to " + cfg.maxTargets + " at a time"
+                    : "") +
+                (cfg.pierce && Mathf.Abs(cfg.bystander - 1f) > 0.001f
+                    ? " (bystanders at " + cfg.bystander.ToString("0.##") + "x)"
+                    : "") +
+                ".");
+        }
+
+        private static void ApplySwipe(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var o = root["swipe"] as JObject;
+
+            if (o == null)
+                return;
+
+            if (!((bool?)o["enabled"] ?? true))
+                return;
+
+            var cfg = new ForgeSwipe.Config();
+
+            cfg.arc = Mathf.Clamp((float?)o["arc"] ?? 120f, 1f, 360f);
+            cfg.reach = Mathf.Max(0.2f, (float?)o["reach"] ?? 3.5f);
+            cfg.thickness = Mathf.Max(0.05f, (float?)o["thickness"] ?? 0.7f);
+            cfg.duration = Mathf.Max(0.02f, (float?)o["duration"] ?? 0.18f);
+            cfg.ease = Mathf.Max(0.1f, (float?)o["ease"] ?? 2f);
+            cfg.direction = ForgeSwipe.ParseDirection((string)o["direction"]);
+
+            JToken dmg = o["damage"];
+
+            if (dmg != null && dmg.Type != JTokenType.Null)
+            {
+                cfg.damage = Mathf.Max(0f, (float)dmg);
+                cfg.hasDamage = true;
+            }
+            else
+            {
+                // No number given: use the weapon's own damage. A melee weapon
+                // that mentions nothing should still cut.
+                cfg.hasDamage = true;
+            }
+
+            string dtype = (string)o["damageType"];
+
+            if (!string.IsNullOrEmpty(dtype))
+            {
+                var res = JsonFieldMapper.FindAsset(
+                    typeof(Resource), dtype) as Resource;
+
+                if (res != null)
+                    cfg.damageType = res;
+                else
+                    Log.LogWarning(
+                        fileName + ": swipe \"damageType\": '" + dtype +
+                        "' is not a resource this game has. Using the weapon's " +
+                        "own.");
+            }
+
+            cfg.knockback = (float?)o["knockback"] ?? 0f;
+            cfg.marksSlammable = (bool?)o["marksSlammable"] ?? false;
+
+            cfg.cutTerrain = Mathf.Max(0f, (float?)o["cutTerrain"] ?? 0f);
+            cfg.igniteTerrain = Mathf.Max(0f, (float?)o["igniteTerrain"] ?? 0f);
+
+            cfg.deflects = (bool?)o["deflects"] ?? true;
+            cfg.aimMode = ForgeBulletTurn.ParseAim(
+                (string)o["aim"] ?? "mirror");
+            cfg.deflectSpeed = Mathf.Max(0.05f, (float?)o["deflectSpeed"] ?? 1f);
+            cfg.deflectDamage =
+                Mathf.Max(0f, (float?)o["deflectDamage"] ?? 1f);
+            cfg.maxDeflect = Mathf.Max(1, (int?)o["maxDeflect"] ?? 8);
+
+            cfg.sprite = ((string)o["sprite"] ?? "").Trim();
+            cfg.trail = Mathf.Clamp((float?)o["trail"] ?? 0.55f, 0.05f, 1f);
+            cfg.fadeOut = Mathf.Max(0f, (float?)o["fadeOut"] ?? 0.12f);
+            cfg.sfx = ResolveChargeSfx(
+                (string)o["sfx"], null, false, "swipe sfx", fileName) ?? "";
+
+            string colour = (string)o["color"];
+
+            if (!string.IsNullOrEmpty(colour))
+            {
+                Color c = Color.white;
+
+                if (ReadColor(colour, "swipe \"color\"", fileName, ref c))
+                {
+                    cfg.color = c;
+                    cfg.hasColor = true;
+                }
+            }
+
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": \"swipe\" does nothing - no damage, no " +
+                    "knockback, no marking, no terrain cutting and deflecting " +
+                    "switched off. Give it at least one of those.");
+                return;
+            }
+
+            // Catching shots needs the tracker running: enemy projectiles have
+            // their Collider2D DISABLED (they resolve hits by raycast), so they
+            // are invisible to Physics2D.OverlapCircle at any radius and the
+            // only way to find one is to have registered it when it was fired.
+            if (cfg.deflects)
+                ForgeProjectileTracker.Enabled = true;
+
+            ForgeSwipe.Register(weapon, cfg);
+
+            // ---- PURE MELEE: stop the weapon firing bullets ---------------
+            //
+            // Done by setting projectileCount to 0 rather than by suppressing
+            // Shooter.Shoot, and the difference matters. Cost is taken INSIDE
+            // Shoot, and so is knockback and the shoot sound - so a prefix that
+            // blocked Shoot would give you a free swing and a silent one.
+            // GetDirections loops `while (i < ProjectileCount)`, so zero yields
+            // no pellets while DoShoot still runs, still plays the sound, and
+            // still fires the swing hook.
+            //
+            // The cost of that: no muzzle flash either, since InitializeVisuals
+            // builds one instance per projectile. The blade is the flash.
+            bool melee = (bool?)o["pureMelee"] ?? false;
+
+            if (melee)
+            {
+                var pw = weapon as ProjectileWeaponData;
+
+                if (pw != null && pw.projectileCount > 0f)
+                {
+                    pw.projectileCount = 0f;
+
+                    Log.LogInfo(
+                        fileName + ": swipe \"pureMelee\" - projectileCount " +
+                        "set to 0, so the trigger swings and fires nothing. " +
+                        "The weapon still costs what it costs and still " +
+                        "respects fireRate, because both of those are taken " +
+                        "inside the shot rather than by the projectile. Note " +
+                        "there is no muzzle flash at zero pellets - the blade " +
+                        "is the flash.");
+                }
+                else if (pw == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": swipe \"pureMelee\" only works on a " +
+                        "projectile weapon - a hitscan beam has no pellet " +
+                        "count to zero, and a minion spawner has no projectile " +
+                        "at all. The swing still happens; so does whatever the " +
+                        "weapon normally fires.");
+                }
+            }
+
+            // ---- what it is, said out loud --------------------------------
+            var did = new List<string>();
+
+            if (cfg.hasDamage)
+            {
+                did.Add(cfg.damage > 0f
+                    ? "damage " + cfg.damage.ToString("0.##")
+                    : "the weapon's own damage");
+            }
+
+            if (cfg.knockback != 0f)
+                did.Add("knockback " + cfg.knockback.ToString("0.#") +
+                        " ALONG the swing");
+
+            if (cfg.marksSlammable)
+                did.Add("marks slammable");
+
+            if (cfg.cutTerrain > 0f)
+                did.Add("cuts terrain at " + cfg.cutTerrain.ToString("0.#"));
+
+            if (cfg.igniteTerrain > 0f)
+                did.Add("sets terrain alight");
+
+            if (cfg.deflects)
+                did.Add("deflects up to " + cfg.maxDeflect + " shot(s) " +
+                        ForgeBulletTurn.AimWord(cfg.aimMode));
+
+            Log.LogInfo(
+                fileName + ": swipe - a " + cfg.arc.ToString("0.#") +
+                " degree swing, reach " + cfg.reach.ToString("0.##") +
+                ", over " + cfg.duration.ToString("0.###") + "s, " +
+                ForgeSwipe.DirectionWord(cfg.direction) + ". " +
+                string.Join("; ", did.ToArray()) + ". Hits each target ONCE " +
+                "per swing." +
+                (string.IsNullOrEmpty(cfg.sprite)
+                    ? " Art is the generated crescent, drawn from arc, reach " +
+                      "and thickness so it always matches the swing."
+                    : " Art is your sprite '" + cfg.sprite + "', placed at the " +
+                      "blade and turned to the tangent."));
+
+            // Two combinations worth pointing at, because both are better than
+            // the sum of their parts and neither is guessable.
+            if (cfg.knockback != 0f && root["slam"] == null)
+            {
+                Log.LogInfo(
+                    fileName + ": swipe - this swing SHOVES but the weapon has " +
+                    "no \"slam\" block, so arriving at a wall costs them " +
+                    "nothing. Adding one is what turns a bat into a kill: " +
+                    "\"slam\": { \"damagePerSpeed\": 1.6 }.");
+            }
+
+            if (cfg.arc >= 340f)
+            {
+                Log.LogInfo(
+                    fileName + ": swipe - an arc of " +
+                    cfg.arc.ToString("0.#") + " is a full SPIN rather than a " +
+                    "swing, so everything around you is hit once per pull. " +
+                    "Worth a longer \"duration\" so it reads as a spin.");
+            }
+        }
+
+        // "slam": arriving somewhere hard hurts.
+        //
+        // A STANDALONE PROPERTY, in the same sense as `discharge` or
+        // `aimAssistData`: bolt it onto any weapon and whatever that weapon
+        // touches becomes brittle for a moment. It is deliberately NOT tied to
+        // the thing that throws them - see `requiresPush` - because "this one
+        // is fragile right now" composes with far more than a shove does:
+        //
+        //   slam + pushForce   one weapon does both (the Riot Wave preset)
+        //   slam + gravity     the well flings them, the mark prices it
+        //   slam + explosion   the blast throws them, the mark prices it
+        //   slam + slow        slow LOWERS MASS, so everything throws further
+        //   slam alone         a marker gun. Shove them with your other weapon,
+        //                      or let them charge you and clip a wall
+        //
+        // Five routes mark a target: both projectile contact paths, and the
+        // three damage paths (which is what covers a hitscan beam, an
+        // explosion and a discharge arc). The gravity well marks what it drags
+        // separately, because a well never "hits" anything.
+        //
+        // The game already does the shoving where a shove is wanted: both
+        // projectile classes apply
+        // `AddForceAtPosition(Velocity.normalized * PushForce, hit.point,
+        // ForceMode2D.Impulse)` to whatever they hit, so a weapon with a big
+        // `pushForce` is already a shove weapon - it just had nothing to show
+        // for it, because arriving at a wall hurt nobody. The machinery that
+        // prices the arrival was built for the tractor beam.
+        //
+        //   "weapon": { "pushForce": 220, "projectileCount": 9, "spread": 60 },
+        //   "slam": { "damagePerSpeed": 1.6, "minSpeed": 6 }
+        //
+        // THE ARITHMETIC, because one number never fits in this game and a raw
+        // force is meaningless without it. An IMPULSE gives an instant velocity
+        // change of `pushForce / mass`, and linear damping then bleeds it off,
+        // so the distance a body actually travels is
+        //
+        //     pushForce / (mass * linearDamping)
+        //
+        // A common `Enemy_Cross` is mass 5, damping 6 - so 30, and a pushForce
+        // of 220 carries it about 7 units. The stock White Shotgun's
+        // `pushForce: 10` carries it a third of a unit, which is why the stock
+        // shove reads as a nudge. A Jock or a Red is mass 50 and a Queen is 200,
+        // so the same shot moves them 10x and 40x less; pairing this with
+        // `slow` helps, because slow's `knockback` switch works by LOWERING
+        // mass.
+        private static void ApplySlam(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken tok = root["slam"];
+
+            if (tok == null || tok.Type == JTokenType.Null)
+                return;
+
+            var o = tok as JObject;
+            var spec = new ForgeSlam.Spec();
+
+            if (o != null)
+            {
+                if (!((bool?)o["enabled"] ?? true))
+                    return;
+
+                spec.minSpeed = Mathf.Max(0f, (float?)o["minSpeed"] ?? 6f);
+                spec.damagePerSpeed =
+                    Mathf.Max(0f, (float?)o["damagePerSpeed"] ?? 1.5f);
+                spec.maxDamage = Mathf.Max(0f, (float?)o["maxDamage"] ?? 999f);
+                spec.window = Mathf.Max(0.1f, (float?)o["window"] ?? 1.5f);
+                spec.hitsUnits = (bool?)o["hitsUnits"] ?? true;
+                spec.hitsPlayer = (bool?)o["hitsPlayer"] ?? false;
+                spec.requiresPush = (bool?)o["requiresPush"] ?? false;
+
+                // OFF by default on purpose - this is what shipped, and it is
+                // not being changed underneath anything already tested. See
+                // ForgeSlam.Spec.swept for why it exists.
+                spec.swept = (bool?)o["swept"] ?? false;
+
+                spec.tintPulse = Mathf.Max(0f, (float?)o["tintPulse"] ?? 3f);
+                spec.tintStrength = TintStrength(o, fileName, "slam", 1f);
+
+                string tintName = (string)o["tint"];
+
+                if (!string.IsNullOrEmpty(tintName))
+                {
+                    Color c = Color.white;
+
+                    if (ReadColor(tintName, "slam \"tint\"", fileName, ref c))
+                    {
+                        spec.tint = c;
+                        spec.hasTint = true;
+                    }
+                }
+
+                string type = (string)o["damageType"];
+
+                if (!string.IsNullOrEmpty(type))
+                {
+                    var res = JsonFieldMapper.FindAsset(
+                        typeof(Resource), type) as Resource;
+
+                    if (res != null)
+                        spec.damageType = res;
+                    else
+                        Log.LogWarning(
+                            fileName + ": slam \"damageType\": '" + type +
+                            "' is not a resource this game has. Using the " +
+                            "weapon's own damage type.");
+                }
+            }
+            else
+            {
+                // A bare number is the friendly form: damage per unit of
+                // closing speed, everything else default.
+                spec.damagePerSpeed = Mathf.Max(0f, (float)tok);
+            }
+
+            if (spec.damagePerSpeed <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": \"slam\" damagePerSpeed is 0, so arriving at " +
+                    "a wall would cost nothing. Use \"slam\": 1.5, or " +
+                    "{ \"damagePerSpeed\": 1.5 }.");
+                return;
+            }
+
+            ForgeSlam.Register(weapon, spec);
+
+            if (spec.hasTint)
+            {
+                Log.LogInfo(
+                    fileName + ": slam \"tint\" - anything marked wears this " +
+                    "colour for the " + spec.window.ToString("0.##") +
+                    "s window" +
+                    (spec.tintPulse > 0f
+                        ? ", throbbing " + spec.tintPulse.ToString("0.#") +
+                          " times a second so you can see the timer running out"
+                        : ", steady") +
+                    ". It MULTIPLIES over the unit's own colours and composes " +
+                    "with the \"slow\" tint rather than fighting it - two " +
+                    "strong tints do compound, so a unit that is both slowed " +
+                    "and slammable reads as doubly odd, which is the point.");
+            }
+
+            // --- is this weapon actually able to shove anything? -----------
+            var pw = weapon as ProjectileWeaponData;
+
+            float push = weapon.pushForce;
+
+            if (push <= 0f && spec.requiresPush)
+            {
+                Log.LogWarning(
+                    fileName + ": \"slam\" has \"requiresPush\" on but this " +
+                    "weapon's \"pushForce\" is 0, so nothing is ever shoved " +
+                    "and the slam can never fire at all. Either give it a " +
+                    "pushForce or turn requiresPush off - without it, marking " +
+                    "on a plain hit is the point and something ELSE does the " +
+                    "throwing. A common enemy is mass 5 with damping 6, and a " +
+                    "shove carries pushForce / (mass x damping) units, so 220 " +
+                    "moves one about 7 units. (The stock White Shotgun ships " +
+                    "pushForce 10, which is a third of a unit.)");
+            }
+            else if (push <= 0f)
+            {
+                // NOT a warning. A weapon that marks without shoving is a
+                // legitimate and interesting thing - it just needs saying out
+                // loud, because "I set slam and nothing happened" would
+                // otherwise be a mystery when the answer is "yes, and now
+                // throw them at something".
+                Log.LogInfo(
+                    fileName + ": slam - this weapon MARKS what it hits as " +
+                    "slammable (" + spec.damagePerSpeed.ToString("0.##") +
+                    " per unit of closing speed above " +
+                    spec.minSpeed.ToString("0.#") + ", for " +
+                    spec.window.ToString("0.#") + "s) but does not shove it " +
+                    "itself - \"pushForce\" is 0. That is a marker weapon, " +
+                    "and it is a real design: something else has to do the " +
+                    "throwing. A \"gravity\" well, an explosion, a tractor " +
+                    "beam, your other gun, or the enemy charging you and " +
+                    "clipping a wall all count. Add \"pushForce\" if you " +
+                    "wanted the one weapon to do both.");
+            }
+            else
+            {
+                // Said out loud in the units he will judge it in, the same way
+                // the gravity well and the heat model report themselves.
+                float perCross = push / 30f;
+
+                Log.LogInfo(
+                    fileName + ": slam - " +
+                    spec.damagePerSpeed.ToString("0.##") +
+                    " damage per unit of closing speed above " +
+                    spec.minSpeed.ToString("0.#") +
+                    (spec.maxDamage < 999f
+                        ? ", capped at " + spec.maxDamage.ToString("0.#")
+                        : "") +
+                    ", for " + spec.window.ToString("0.#") +
+                    "s after being shoved" +
+                    (spec.hitsUnits
+                        ? ", and crashing into another unit counts" +
+                          (spec.hitsPlayer ? " INCLUDING YOU" : "")
+                        : ", terrain only") +
+                    ". pushForce " + push.ToString("0.#") +
+                    " carries a common enemy about " +
+                    perCross.ToString("0.#") + " units (mass 5 x damping 6), " +
+                    "so aim it at something close." +
+                    (spec.requiresPush
+                        ? " \"requiresPush\" is on, so ONLY a hit that shoves " +
+                          "marks them."
+                        : " Any hit from this weapon marks them, whether or " +
+                          "not the shove landed - so a gravity well, a blast " +
+                          "or your other gun can be what throws them."));
+            }
+
+            if (pw != null && pw.piercingData.enabled)
+            {
+                Log.LogWarning(
+                    fileName + ": \"slam\" with PIERCING on - and a piercing " +
+                    "shot NEVER PUSHES ANYTHING. The projectile code returns " +
+                    "out of the hit early when piercing is enabled, and the " +
+                    "knockback line sits below that return, so the two are " +
+                    "mutually exclusive. Turn \"piercingData\".enabled off (or " +
+                    "drop \"pierceLimit\") for a shove weapon.");
+            }
+
+            if (pw != null && pw.usePhysics)
+            {
+                Log.LogInfo(
+                    fileName + ": slam on a LOBBED weapon - worth knowing that " +
+                    "a physics shot pushes on EVERY collision it has, with no " +
+                    "repeat delay at all, so a bomb that rolls along a line of " +
+                    "enemies shoves each one.");
+            }
+
+            if (spec.hitsPlayer)
+            {
+                Log.LogWarning(
+                    fileName + ": slam \"hitsPlayer\" is on, so an enemy flung " +
+                    "into YOUR hull hurts you as well as it. That is a real " +
+                    "way to play it, but it is off by default for a reason.");
+            }
+        }
+
+        // "fade": a shot that eases in at the muzzle and out as it dies.
+        //
+        // Nothing in the game does this - every ammo prefab is a SpriteRenderer
+        // at full alpha for its whole life which then simply disappears. Asked
+        // for by name ("if there isn't a way to add a physic and non physic
+        // projectile fade, id like to add that feature"), so it deliberately
+        // covers BOTH projectile classes.
+        //
+        //   "fade": 0.15                     - both ends, 0.15s each
+        //   "fade": { "in": 0.1, "out": 0.4 } - separately
+        //
+        // The fade-out needs to know when the shot ENDS, and the two classes
+        // answer that differently - a plain shot from its range or lifetime, a
+        // lobbed one from its lifetime alone, because `rangeData` is inert on a
+        // lobbed shot. A shot with neither gets `assumeLife` or no fade-out at
+        // all, said out loud rather than guessed at.
+        private static void ApplyFade(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken tok = root["fade"];
+
+            if (tok == null || tok.Type == JTokenType.Null)
+                return;
+
+            float fadeIn, fadeOut, assume;
+            bool everything;
+
+            var o = tok as JObject;
+
+            if (o != null)
+            {
+                if (!((bool?)o["enabled"] ?? true))
+                    return;
+
+                fadeIn = Mathf.Max(0f, (float?)o["in"] ?? 0f);
+                fadeOut = Mathf.Max(0f, (float?)o["out"] ?? 0f);
+                assume = Mathf.Max(0f, (float?)o["assumeLife"] ?? 0f);
+                everything = (bool?)o["trail"] ?? true;
+
+                // SAY IT IN UNITS INSTEAD, because units are what you can see.
+                //
+                // The field is in SECONDS and stays that way - it is the honest
+                // unit for a thing driven by a clock, and a lobbed shot has no
+                // meaningful speed to convert through. But R13 test 144 was the
+                // second time in three rounds that a fade was reported as
+                // absent when it was working, and both times the cause was the
+                // author picking a number of seconds whose DISTANCE was wrong.
+                // The build log already prints the conversion; doing the
+                // conversion for him removes the step entirely.
+                float inUnits = Mathf.Max(0f, (float?)o["inUnits"] ?? 0f);
+                float outUnits = Mathf.Max(0f, (float?)o["outUnits"] ?? 0f);
+
+                if (inUnits > 0f || outUnits > 0f)
+                {
+                    var pwu = weapon as ProjectileWeaponData;
+                    float sp = (pwu != null) ? pwu.projectileSpeed : 0f;
+
+                    if (sp <= 0.01f)
+                    {
+                        Log.LogWarning(
+                            fileName + ": fade \"inUnits\"/\"outUnits\" need a " +
+                            "projectileSpeed to convert into seconds, and this " +
+                            "weapon's is " + sp.ToString("0.##") + ". Use " +
+                            "\"in\" and \"out\" (seconds) instead. Ignored.");
+                    }
+                    else
+                    {
+                        if (inUnits > 0f)
+                            fadeIn = inUnits / sp;
+
+                        if (outUnits > 0f)
+                            fadeOut = outUnits / sp;
+
+                        Log.LogInfo(
+                            fileName + ": fade given in UNITS - " +
+                            (inUnits > 0f
+                                ? "in over " + inUnits.ToString("0.#") +
+                                  " units = " + fadeIn.ToString("0.###") + "s"
+                                : "") +
+                            (inUnits > 0f && outUnits > 0f ? ", " : "") +
+                            (outUnits > 0f
+                                ? "out over " + outUnits.ToString("0.#") +
+                                  " units = " + fadeOut.ToString("0.###") + "s"
+                                : "") +
+                            " at projectileSpeed " + sp.ToString("0.##") +
+                            ". Note this is fixed at BUILD time: a module that " +
+                            "changes the speed later will not re-scale it.");
+                    }
+                }
+            }
+            else
+            {
+                // A bare number is the friendly form: the same fade at both
+                // ends, which is what "fade" means to most people.
+                float both = Mathf.Max(0f, (float)tok);
+                fadeIn = both;
+                fadeOut = both;
+                assume = 0f;
+                everything = true;
+            }
+
+            if (fadeIn <= 0f && fadeOut <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": \"fade\" is 0 at both ends, so it does " +
+                    "nothing. Use \"fade\": 0.2, or " +
+                    "{ \"in\": 0.1, \"out\": 0.4 }.");
+                return;
+            }
+
+            var pw = weapon as ProjectileWeaponData;
+
+            if (!ProjectileTargetOk(pw, "\"fade\"", fileName, true, null))
+                return;
+
+            GameObject source = pw.usePhysics
+                ? (pw.physicsProjectilePrefab != null
+                    ? pw.physicsProjectilePrefab.gameObject : null)
+                : (pw.projectilePrefab != null
+                    ? pw.projectilePrefab.gameObject : null);
+
+            if (source == null)
+                return;
+
+            GameObject clone = VisualCustomizer.ClonePrefab(source);
+
+            if (clone == null)
+                return;
+
+            // On the projectile's OWN GameObject, not the clone root. The
+            // Projectile component sits on the root of all 51 stock ammo
+            // prefabs, but ClonePrefab parents the clone under a holder, so
+            // going through the component is what keeps this correct if a
+            // prefab ever differs.
+            Component comp = pw.usePhysics
+                ? (Component)clone.GetComponentInChildren<PhysicsProjectile>(true)
+                : clone.GetComponentInChildren<Projectile>(true);
+
+            if (comp == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"fade\" - no projectile component on the " +
+                    "prefab. Ignored.");
+                UnityEngine.Object.Destroy(clone);
+                return;
+            }
+
+            var fade = comp.gameObject.GetComponent<ForgeFade>();
+
+            if (fade == null)
+                fade = comp.gameObject.AddComponent<ForgeFade>();
+
+            fade.inSeconds = fadeIn;
+            fade.outSeconds = fadeOut;
+            fade.everything = everything;
+            fade.assumeLife = assume;
+
+            if (pw.usePhysics)
+                pw.physicsProjectilePrefab = (PhysicsProjectile)comp;
+            else
+                pw.projectilePrefab = (Projectile)comp;
+
+            // Can this weapon's shots even reach their fade-out?
+            bool bounded =
+                pw.lifetimeData.enabled ||
+                (!pw.usePhysics && pw.rangeData.enabled);
+
+            Log.LogInfo(
+                fileName + ": fade - " +
+                (fadeIn > 0f ? "in over " + fadeIn.ToString("0.##") + "s" : "") +
+                (fadeIn > 0f && fadeOut > 0f ? ", " : "") +
+                (fadeOut > 0f ? "out over " + fadeOut.ToString("0.##") + "s" : "") +
+                (everything
+                    ? ", trail and glow included"
+                    : ", the bullet sprite only") + ".");
+
+            if (fadeOut > 0f && !bounded && assume <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": fade \"out\" needs to know when the shot " +
+                    "ENDS, and this weapon has no lifetimeData" +
+                    (pw.usePhysics
+                        ? " (and \"rangeData\" is completely inert on a " +
+                          "lobbed shot - the game computes a range time for one " +
+                          "and then never reads it again)"
+                        : " and no rangeData") +
+                    ", so nothing bounds it. The fade-IN still works. Add a " +
+                    "\"lifetimeData\" or a fade \"assumeLife\" to get the " +
+                    "fade-out.");
+            }
+
+            // SAY IT IN UNITS OF TRAVEL, NOT JUST SECONDS - because distance is
+            // what decides whether the fade is on screen to be seen.
+            //
+            // R12 test 27 was reported as "fade is still not working correctly"
+            // on a weapon where it was working exactly as written: speed 10,
+            // lifetime 8s, in 3s / out 3s. The per-frame instrument confirmed
+            // the alpha was being applied and read back correctly. But 3
+            // seconds of fade-in at speed 10 is THIRTY UNITS of travel before
+            // the shot is at full brightness, and the camera shows nothing like
+            // thirty units - so the bullet is faint for its whole time on
+            // screen and reads as broken.
+            //
+            // Seconds are the honest unit for the field and I am not changing
+            // it. What was missing is that nothing told the author the number
+            // in the unit that matters. Two log lines cost nothing and would
+            // have saved the round.
+            float speed = pw.usePhysics ? 0f : pw.projectileSpeed;
+
+            if (speed > 0.01f)
+            {
+                string msg =
+                    fileName + ": fade in units of TRAVEL - at " +
+                    "projectileSpeed " + speed.ToString("0.##") + ", ";
+
+                if (fadeIn > 0f)
+                {
+                    msg += "the shot is not at full brightness until it is " +
+                           (fadeIn * speed).ToString("0.#") + " units out";
+                }
+
+                if (fadeIn > 0f && fadeOut > 0f)
+                    msg += ", and ";
+
+                if (fadeOut > 0f)
+                {
+                    msg += "the fade-out covers the last " +
+                           (fadeOut * speed).ToString("0.#") + " units of " +
+                           "its flight";
+                }
+
+                msg += ". Compare that with how much of the room you can see: " +
+                       "a fade measured in tens of units happens off screen.";
+
+                Log.LogInfo(msg);
+
+                // THE FRACTION OF ITS OWN FLIGHT, which is the test the
+                // absolute one below misses.
+                //
+                // R13 test 144 slipped through: at projectileSpeed 4 a
+                // 3-second fade-in is only 12 units, well under the 20 that
+                // triggers the warning below - but the shot's whole life was 8
+                // seconds, so the fade-in ate 37% of it and the bullet was
+                // never brighter than dim for most of what he could see. A
+                // SLOW shot makes an absolute-distance check quieter and the
+                // actual problem worse, which is exactly backwards.
+                //
+                // So there are two independent failure modes and they need two
+                // tests: the fade being longer than the ROOM (absolute), and
+                // the fade being most of the FLIGHT (proportional).
+                float life = 0f;
+
+                if (pw.lifetimeData.enabled)
+                    life = pw.lifetimeData.time;
+
+                if (pw.rangeData.enabled && speed > 0.01f)
+                {
+                    float byRange = pw.rangeData.range / speed;
+
+                    if (pw.rangeData.slowDown)
+                        byRange *= 2f;
+
+                    life = (life > 0f) ? Mathf.Min(life, byRange) : byRange;
+                }
+
+                if (life <= 0f)
+                    life = assume;
+
+                if (life > 0f && fadeIn > 0f && fadeIn / life > 0.3f)
+                {
+                    Log.LogWarning(
+                        fileName + ": fade \"in\" of " +
+                        fadeIn.ToString("0.##") + "s is " +
+                        (100f * fadeIn / life).ToString("0") + "% OF THE " +
+                        "SHOT'S WHOLE LIFE (" + life.ToString("0.##") +
+                        "s), so it spends most of its flight dimmer than half " +
+                        "brightness. That reads as a faint bullet rather than " +
+                        "as one fading in - and it gets worse, not better, on " +
+                        "a slow shot. Try " +
+                        (life * 0.15f).ToString("0.##") + "s. Also note the " +
+                        "shot DIES ON CONTACT unless " +
+                        "\"impactBehaviour\": { \"enabled\": false }, so its " +
+                        "real life in a fight is shorter than " +
+                        life.ToString("0.##") + "s - watch the log for the " +
+                        "\"fade AT DEATH\" line, which measures what actually " +
+                        "happened.");
+                }
+
+                // The fade-in alone eating most of a visible flight is the
+                // specific shape that got reported as a bug.
+                if (fadeIn * speed > 20f)
+                {
+                    Log.LogWarning(
+                        fileName + ": fade \"in\": " +
+                        fadeIn.ToString("0.##") + "s at projectileSpeed " +
+                        speed.ToString("0.##") + " means the shot spends its " +
+                        "first " + (fadeIn * speed).ToString("0.#") +
+                        " units fading UP from invisible - almost certainly " +
+                        "further than you can see. It will look like a dim " +
+                        "bullet that never appears rather than one that fades " +
+                        "in. Either shorten \"in\" or slow the shot down.");
+                }
+            }
+        }
+
+        // Make a minion spawner behave like a PLAYER weapon.
+        //
+        // THE NUMBERS, because they are the whole reason this exists. Every one
+        // of the game's minion-spawner assets is a BOSS ATTACK, and they all
+        // ship the same shape:
+        //
+        //   Weapon Minion CrossSmallCaps   fireRate 0.2  warmup 2  burst 4
+        //   Weapon Minion Cross Red        fireRate 0.2  warmup 2  burst 4
+        //   Weapon_Minion_CrossQueen       fireRate 0.2  warmup 2  burst 4
+        //   Weapon Minion CrossRedBomber   fireRate 0.2  warmup 2  burst 1
+        //
+        // plus `angleVariance` 10-30 and `projectileSpeed` 60 with a variance
+        // of 40. Read that as a player weapon: hold the trigger, wait TWO
+        // SECONDS while nothing happens, get four minions at once flung out at
+        // 20-100 units/s in a 60-degree cone, then wait five seconds for the
+        // next lot. Which is exactly what was reported - "it takes like 4
+        // seconds to shoot them out, a TON of them", "an insane charge time",
+        // "I dont think im able to change those firing settings".
+        //
+        // AND THE SETTINGS WERE REACHING THE GAME ALL ALONG. `warmupTime` was
+        // the missing one: it is the game's minigun spin-up, `Shooter.Update`
+        // gates every shot on `IsWarmedUp`, and no file ever set it - so a
+        // template value of 2 stood. The other three only looked ignored
+        // because a file that mentions `fireRate` still inherits `burstSize 4`
+        // and `warmupTime 2` from the template, and the delay dominates.
+        //
+        // So: anything the file does NOT mention gets a player-weapon value,
+        // once, with the change stated in the log. Anything it DOES mention is
+        // left exactly as asked - including a deliberate 2-second spin-up.
+        private static void TameSpawner(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            var pw = weapon as MinionSpawnerWeaponData;
+
+            if (pw == null)
+                return;
+
+            var w = root["weapon"] as JObject;
+            var changes = new List<string>();
+
+            // warmupTime: the one nobody knew about, and the one that mattered
+            // most. Zero is right for a player weapon; a spin-up is a choice.
+            if (!Mentions(w, "warmupTime") && pw.warmupTime > 0f)
+            {
+                changes.Add(
+                    "warmupTime " + pw.warmupTime.ToString("0.##") +
+                    " -> 0 (that is a spin-up: the game refuses to fire at all " +
+                    "until you have held the trigger that long)");
+
+                pw.warmupTime = 0f;
+            }
+
+            // burstSize: minions per pull is burstSize x projectileCount, so 4
+            // here is four minions a click before any cap is consulted.
+            if (!Mentions(w, "burstSize") && pw.burstSize > 1)
+            {
+                changes.Add(
+                    "burstSize " + pw.burstSize + " -> 1 (that many minions " +
+                    "came out per click)");
+
+                pw.burstSize = 1;
+            }
+
+            // fireRate is shots per SECOND, so 0.2 is one pull every 5s.
+            if (!Mentions(w, "fireRate") && pw.fireRate > 0f && pw.fireRate < 0.5f)
+            {
+                changes.Add(
+                    "fireRate " + pw.fireRate.ToString("0.###") + " -> 1 (it is " +
+                    "shots per SECOND, so " + pw.fireRate.ToString("0.###") +
+                    " meant one pull every " +
+                    (1f / pw.fireRate).ToString("0.#") + "s)");
+
+                pw.fireRate = 1f;
+            }
+
+            // A 30-degree scatter is how a boss sprays a room. Aiming a swarm
+            // gun should send minions where you pointed.
+            if (!Mentions(w, "angleVariance") && pw.angleVariance > 5f)
+            {
+                changes.Add(
+                    "angleVariance " + pw.angleVariance.ToString("0.#") +
+                    " -> 0 (they were thrown in a " +
+                    (pw.angleVariance * 2f).ToString("0.#") + "-degree cone)");
+
+                pw.angleVariance = 0f;
+            }
+
+            // Speed variance above the speed itself means some minions come out
+            // backwards. Clamp it to the speed rather than zeroing it - a
+            // little spread is what makes a swarm look alive.
+            if (!Mentions(w, "projectileSpeedVariance") &&
+                pw.projectileSpeedVariance > pw.projectileSpeed * 0.5f &&
+                pw.projectileSpeed > 0f)
+            {
+                float was = pw.projectileSpeedVariance;
+                pw.projectileSpeedVariance = pw.projectileSpeed * 0.25f;
+
+                changes.Add(
+                    "projectileSpeedVariance " + was.ToString("0.#") + " -> " +
+                    pw.projectileSpeedVariance.ToString("0.#") +
+                    " (it was more than half the speed, so some came out barely " +
+                    "moving)");
+            }
+
+            if (changes.Count == 0)
+                return;
+
+            Log.LogInfo(
+                fileName + ": minion spawner tamed - " +
+                string.Join("; ", changes.ToArray()) + ". Every one of the " +
+                "game's minion spawners is a BOSS attack and these are its " +
+                "values; a file that does not mention them inherits them. Set " +
+                "any of them yourself and yours is used instead, untouched.");
+        }
+
+        // "spawner": OUR OWN SPAWNER WEAPON - the opt-in that finishes the job
+        // TameSpawner starts.
+        //
+        //   "spawner": true
+        //   "spawner": { "enabled": true, "perShot": 3 }
+        //
+        // WHY THIS IS OPT-IN AND TameSpawner IS NOT. TameSpawner fixes the five
+        // values that make a spawner look BROKEN - a two-second wind-up, four
+        // minions a click, a pull every five seconds, a 30-degree scatter, and a
+        // speed variance so wide some minions come out backwards. Those are not
+        // choices anyone made, so they are corrected for everybody.
+        //
+        // The three below are different: they are legitimate boss settings that
+        // merely make a poor PLAYER weapon. A hard 60 unit/second throw is right
+        // for a Queen flinging larvae across an arena; free spawns are right for
+        // something that is not paying your resource bar. Changing those under a
+        // file that never asked would be rewriting a weapon someone tuned - so
+        // they move only when a file says "this is a player weapon".
+        //
+        // NOTE ON WHAT IS DELIBERATELY NOT HERE. There is no "speed", "cost" or
+        // "spread" key in this block, and that is the point: they already exist
+        // in "weapon" and a second spelling for the same field is how a builder
+        // page and a parser drift apart. This block only says WHICH DEFAULTS
+        // APPLY. Everything is still tuned in "weapon".
+        private static void ApplySpawner(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["spawner"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var o = token as JObject;
+
+            if (o == null)
+            {
+                if (token.Type != JTokenType.Boolean || !(bool)token)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"spawner\" should be true or an object " +
+                        "- ignored.");
+                    return;
+                }
+            }
+            else if (!((bool?)o["enabled"] ?? true))
+            {
+                return;
+            }
+
+            var pw = weapon as MinionSpawnerWeaponData;
+
+            if (pw == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"spawner\" only applies to a minion-spawner " +
+                    "weapon, and this template is not one. Pick a spawner " +
+                    "template (the builder page lists them) and set " +
+                    "\"weapon\".minionPrefab. Ignored.");
+                return;
+            }
+
+            var w = root["weapon"] as JObject;
+            var changes = new List<string>();
+
+            // 60 units/second is a boss hurling larvae across an arena. A
+            // player spawner wants them to arrive where you pointed and still
+            // be there - 14 is a brisk lob that clears the ship without
+            // launching them into the next room.
+            if (!Mentions(w, "projectileSpeed") && pw.projectileSpeed > 25f)
+            {
+                changes.Add(
+                    "projectileSpeed " + pw.projectileSpeed.ToString("0.#") +
+                    " -> 14 (they were being thrown, not placed)");
+
+                pw.projectileSpeed = 14f;
+
+                // The variance is a fraction of the old speed and would now be
+                // most of the new one. TameSpawner already clamped the worst
+                // case; this keeps the ratio sane after the speed moves.
+                if (!Mentions(w, "projectileSpeedVariance") &&
+                    pw.projectileSpeedVariance > 3.5f)
+                {
+                    pw.projectileSpeedVariance = 3.5f;
+                }
+            }
+
+            // Every stock spawner ships cost 0, because a boss does not pay a
+            // resource bar. A free minion printer is not a weapon, it is a
+            // button you hold.
+            if (!Mentions(w, "cost") && pw.cost <= 0f)
+            {
+                changes.Add(
+                    "cost 0 -> 1 (every stock spawner is free because a boss " +
+                    "has no resource bar)");
+
+                pw.cost = 1f;
+            }
+
+            // The headline request: "the spawns spawn from the direction the
+            // players gun is facing". The LAUNCH direction was always the
+            // barrel's - MinionSpawnerWeapon.FireSingle spawns at
+            // `position + direction * BarrelLength` and sets the velocity along
+            // `direction` - but the minion itself was left pointing wherever
+            // its prefab happened to face unless this was on.
+            if (!Mentions(w, "minionFacesShootDirection") &&
+                !pw.minionFacesShootDirection)
+            {
+                changes.Add(
+                    "minionFacesShootDirection -> true (they now come out " +
+                    "facing where you aimed)");
+
+                pw.minionFacesShootDirection = true;
+            }
+
+            // projectileCount FANS the spawn across "spread" - on a spawner it
+            // is minions per pull, not pellets. Left alone unless it is one of
+            // the odd template values.
+            if (!Mentions(w, "projectileCount") && pw.projectileCount > 1f)
+            {
+                changes.Add(
+                    "projectileCount " + pw.projectileCount.ToString("0.#") +
+                    " -> 1 (on a spawner that is minions per pull, fanned " +
+                    "across \"spread\")");
+
+                pw.projectileCount = 1f;
+            }
+
+            // The one convenience worth having, because "minions per pull =
+            // burstSize x projectileCount" is genuinely hard to hold in your
+            // head - and getting it wrong fills the whole cap in one click,
+            // which looks exactly like a broken cap.
+            //
+            // It sets projectileCount rather than burstSize so they arrive
+            // TOGETHER from one press rather than staggered burstDelay apart.
+            int perShot = Mathf.Clamp((int?)((o != null) ? o["perShot"] : null) ?? 0, 0, 32);
+
+            if (perShot > 0)
+            {
+                pw.projectileCount = perShot;
+                pw.burstSize = 1;
+
+                changes.Add(
+                    "perShot " + perShot + " (projectileCount " + perShot +
+                    " x burstSize 1)" +
+                    (perShot > 1 && pw.spread <= 0f
+                        ? " - they will come out on top of each other, so set " +
+                          "\"weapon\".spread to fan them"
+                        : ""));
+            }
+
+            Log.LogInfo(
+                fileName + ": \"spawner\" - player-weapon defaults" +
+                (changes.Count > 0
+                    ? ": " + string.Join("; ", changes.ToArray())
+                    : " (nothing to change - the file already set them)") +
+                ". Anything you set in \"weapon\" yourself is left alone.");
+
+            // The aim half of his request, and the half that is FREE - said out
+            // loud because it is the thing people assume is missing.
+            Log.LogInfo(
+                fileName + ": spawner aim - minions launch along the BARREL, so " +
+                "they already come out where you are pointing. On a GADGET key " +
+                "the game aims a fabricated barrel due east instead; Weapon " +
+                "Forge redirects that to your cursor.");
+        }
+
+        // Did the file's "weapon" block mention this field at all? "Absent" has
+        // to differ from "set to the template's value", or taming would
+        // overwrite a deliberate choice.
+        private static bool Mentions(JObject weaponBlock, string key)
+        {
+            if (weaponBlock == null)
+                return false;
+
+            JToken t = weaponBlock[key];
+
+            return t != null && t.Type != JTokenType.Null;
+        }
+
         private static void ApplyMinion(
             WeaponData weapon,
             JObject root,
@@ -5635,20 +8430,39 @@ namespace WeaponForge
             string side = (string)o["faction"];
             float life = Mathf.Max(0f, (float?)o["lifetime"] ?? 0f);
             int cap = Mathf.Max(0, (int?)o["cap"] ?? 0);
-            int perLevel = Mathf.Max(0, (int?)o["capPerLevel"] ?? 0);
-            bool inheritGrid = (bool?)o["inheritGrid"] ?? false;
+            // DEFAULTS TO 1 WHEN THERE IS A CAP, as of Round 10.
+            //
+            // It used to default to 0, which made the boost display lie: a
+            // BoosterCore raises the module's level and the grid draws one
+            // green up-arrow per level, but with no capPerLevel the cap never
+            // moved - so the card said "boosted, boosted, boosted" and the
+            // weapon did exactly the same thing. His words: "when we set the
+            // minion cap for the weapon it should just be set at that cap, so
+            // when we do boost the cap with a booster the display is correct."
+            //
+            // One arrow, one more minion. `"capPerLevel": 0` still opts out.
+            int perLevel = Mathf.Max(
+                0, (int?)o["capPerLevel"] ?? (cap > 0 ? 1 : 0));
+            // ON by default as of Round 10, at his request. The old default was
+            // off out of caution about cost - a cap of twenty means twenty
+            // minions each carrying a copy of your grid - but a minion that
+            // ignores the modules you built around it is the more surprising
+            // behaviour of the two. The cost is still warned about below.
+            bool inheritGrid = (bool?)o["inheritGrid"] ?? true;
             string capModeText = (string)o["capMode"];
             float lookScale = Mathf.Max(0f, (float?)o["scale"] ?? 1f);
             string colorText = (string)o["color"];
             string colorModeText = (string)o["colorMode"];
             string scaleModeText = (string)o["scaleMode"];
+            string trailColorText = (string)o["trailColor"];
 
             // Any one of these is worth registering on its own - a file may only
             // want a cap, or only a lifetime, without touching the gun.
             if (string.IsNullOrEmpty(named) && string.IsNullOrEmpty(side) &&
                 life <= 0f && cap <= 0 && !inheritGrid &&
                 string.IsNullOrEmpty(capModeText) &&
-                string.IsNullOrEmpty(colorText) && lookScale == 1f &&
+                string.IsNullOrEmpty(colorText) &&
+                string.IsNullOrEmpty(trailColorText) && lookScale == 1f &&
                 !MentionsStats(o))
             {
                 return;
@@ -5680,7 +8494,7 @@ namespace WeaponForge
 
             ReadMinionLook(
                 cfg, colorText, colorModeText, lookScale, scaleModeText,
-                fileName);
+                trailColorText, fileName);
 
             ReadMinionStats(cfg, o, fileName);
 
@@ -5806,9 +8620,14 @@ namespace WeaponForge
                 else
                 {
                     Log.LogInfo(
-                        fileName + ": minion \"capPerLevel\" is set, so a " +
-                        "BoosterCore will raise the swarm cap by " + perLevel +
-                        " per level (boostability is switched on for you).");
+                        fileName + ": minion cap " + cap + ", +" + perLevel +
+                        " per module level - so a BoosterCore raises it, and " +
+                        "the green up-arrows on the card now mean something " +
+                        "(boostability is switched on for you). One arrow, " +
+                        (perLevel == 1 ? "one more minion" :
+                         perLevel + " more minions") +
+                        ". Set \"capPerLevel\": 0 to keep the cap fixed while " +
+                        "still allowing boosts.");
                 }
             }
 
@@ -5860,6 +8679,7 @@ namespace WeaponForge
             string colorModeText,
             float scale,
             string scaleModeText,
+            string trailColorText,
             string fileName)
         {
             cfg.colorMode = ForgeMinionLook.ParseColorMode(colorModeText);
@@ -5885,6 +8705,55 @@ namespace WeaponForge
                     " - applied to the prefab's \"Visual\" subtree only, so " +
                     "the AI's own state-indicator sprites (Idle / Aggro / Seek " +
                     "/ Regroup) keep their colours.");
+            }
+
+            // The movement smear. A separate key from "color" because the body
+            // and the streak are genuinely separate choices - a red drone with
+            // a cyan trail is a reasonable thing to want.
+            if (!string.IsNullOrEmpty(trailColorText))
+            {
+                string t = trailColorText.Trim();
+
+                if (t.Equals("match", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.Equals("body", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.Equals("same", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    if (cfg.hasColor)
+                    {
+                        cfg.trailMatchesBody = true;
+
+                        Log.LogInfo(
+                            fileName + ": minion trail follows the body " +
+                            "colour.");
+                    }
+                    else
+                    {
+                        // "match" with nothing to match is the one way this
+                        // key can silently do nothing, so it gets named.
+                        Log.LogWarning(
+                            fileName + ": minion \"trailColor\": \"match\" " +
+                            "needs a \"color\" to follow, and none was set - " +
+                            "the trail keeps the prefab's own colour. Set " +
+                            "\"color\", or give \"trailColor\" a colour of " +
+                            "its own.");
+                    }
+                }
+                else
+                {
+                    Color tc = cfg.trailColor;
+
+                    if (ReadColor(t, "minion \"trailColor\"", fileName, ref tc))
+                    {
+                        cfg.trailColor = tc;
+                        cfg.hasTrailColor = true;
+
+                        Log.LogInfo(
+                            fileName + ": minion trail painted - the little " +
+                            "streak it leaves as it moves. Stock colours are " +
+                            "themed per drone (Caps orange, Electron cyan, " +
+                            "Purple and Phantom violet, Suicide red).");
+                    }
+                }
             }
 
             if (cfg.scale != 1f)
@@ -5979,6 +8848,55 @@ namespace WeaponForge
                             "shield has nothing to spend and will do nothing. " +
                             "Add it under \"resources\".");
                     }
+
+                    // ---- the art ------------------------------------------
+                    cfg.shieldShow = (bool?)shield["show"];
+                    cfg.shieldSize =
+                        Mathf.Clamp((float?)shield["size"] ?? 4f, 0.1f, 40f);
+
+                    string shieldTint = (string)shield["color"];
+
+                    if (!string.IsNullOrEmpty(shieldTint))
+                    {
+                        Color sc = Color.white;
+
+                        if (ReadColor(shieldTint, "minion shield \"color\"",
+                                      fileName, ref sc))
+                        {
+                            cfg.shieldColor = sc;
+                            cfg.hasShieldColor = true;
+                        }
+                    }
+
+                    // FOUR OF THE EIGHT RESOURCES HAVE AN INVISIBLE SHIELD,
+                    // and it is deliberate rather than an oversight: the game
+                    // ships shield modules for Caps, Electron, Purple and Tech
+                    // only, so White, Fuel, Health and Money were never given
+                    // a shieldColor and sit at rgba(0,0,0,0).
+                    //
+                    // Worth naming, because it fails in the most confusing way
+                    // available - the shield absorbs damage perfectly and
+                    // draws nothing, which reads as "the art is broken".
+                    if (!cfg.hasShieldColor &&
+                        res.shieldColor.a <= 0.001f)
+                    {
+                        Log.LogWarning(
+                            fileName + ": minion \"shield\" uses " + res.name +
+                            ", and that resource has no shield colour of its " +
+                            "own (the game only draws shields for Caps, " +
+                            "Electron, Purple and Tech). It will absorb " +
+                            "damage correctly and be COMPLETELY INVISIBLE. " +
+                            "Set \"color\" on the shield to paint it, or use " +
+                            "one of those four resources.");
+                    }
+
+                    if (cfg.shieldShow == false && cfg.hasShieldColor)
+                    {
+                        Log.LogWarning(
+                            fileName + ": minion \"shield\" sets a \"color\" " +
+                            "but also \"show\": false, so the bubble is " +
+                            "hidden and the colour can never be seen.");
+                    }
                 }
             }
 
@@ -5991,8 +8909,78 @@ namespace WeaponForge
             if (cfg.lifetime > 0f)
                 cfg.fuelForLifetime = (bool?)o["extendFuel"] ?? true;
 
-            cfg.hurtsOwner = (bool?)o["hurtsOwner"] ?? true;
-            cfg.hurtsAllies = (bool?)o["hurtsAllies"] ?? true;
+            // FALSE by default now - see ForgeMinion.Config. The old default
+            // of true was not a choice, it was the only thing that worked.
+            cfg.hurtsOwner = (bool?)o["hurtsOwner"] ?? false;
+            cfg.hurtsAllies = (bool?)o["hurtsAllies"] ?? false;
+
+            // Physics, not damage - see ForgeMinionSolid. Defaults to solid,
+            // which is what the game does.
+            cfg.solidToOwner = (bool?)o["solidToOwner"] ?? true;
+
+            // ---- being able to fight for the side it is on ---------------
+            //
+            // All three default ON because all three are fixing something
+            // that was broken, not adding a behaviour. See
+            // ForgeMinionAllegiance and ForgeMinionEscort.
+            cfg.seeEverything = (bool?)o["seek"] ??
+                                (bool?)o["seeEnemies"] ?? true;
+
+            cfg.friendlyShots = (bool?)o["friendlyShots"] ?? true;
+
+            bool? followAsked = (bool?)o["follow"];
+            cfg.follow = followAsked ?? true;
+            cfg.followSet = followAsked.HasValue;
+            cfg.followSpeed = Mathf.Max(0f, (float?)o["followSpeed"] ?? 0f);
+            cfg.followDelay = Mathf.Max(0f, (float?)o["followDelay"] ?? 0.6f);
+
+            // ---- the other stance: hold ground ---------------------------
+            //
+            // Opt-in, and mutually exclusive with the escort. See
+            // ForgeMinionHold. The `set` flag is kept because it is the only way
+            // to tell "hold, and I know what follow does" from a file that
+            // simply never mentioned either.
+            bool? holdAsked = (bool?)o["hold"];
+            cfg.hold = holdAsked ?? false;
+            cfg.holdSet = holdAsked.HasValue;
+
+            // A post narrower than the creature standing in it is a unit
+            // vibrating on a point, so there is a floor. Warned rather than
+            // silently corrected, because a 0 here reads as "no radius" and
+            // would otherwise look like the feature ignoring the key.
+            float radiusAsked = (float?)o["holdRadius"] ?? 8f;
+            cfg.holdRadius = Mathf.Max(1f, radiusAsked);
+            cfg.holdDelay = Mathf.Max(0f, (float?)o["holdDelay"] ?? 0.6f);
+            cfg.holdSpeed = Mathf.Max(0f, (float?)o["holdSpeed"] ?? 0f);
+
+            if (cfg.hold && radiusAsked < 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": minion \"holdRadius\": " +
+                    radiusAsked.ToString("0.##") + " is smaller than the " +
+                    "things standing in it, which would leave them shuffling " +
+                    "on a single point. Raised to 1. A post is a patch of " +
+                    "ground to mill around in, not a peg.");
+            }
+
+            HoldBlurb(cfg, fileName);
+
+            AllegianceBlurb(cfg, fileName);
+
+            // BEFORE the HasStats gate below, deliberately: a comfort setting
+            // like this is most likely on a minion with no stat overrides at
+            // all, and the blast-safety line further down is inside that gate
+            // and therefore silent for exactly those files.
+            if (!cfg.solidToOwner)
+            {
+                Log.LogInfo(
+                    fileName + ": minion \"solidToOwner\": false - your own " +
+                    "minions will pass through the ship instead of shoving it. " +
+                    "This is a COLLISION switch, not a damage one: they still " +
+                    "block enemies, still hit terrain, and you can still shoot " +
+                    "them. Look for the collider-pair count once the first one " +
+                    "spawns.");
+            }
 
             if (!cfg.HasStats)
                 return;
@@ -6013,9 +9001,130 @@ namespace WeaponForge
                     (!cfg.hurtsOwner ? "you are" : "") +
                     (!cfg.hurtsOwner && !cfg.hurtsAllies ? " and " : "") +
                     (!cfg.hurtsAllies ? "its allies are" : "") +
-                    " immune to its explosions. The game itself has no owner " +
-                    "filter on explosions at all, so this is a filter of ours.");
+                    " immune to its explosions. This is now the DEFAULT. The " +
+                    "game has no owner filter on explosions at all, so this " +
+                    "is a filter of ours - and until 2026-09-02 it could not " +
+                    "run on a DEATH explosion, because ExplosionComponent " +
+                    "never gives its blast an owner and the filter needs one. " +
+                    "That is fixed, which is what makes this switch real.");
             }
+
+            // SAY IT LOUDLY WHEN SOMEBODY OPTS BACK IN, because this used to
+            // be the only behaviour and is now the unusual one.
+            if (cfg.hurtsOwner || cfg.hurtsAllies)
+            {
+                Log.LogWarning(
+                    fileName + ": minion " +
+                    (cfg.hurtsOwner ? "\"hurtsOwner\": true" : "") +
+                    (cfg.hurtsOwner && cfg.hurtsAllies ? " and " : "") +
+                    (cfg.hurtsAllies ? "\"hurtsAllies\": true" : "") +
+                    " - its explosions CAN hurt " +
+                    (cfg.hurtsOwner ? "you" : "") +
+                    (cfg.hurtsOwner && cfg.hurtsAllies ? " and " : "") +
+                    (cfg.hurtsAllies ? "its own swarm" : "") +
+                    ". That is a real design - a swarm you have to keep clear " +
+                    "of - but it is no longer the default, and it now " +
+                    "genuinely happens where before it happened whatever you " +
+                    "set. Remove the key if you did not mean it.");
+            }
+        }
+
+        // Which STANCE won, and - the part worth a log line - what the other one
+        // would have done. `follow` and `hold` are opposite answers to one
+        // question, and a file that sets both is asking for something that
+        // cannot happen, so the resolution has to be stated rather than left to
+        // be discovered by watching a minion sit between two points.
+        private static void HoldBlurb(ForgeMinion.Config cfg, string fileName)
+        {
+            if (!cfg.hold)
+            {
+                // Nothing to say for the default stance - the allegiance blurb
+                // below already covers a deliberate "follow": false.
+                return;
+            }
+
+            Log.LogInfo(
+                fileName + ": minion \"hold\": true - these keep to a POST " +
+                "rather than to you, " + cfg.holdRadius.ToString("0.##") +
+                " units across, stamped " + cfg.holdDelay.ToString("0.##") +
+                "s after each one spawns. That delay is deliberate: a spawner " +
+                "THROWS its minions, so the post you meant is where the throw " +
+                "lands, not the barrel it left. Inside the post they behave " +
+                "completely normally - they wander, charge, ram and shoot; " +
+                "outside it their own steering is suspended and they walk back " +
+                "on their own legs, which is why a held Larva is still " +
+                "dangerous instead of being a statue. They will NOT chase " +
+                "something out of the post, and they will not come to you.");
+
+            if (cfg.followSet && cfg.follow)
+            {
+                Log.LogWarning(
+                    fileName + ": minion has BOTH \"follow\": true and " +
+                    "\"hold\": true, and they are opposite stances - keep to " +
+                    "me, or keep to a spot. HOLD WINS and the escort stands " +
+                    "down. Running both would lean one body toward two " +
+                    "different points and leave the minion sitting on the line " +
+                    "between them. Remove whichever you did not mean.");
+            }
+
+            if (cfg.followSpeed > 0f || cfg.followDistance.set || cfg.leash.set)
+            {
+                Log.LogWarning(
+                    fileName + ": minion \"hold\" is on, so \"followSpeed\", " +
+                    "\"followDistance\" and \"leash\" have nothing to tune - " +
+                    "all three are about keeping station on YOU. Use " +
+                    "\"holdRadius\" for how far it may roam from its post and " +
+                    "\"holdSpeed\" for the walk home. (holdSpeed only matters " +
+                    "on a minion with no mover of its own; everything else " +
+                    "walks back at its own speed, which is the point.)");
+            }
+        }
+
+        // Say what was done about the three things that stopped a minion
+        // fighting for the side it is on - and, more usefully, say it when one
+        // has been switched OFF, because then the old behaviour is back and
+        // "my minion just drifts" needs a line in the log pointing at the
+        // switch that caused it.
+        private static void AllegianceBlurb(
+            ForgeMinion.Config cfg, string fileName)
+        {
+            var off = new List<string>();
+
+            if (!cfg.seeEverything)
+            {
+                off.Add(
+                    "\"seek\": false - it keeps the ONE layer its prefab was " +
+                    "built to watch, so on any side but its original it will " +
+                    "never find a target");
+            }
+
+            if (!cfg.friendlyShots)
+            {
+                off.Add(
+                    "\"friendlyShots\": false - its own gun keeps firing on the " +
+                    "enemy projectile layer, which can hit YOU and not the " +
+                    "things it is shooting at");
+            }
+
+            // Skipped when `hold` is on: not following you is the whole point
+            // of that stance, and HoldBlurb has already said so at length.
+            // Reporting it here as well would read as a warning about the very
+            // thing the file asked for.
+            if (!cfg.follow && !cfg.hold)
+            {
+                off.Add(
+                    "\"follow\": false - only the five drone prefabs have a " +
+                    "follow AI state, so anything else will not come back to you");
+            }
+
+            if (off.Count == 0)
+                return;
+
+            Log.LogWarning(
+                fileName + ": minion - " + string.Join("; ", off.ToArray()) +
+                ". That is what you asked for; it is only worth saying because " +
+                "each of these was a bug being fixed rather than a feature " +
+                "being added.");
         }
 
         // Is the thing being spawned enormous?
@@ -6101,6 +9210,7 @@ namespace WeaponForge
                 cfg.slowTurn = (bool?)slowJson["turnSpeed"] ?? true;
                 cfg.slowFire = (bool?)slowJson["fireRate"] ?? true;
                 cfg.slowKnockback = (bool?)slowJson["knockback"] ?? true;
+                cfg.slowShots = (bool?)slowJson["shots"] ?? true;
 
                 string tint = (string)slowJson["tint"];
 
@@ -6115,6 +9225,9 @@ namespace WeaponForge
                     }
                 }
 
+                cfg.tintStrength =
+                    TintStrength(slowJson as JObject, fileName, "slow", 1f);
+
                 if (cfg.amount >= 1f)
                 {
                     Log.LogWarning(
@@ -6124,12 +9237,13 @@ namespace WeaponForge
                 }
 
                 if (!cfg.slowMove && !cfg.slowTurn && !cfg.slowFire &&
-                    !cfg.slowKnockback)
+                    !cfg.slowKnockback && !cfg.slowShots)
                 {
                     Log.LogWarning(
                         fileName + ": \"slow\" has every effect switched off, " +
                         "so it does nothing. Turn one of \"move\", " +
-                        "\"turnSpeed\", \"fireRate\" or \"knockback\" back on.");
+                        "\"turnSpeed\", \"fireRate\", \"knockback\" or " +
+                        "\"shots\" back on.");
                     cfg.hasSlow = false;
                 }
             }
@@ -6246,6 +9360,7 @@ namespace WeaponForge
             if (cfg.slowTurn) on.Add("turning");
             if (cfg.slowFire) on.Add("fire rate");
             if (cfg.slowKnockback) on.Add("knockback resistance");
+            if (cfg.slowShots) on.Add("the speed of the shots it fires");
 
             return " - " + string.Join(", ", on.ToArray());
         }
@@ -6304,6 +9419,7 @@ namespace WeaponForge
             cfg.replacesAmmo = (bool?)o["replacesAmmo"] ?? false;
 
             cfg.tintMuzzle = (bool?)o["tintMuzzle"] ?? true;
+            cfg.tintStrength = TintStrength(o, fileName, "overheat", 1f);
             cfg.overheatSfx = (string)o["overheatSfx"] ?? "";
             cfg.recoverSfx = (string)o["recoverSfx"] ?? "";
             cfg.showHeat = (bool?)o["showHeat"] ?? false;
@@ -6401,6 +9517,331 @@ namespace WeaponForge
                     "Either give it a cooling rate or use \"response\": " +
                     "\"jam\", which unlocks on a timer instead.");
             }
+
+            // Overheat is a SUSTAINED-FIRE mechanic, and a release charge is
+            // the one thing that removes sustained fire: `holdFire` (on by
+            // default) means holding the trigger builds a shot instead of
+            // firing one, so the only heat this weapon can ever gain is per
+            // RELEASE. Read from the JSON rather than from the charge config, so
+            // this does not depend on which Apply ran first.
+            var charge = root["charge"] as JObject;
+
+            bool chargeOn =
+                charge != null && ((bool?)charge["enabled"] ?? true);
+
+            if (chargeOn && cfg.perSecond <= 0f)
+            {
+                string mode = ((string)charge["mode"] ?? "release").Trim();
+                bool release = !mode.Equals(
+                    "auto", StringComparison.OrdinalIgnoreCase);
+                bool holdFire = (bool?)charge["holdFire"] ?? true;
+
+                if (release && holdFire)
+                {
+                    Log.LogWarning(
+                        fileName + ": overheat + charge - this weapon cannot " +
+                        "build heat by holding the trigger. \"charge\" in " +
+                        "release mode with \"holdFire\" on (the default) means " +
+                        "holding BUILDS a shot rather than firing one, so the " +
+                        "only heat it gains is one \"perShot\" per release. " +
+                        "For a gun that overheats while you lean on it, either " +
+                        "set charge \"holdFire\": false (it fires normally AND " +
+                        "gives you a charged shot on release - which is also " +
+                        "what makes \"ventShot\" feel like a reward) or give " +
+                        "overheat a \"perSecond\" so holding heats it up on its " +
+                        "own.");
+                }
+            }
+        }
+
+        // "spinUp" - sustained fire REWARDS you. The mirror of overheat.
+        private static void ApplySpinUp(
+            WeaponData weapon, JObject root, string slot, string fileName)
+        {
+            var o = root["spinUp"] as JObject;
+
+            if (o == null)
+                return;
+
+            var cfg = new ForgeSpinUp.Config();
+
+            cfg.enabled = (bool?)o["enabled"] ?? true;
+
+            if (!cfg.enabled)
+                return;
+
+            // GADGETS FIRE WITHOUT A SHOOTER, and this feature needs one twice
+            // over: the meter watches `Shooter.IsShooting` to know you are
+            // holding the trigger, and the headline reward is `FireRate`, which
+            // only `Shooter.FireRatePassed` reads. A gadget's cadence belongs to
+            // its module, so even a perfectly wound-up gadget would fire at
+            // exactly its normal speed. Refused rather than half-working, the
+            // same call overheat makes for the same reason.
+            bool isGadget =
+                !string.IsNullOrEmpty(slot) &&
+                slot.Trim().ToLowerInvariant().StartsWith("gadget");
+
+            if (isGadget)
+            {
+                Log.LogWarning(
+                    fileName + ": \"spinUp\" only works on a PRIMARY or " +
+                    "SECONDARY weapon. A gadget fires without going through " +
+                    "the Shooter, so there is no held trigger to measure - and " +
+                    "its firing cadence is owned by the module rather than by " +
+                    "the weapon's fireRate, so the main reward could not " +
+                    "arrive either. Ignored.");
+                return;
+            }
+
+            cfg.spinUpTime = Mathf.Max(0f, (float?)o["spinUpTime"] ?? 1.5f);
+            cfg.spinDownTime = Mathf.Max(0f, (float?)o["spinDownTime"] ?? 1f);
+            cfg.grace = Mathf.Max(0f, (float?)o["grace"] ?? 0.25f);
+
+            cfg.ramp = ForgeSpinUp.ParseRamp((string)o["ramp"]);
+            cfg.steps = Mathf.Clamp((int?)o["steps"] ?? 3, 1, 20);
+
+            // The five rewards. Fire rate and accuracy default ON - they are the
+            // two the feature was asked for - and the other three are off until
+            // named, so a file that only wants a faster gun says nothing about
+            // damage, pellets or cost.
+            cfg.rate = (bool?)o["rate"] ?? true;
+            cfg.fireRateAtFull = Mathf.Max(0.05f, (float?)o["fireRate"] ?? 2f);
+
+            cfg.accuracy = (bool?)o["accuracy"] ?? true;
+            cfg.accuracyAtFull =
+                Mathf.Clamp01((float?)o["accuracyAtFull"] ?? 1f);
+            cfg.spreadAtFull =
+                Mathf.Clamp((float?)o["spread"] ?? 1f, 0f, 4f);
+
+            cfg.damage = (bool?)o["damage"] ?? false;
+            cfg.damageAtFull = Mathf.Max(0f, (float?)o["damageAtFull"] ?? 1.5f);
+
+            cfg.pellets = (bool?)o["pellets"] ?? false;
+            cfg.pelletsAtFull =
+                Mathf.Clamp((float?)o["pelletsAtFull"] ?? 2f, 0.1f, 20f);
+
+            cfg.cheaper = (bool?)o["cheaper"] ?? false;
+            cfg.costAtFull = Mathf.Clamp((float?)o["costAtFull"] ?? 0.5f, 0f, 4f);
+
+            cfg.tintMuzzle = (bool?)o["tintMuzzle"] ?? true;
+            cfg.tintStrength = TintStrength(o, fileName, "spinUp", 1f);
+            cfg.showSpin = (bool?)o["showSpin"] ?? false;
+
+            string tint = (string)o["color"];
+
+            if (!string.IsNullOrEmpty(tint))
+            {
+                Color c = cfg.color;
+
+                if (ReadColor(tint, "spinUp \"color\"", fileName, ref c))
+                    cfg.color = c;
+            }
+
+            cfg.readySfx = ResolveChargeSfx(
+                (string)o["readySfx"], null, false, "spinUp \"readySfx\"",
+                fileName) ?? "";
+            cfg.stepSfx = ResolveChargeSfx(
+                (string)o["stepSfx"], null, false, "spinUp \"stepSfx\"",
+                fileName) ?? "";
+            cfg.lostSfx = ResolveChargeSfx(
+                (string)o["lostSfx"], null, false, "spinUp \"lostSfx\"",
+                fileName) ?? "";
+
+            ForgeSpinUp.Register(weapon, cfg);
+
+            SaySpinUp(weapon, root, cfg, fileName);
+        }
+
+        // THE ARITHMETIC, SAID OUT LOUD. Same lesson as the heat model and the
+        // minion firing line: a ramp is a handful of numbers that only mean
+        // anything together, and every way this feature can be configured into
+        // doing nothing produces a perfectly valid weapon with a clean log.
+        private static void SaySpinUp(
+            WeaponData weapon, JObject root, ForgeSpinUp.Config cfg,
+            string fileName)
+        {
+            var gains = new List<string>();
+
+            if (cfg.rate)
+            {
+                gains.Add(
+                    "fire rate " + weapon.fireRate.ToString("0.##") + "/s -> " +
+                    (weapon.fireRate * cfg.fireRateAtFull).ToString("0.##") +
+                    "/s");
+            }
+
+            if (cfg.accuracy)
+            {
+                if (weapon.angleVariance > 0.0001f)
+                {
+                    gains.Add(
+                        "scatter " + weapon.angleVariance.ToString("0.##") +
+                        "deg -> " +
+                        (weapon.angleVariance *
+                         (1f - cfg.accuracyAtFull)).ToString("0.##") + "deg");
+                }
+
+                if (Mathf.Abs(cfg.spreadAtFull - 1f) > 0.0001f)
+                {
+                    gains.Add(
+                        "spread " + weapon.spread.ToString("0.##") + "deg -> " +
+                        (weapon.spread * cfg.spreadAtFull).ToString("0.##") +
+                        "deg");
+                }
+            }
+
+            if (cfg.damage)
+            {
+                gains.Add(
+                    "damage " + weapon.damage.amount.ToString("0.##") + " -> " +
+                    (weapon.damage.amount * cfg.damageAtFull).ToString("0.##"));
+            }
+
+            if (cfg.pellets)
+            {
+                gains.Add(
+                    "projectiles " +
+                    weapon.projectileCount.ToString("0.##") + " -> " +
+                    Mathf.Round(weapon.projectileCount *
+                                cfg.pelletsAtFull).ToString("0.##"));
+            }
+
+            if (cfg.cheaper)
+            {
+                gains.Add(
+                    "cost " + weapon.cost.ToString("0.##") + " -> " +
+                    (weapon.cost * cfg.costAtFull).ToString("0.##"));
+            }
+
+            string reach = (cfg.spinUpTime <= 0.0001f)
+                ? "instantly"
+                : "after " + cfg.spinUpTime.ToString("0.##") +
+                  "s of sustained fire";
+
+            string fall = (cfg.spinDownTime <= 0.0001f)
+                ? "and drops to nothing the moment you stop"
+                : "and unwinds over " + cfg.spinDownTime.ToString("0.##") +
+                  "s" +
+                  (cfg.grace > 0.0001f
+                      ? " after a " + cfg.grace.ToString("0.##") +
+                        "s grace period"
+                      : " with no grace period, so tapping loses it");
+
+            Log.LogInfo(
+                fileName + ": spinUp - winds up " +
+                ForgeSpinUp.RampWord(cfg.ramp, cfg.steps) + " " + reach +
+                ", " + fall + ". At full: " +
+                (gains.Count > 0 ? string.Join(", ", gains.ToArray()) :
+                 "NOTHING - every reward is switched off") + ".");
+
+            // ---- the ways this can be configured into silence ----
+
+            if (gains.Count == 0)
+            {
+                Log.LogWarning(
+                    fileName + ": spinUp has NO REWARD switched on, so the " +
+                    "meter fills and nothing happens. \"rate\" and " +
+                    "\"accuracy\" are on by default - one of them has been set " +
+                    "to false without another being turned on.");
+            }
+
+            // THE SILENT ONE. Two of the three weapons an author would reach
+            // for when they want "inaccurate" ship angleVariance 0 - White
+            // Popper and White Shotgun - so the accuracy reward has nothing to
+            // remove on either, and a shotgun's inaccuracy is entirely its
+            // deliberate `spread`.
+            if (cfg.accuracy &&
+                weapon.angleVariance <= 0.0001f &&
+                Mathf.Abs(cfg.spreadAtFull - 1f) <= 0.0001f)
+            {
+                Log.LogWarning(
+                    fileName + ": spinUp \"accuracy\" is on but this weapon " +
+                    "has an \"angleVariance\" of 0 - there is no scatter to " +
+                    "remove, so the accuracy half does NOTHING. Most stock " +
+                    "weapons are like this (White Popper and White Shotgun " +
+                    "both are). Either give the weapon an \"angleVariance\" " +
+                    "for the spin-up to tighten, or set spinUp \"spread\" " +
+                    "below 1 to close its fan instead - which is the only " +
+                    "\"accuracy\" a shotgun has.");
+            }
+
+            if (cfg.rate && cfg.fireRateAtFull <= 1.0001f)
+            {
+                Log.LogWarning(
+                    fileName + ": spinUp \"fireRate\" is " +
+                    cfg.fireRateAtFull.ToString("0.##") + ", which is a " +
+                    "MULTIPLIER - anything at or below 1 means sustained fire " +
+                    "makes the gun slower, not quicker. Use 2 for double " +
+                    "speed. (If a penalty is what you want, that is what " +
+                    "\"overheat\" with \"response\": \"slow\" is for.)");
+            }
+
+            if (cfg.cheaper && weapon.cost <= 0.0001f)
+            {
+                Log.LogWarning(
+                    fileName + ": spinUp \"cheaper\" is on but this weapon " +
+                    "costs 0 to fire, so there is nothing to discount. Check " +
+                    "the weapon's \"cost\", and note that overheat's " +
+                    "\"replacesAmmo\" sets it to 0 deliberately.");
+            }
+
+            if (cfg.pellets && weapon.projectileCount <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": spinUp \"pellets\" is on but this weapon's " +
+                    "\"projectileCount\" is 0, and the reward is a multiplier " +
+                    "- zero times anything is still zero. A pure-melee weapon " +
+                    "(projectileCount 0) has nothing to multiply.");
+            }
+
+            // ---- and the ways it interacts with other blocks ----
+
+            var overheat = root["overheat"] as JObject;
+
+            if (overheat != null && ((bool?)overheat["enabled"] ?? true))
+            {
+                Log.LogInfo(
+                    fileName + ": spinUp + overheat on one weapon - these " +
+                    "COMPOSE rather than fight. Both publish to the same " +
+                    "fire-rate owner and multiply, so the gun winds up to its " +
+                    "best right as the heat is about to take it away. Note the " +
+                    "wind-up is LOST while it is jammed: a blocked Shooter is " +
+                    "not firing, so the meter unwinds through the lockout.");
+            }
+
+            var charge = root["charge"] as JObject;
+
+            if (charge != null && ((bool?)charge["enabled"] ?? true))
+            {
+                string mode = ((string)charge["mode"] ?? "release").Trim();
+                bool release = !mode.Equals(
+                    "auto", StringComparison.OrdinalIgnoreCase);
+                bool holdFire = (bool?)charge["holdFire"] ?? true;
+
+                if (release && holdFire)
+                {
+                    Log.LogInfo(
+                        fileName + ": spinUp + charge - holding this weapon " +
+                        "builds a shot rather than firing one (\"holdFire\" is " +
+                        "on), so the spin-up winds up during the CHARGE and " +
+                        "the released shot arrives carrying it. That works, and " +
+                        "it is worth knowing it is what you have built: the " +
+                        "reward lands on one shot rather than on a stream.");
+                }
+            }
+
+            if (weapon.warmupTime > 0.0001f)
+            {
+                Log.LogInfo(
+                    fileName + ": spinUp + a \"warmupTime\" of " +
+                    weapon.warmupTime.ToString("0.##") + "s - that is the " +
+                    "game's own minigun gate (it refuses to fire until wound " +
+                    "up) and this is a separate, softer meter. Together they " +
+                    "are a proper minigun. They differ in one way worth " +
+                    "knowing: the game's gate is ZEROED the instant you " +
+                    "release, while spinUp keeps its progress through " +
+                    "\"grace\" and then unwinds.");
+            }
         }
 
         // "rally" - reflect the same shot over and over, buffing it each time.
@@ -6408,6 +9849,1552 @@ namespace WeaponForge
         // Attaches to whichever reflector the file already has, because the
         // rally is a property of the CATCH rather than of any one feature, and
         // all three reflectors share ForgeBulletTurn.
+        // ADAPTIVE DAMAGE TYPE - each hit picks the type this victim takes
+        // worst. See ForgeAdaptive for the decoded table and the reach caveat.
+        private static void ApplyAdaptive(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["adaptive"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var cfg = new ForgeAdaptive.Config();
+            var o = token as JObject;
+
+            if (o != null)
+            {
+                if (!((bool?)o["enabled"] ?? true))
+                    return;
+
+                cfg.neverWorse = (bool?)o["neverWorse"] ?? true;
+                cfg.tint = (bool?)o["tint"] ?? true;
+                cfg.tintSeconds = Mathf.Max(0.02f, (float?)o["tintSeconds"] ?? 0.18f);
+                cfg.tintStrength =
+                    TintStrength(o, fileName, "adaptive", 1f);
+
+                // EITHER FORM. A JSON array is the documented shape, but the
+                // builder page's text box emits one comma-separated string -
+                // and so does anyone typing it by hand. Accepting both is one
+                // branch and removes a whole class of "why is my list ignored".
+                JToken types = o["types"];
+                var list = types as JArray;
+
+                if (list != null)
+                {
+                    foreach (JToken t in list)
+                    {
+                        string n = ((string)t ?? "").Trim();
+
+                        if (n.Length > 0)
+                            cfg.typeNames.Add(n);
+                    }
+                }
+                else if (types != null && types.Type == JTokenType.String)
+                {
+                    foreach (string n in ((string)types).Split(','))
+                    {
+                        string trimmed = n.Trim();
+
+                        if (trimmed.Length > 0)
+                            cfg.typeNames.Add(trimmed);
+                    }
+                }
+            }
+            else if (token.Type == JTokenType.Boolean && !(bool)token)
+            {
+                return;
+            }
+            else if (token.Type != JTokenType.Boolean)
+            {
+                Log.LogWarning(
+                    fileName + ": \"adaptive\" should be true or an object " +
+                    "with a \"types\" list. Ignored.");
+                return;
+            }
+
+            if (cfg.typeNames.Count == 0)
+                cfg.typeNames.AddRange(ForgeAdaptive.DefaultTypes);
+
+            // RESOLVE ONCE, AT BUILD TIME. Looking a Resource up per hit would
+            // put an asset scan on the damage path, and a name that is wrong is
+            // wrong forever - better to say so now than to go quiet in play.
+            var found = new System.Collections.Generic.List<Resource>();
+
+            foreach (string n in cfg.typeNames)
+            {
+                var r = JsonFieldMapper.FindAsset(typeof(Resource), n) as Resource;
+
+                if (r != null)
+                {
+                    if (!found.Contains(r))
+                        found.Add(r);
+
+                    continue;
+                }
+
+                Log.LogWarning(
+                    fileName + ": adaptive \"types\" - '" + n + "' is not a " +
+                    "resource I know, so it is dropped from the list. Names " +
+                    "look like \"Resource Electron\".");
+            }
+
+            if (found.Count == 0)
+            {
+                Log.LogWarning(
+                    fileName + ": \"adaptive\" has no usable damage types " +
+                    "left, so it can never change anything. Ignored.");
+                return;
+            }
+
+            if (found.Count == 1)
+            {
+                Log.LogWarning(
+                    fileName + ": \"adaptive\" has only ONE type to choose " +
+                    "from (" + found[0].name + "), so there is nothing to " +
+                    "adapt between - that is just \"damage\": " +
+                    "{ \"damageType\": \"" + found[0].name + "\" }.");
+            }
+
+            cfg.types = found.ToArray();
+
+            ForgeAdaptive.Register(weapon, cfg);
+            ForgeAdaptive.Describe(cfg, null, fileName);
+        }
+
+        // ADAPTIVE DAMAGE TYPE - each hit picks the type this victim takes
+        // worst. See ForgeAdaptive for the decoded table and the reach caveat.
+        // CHARM ON HIT - an enemy fights for you for a while, then goes back.
+        //
+        // See ForgeCharm for why this reuses the minion allegiance machinery
+        // rather than rediscovering it: a flipped unit needs its EYES widened
+        // or it cannot see anything, and its headbutt guarded or it eats your
+        // own minions. Both are bugs this project has already shipped once.
+        private static void ApplyCharm(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["charm"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var cfg = new ForgeCharm.Config();
+
+            if (token.Type == JTokenType.Float ||
+                token.Type == JTokenType.Integer)
+            {
+                cfg.chance = (float)token;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    if (token.Type == JTokenType.Boolean && !(bool)token)
+                        return;
+
+                    if (token.Type != JTokenType.Boolean)
+                    {
+                        Log.LogWarning(
+                            fileName + ": \"charm\" should be a chance like " +
+                            "0.25, true, or an object. Ignored.");
+                        return;
+                    }
+                }
+                else
+                {
+                    if (!((bool?)o["enabled"] ?? true))
+                        return;
+
+                    cfg.chance = (float?)o["chance"] ?? cfg.chance;
+                    cfg.seconds = Mathf.Max(0.1f, (float?)o["seconds"] ?? cfg.seconds);
+
+                    // Max(0, ...), NOT Max(1, ...). ForgeCharm.Apply has always
+                    // treated 0 as no limit (`if (cfg.max > 0)`), and this line
+                    // clamped a 0 straight back up to 1 - so the unlimited mode
+                    // existed in the engine and could not be reached from a
+                    // file. R12 asked for the option that was already there.
+                    cfg.max = Mathf.Max(0, (int?)o["max"] ?? cfg.max);
+
+                    cfg.maxTargetHealth =
+                        Mathf.Max(0f, (float?)o["maxTargetHealth"] ?? 0f);
+                    cfg.harmless = (bool?)o["harmless"] ?? true;
+                    cfg.playerCanHit = (bool?)o["playerCanHit"] ?? false;
+                    cfg.infighting = (bool?)o["infighting"] ?? false;
+                    cfg.colorPulse = (float?)o["colorPulse"] ?? cfg.colorPulse;
+                    cfg.tintStrength =
+                        TintStrength(o, fileName, "charm", cfg.tintStrength);
+
+                    string col = (string)o["color"];
+
+                    if (!string.IsNullOrEmpty(col))
+                    {
+                        cfg.hasColor = ReadColor(
+                            col, "charm \"color\"", fileName, ref cfg.color);
+                    }
+                    else
+                    {
+                        cfg.hasColor = (bool?)o["tint"] ?? true;
+                    }
+
+                    string sfx = (string)o["sfx"];
+
+                    if (!string.IsNullOrEmpty(sfx))
+                    {
+                        cfg.sfx = sfx;
+                        cfg.sfxGuid = ForgeSfxRegistry.Resolve(
+                            sfx, null, false, fileName);
+
+                        if (string.IsNullOrEmpty(cfg.sfxGuid))
+                        {
+                            Log.LogWarning(
+                                fileName + ": charm \"sfx\": '" + sfx +
+                                "' is not a sound I know, so charming will be " +
+                                "silent.");
+                        }
+                    }
+                }
+            }
+
+            // A CHANCE ABOVE 1 IS A PERCENT SIGN, same trap as execute's.
+            if (cfg.chance > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": charm \"chance\": " +
+                    cfg.chance.ToString("0.##") + " is a FRACTION, not a " +
+                    "percentage - 0.25 means 25%. Reading it as " +
+                    (cfg.chance / 100f).ToString("0.###") + ".");
+
+                cfg.chance /= 100f;
+            }
+
+            if (cfg.chance <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": charm \"chance\" is 0, so it can never " +
+                    "fire. Set one, or drop the block.");
+                return;
+            }
+
+            // A CHARMED ENEMY THAT CAN STILL SHOOT YOU IS WORSE THAN NO CHARM,
+            // and turning the guarantee off does exactly that - so it is said
+            // plainly rather than left in the docs.
+            if (!cfg.harmless)
+            {
+                Log.LogWarning(
+                    fileName + ": charm \"harmless\": false. The safety net " +
+                    "is OFF, so a charmed enemy can hurt you and your side " +
+                    "again - a contact hit, an explosion, or a shot fired in " +
+                    "the instant before the charm landed. Leave this on " +
+                    "unless you are testing that specifically.");
+            }
+
+            if (cfg.playerCanHit)
+            {
+                // Not a warning: it is exactly what was asked for. But the
+                // reach is wider than the sentence suggests, so it is said out
+                // loud rather than left in a comment.
+                Log.LogInfo(
+                    fileName + ": charm \"playerCanHit\" - your own fire " +
+                    "stops passing through a charmed unit. It works by making " +
+                    "a charmed unit of yours answer \"not a friend\" to the " +
+                    "one question the game asks before skipping a friendly " +
+                    "hit, so it ALSO makes them valid targets for this mod's " +
+                    "own homing, chain, curve beam, tractor, turret and " +
+                    "execute - all of which ask that same question. That is " +
+                    "one coherent rule rather than two contradictory ones. " +
+                    "Note a LOBBED weapon could always hit them: a physics " +
+                    "shot has no friendly-fire test at all.");
+
+                ForgeCharm.AnyPlayerCanHit = true;
+            }
+
+            if (cfg.infighting && cfg.max == 1)
+            {
+                Log.LogWarning(
+                    fileName + ": charm \"infighting\" needs more than one " +
+                    "charmed unit to mean anything, and \"max\" is 1. Raise " +
+                    "it, or set \"max\": 0 for no limit.");
+            }
+
+            if (cfg.infighting)
+            {
+                ForgeCharm.AnyInfighting = true;
+
+                // Said out loud because "they aim at each other" and "they can
+                // hurt each other" were two different features until R13, and
+                // the first one shipped without the second.
+                Log.LogInfo(
+                    fileName + ": charm \"infighting\" - charmed units are " +
+                    "written into each other's grudge lists so they PICK each " +
+                    "other as targets, and they are exempted from both of the " +
+                    "rules that would otherwise stop the shot landing: the " +
+                    "game's friendly-fire skip (they share your faction, so a " +
+                    "bullet would pass straight through) and charm's own " +
+                    "\"harmless\" guard (which cancels damage to your side, " +
+                    "and they ARE your side). The exemption is narrow - it " +
+                    "needs both units charmed by you with infighting on - so " +
+                    "they still cannot touch your ship or a minion you " +
+                    "summoned yourself.");
+            }
+
+            ForgeCharm.Register(weapon, cfg);
+            ForgeCharm.Describe(cfg, fileName);
+        }
+
+        // CHARM ON HIT - an enemy fights for you for a while, then goes back.
+        //
+        // See ForgeCharm for why this reuses the minion allegiance machinery
+        // rather than rediscovering it: a flipped unit needs its EYES widened
+        // or it cannot see anything, and its headbutt guarded or it eats your
+        // own minions. Both are bugs this project has already shipped once.
+        // WALL RIDING - a shot that follows terrain instead of ignoring it.
+        //
+        // See ForgeWallRide for the mechanism. PLAIN PROJECTILES ONLY: it steers
+        // by publishing `idealDirection`, which is a `Projectile` field. A
+        // lobbed shot is a PhysicsProjectile - a different class with no such
+        // field - and rewriting its rigidbody velocity every frame would cancel
+        // the fall and turn a grenade into a missile, which is the same reason
+        // converge solves a LAUNCH for lobbed shots rather than steering them.
+        private static void ApplyWallRide(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken tok = root["wallRide"];
+
+            if (tok == null || tok.Type == JTokenType.Null)
+                return;
+
+            var cfg = new ForgeWallRide();   // defaults, never attached
+            var o = tok as JObject;
+
+            float grab = cfg.grabRange, stand = cfg.standoff;
+            float turn = cfg.turnRate, hug = cfg.hug;
+            float speed = cfg.speedMultiplier, seconds = cfg.rideSeconds;
+            bool leave = cfg.leaveOnLostWall;
+            int sideValue = 0;
+
+            if (o != null)
+            {
+                if (!((bool?)o["enabled"] ?? true))
+                    return;
+
+                grab = Mathf.Max(0.6f, (float?)o["grabRange"] ?? grab);
+                stand = Mathf.Max(0.05f, (float?)o["standoff"] ?? stand);
+                turn = Mathf.Max(1f, (float?)o["turnRate"] ?? turn);
+                hug = Mathf.Max(0f, (float?)o["hug"] ?? hug);
+                speed = Mathf.Max(0.05f, (float?)o["speed"] ?? speed);
+                seconds = Mathf.Max(0f, (float?)o["seconds"] ?? seconds);
+                leave = (bool?)o["leaveOnLostWall"] ?? leave;
+
+                string side = ((string)o["side"] ?? "").Trim().ToLowerInvariant();
+
+                switch (side)
+                {
+                    case "":
+                    case "auto":  sideValue = 0; break;
+                    case "left":  sideValue = -1; break;
+                    case "right": sideValue = 1; break;
+                    default:
+                        Log.LogWarning(
+                            fileName + ": wallRide \"side\": '" + side +
+                            "' is not auto, left or right - using auto, which " +
+                            "keeps whichever way the shot was already going.");
+                        break;
+                }
+            }
+            else if (tok.Type != JTokenType.Boolean || !(bool)tok)
+            {
+                // "wallRide": false, or something that is not an object.
+                if (tok.Type == JTokenType.Boolean)
+                    return;
+
+                Log.LogWarning(
+                    fileName + ": \"wallRide\" should be true or an object " +
+                    "like { \"standoff\": 0.7 }. Ignored.");
+                return;
+            }
+
+            // A STANDOFF SMALLER THAN THE SHOT IS THE ONE SETTING THAT BREAKS
+            // IT, and it breaks it in a way that looks like the feature simply
+            // not working: the shot rides so close that its own swept cast
+            // reaches the wall and the game destroys it on contact. Named here
+            // rather than left to be discovered.
+            if (stand < 0.25f)
+            {
+                Log.LogWarning(
+                    fileName + ": wallRide \"standoff\": " +
+                    stand.ToString("0.##") + " is very small. The shot holds " +
+                    "that gap from the wall, and it dies on contact like any " +
+                    "other shot - below about 0.25 it will clip the surface " +
+                    "and vanish. 0.5 to 0.9 rides visibly close without " +
+                    "touching.");
+            }
+
+            if (grab < stand)
+            {
+                Log.LogWarning(
+                    fileName + ": wallRide \"grabRange\" (" +
+                    grab.ToString("0.##") + ") is smaller than \"standoff\" (" +
+                    stand.ToString("0.##") + "), so the shot can never notice a " +
+                    "wall it is already too far from to hold. Raising " +
+                    "grabRange to " + (stand + 0.9f).ToString("0.##") + ".");
+
+                grab = stand + 0.9f;
+            }
+
+            var pw = weapon as ProjectileWeaponData;
+
+            if (!ProjectileTargetOk(pw, "\"wallRide\"", fileName, false, null))
+                return;
+
+            if (pw.usePhysics)
+            {
+                Log.LogWarning(
+                    fileName + ": \"wallRide\" does not work on a LOBBED " +
+                    "(usePhysics) weapon. It steers by publishing the base " +
+                    "heading a plain Projectile flies along, and a lobbed shot " +
+                    "is a different class with no such field - holding one to " +
+                    "a wall would mean rewriting its velocity every frame, " +
+                    "which cancels the fall and stops it being a lobbed shot " +
+                    "at all. Ignored.");
+                return;
+            }
+
+            GameObject source = (pw.projectilePrefab != null)
+                ? pw.projectilePrefab.gameObject : null;
+
+            if (source == null)
+                return;
+
+            GameObject clone = VisualCustomizer.ClonePrefab(source);
+
+            if (clone == null)
+                return;
+
+            Projectile comp = clone.GetComponentInChildren<Projectile>(true);
+
+            if (comp == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"wallRide\" - no Projectile component on " +
+                    "the prefab. Ignored.");
+                UnityEngine.Object.Destroy(clone);
+                return;
+            }
+
+            var ride = comp.gameObject.GetComponent<ForgeWallRide>();
+
+            if (ride == null)
+                ride = comp.gameObject.AddComponent<ForgeWallRide>();
+
+            ride.grabRange = grab;
+            ride.standoff = stand;
+            ride.turnRate = turn;
+            ride.hug = hug;
+            ride.speedMultiplier = speed;
+            ride.rideSeconds = seconds;
+            ride.side = sideValue;
+            ride.leaveOnLostWall = leave;
+
+            pw.projectilePrefab = comp;
+
+            Log.LogInfo(
+                fileName + ": wallRide - shots follow terrain, holding " +
+                stand.ToString("0.##") + " units off the surface and catching " +
+                "a wall within " + grab.ToString("0.##") + ". Turning " +
+                turn.ToString("0.#") + " deg/s, " +
+                (sideValue == 0
+                    ? "going whichever way they were already headed"
+                    : (sideValue < 0 ? "always hugging left" : "always hugging right")) +
+                (seconds > 0f
+                    ? ", for " + seconds.ToString("0.##") + "s"
+                    : ", for as long as there is wall") +
+                ". They never touch the surface, so terrain damage and digging " +
+                "are unaffected.");
+        }
+
+        // EXECUTE - finish anything already below a health threshold.
+        //
+        // See ForgeExecute for the design. The short version: it hooks the one
+        // method every damage route funnels into, and calls the game's own
+        // Die() so the game's own kill-credit line pays out normally.
+        private static void ApplyExecute(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["execute"];
+
+            if (token == null)
+                return;
+
+            var cfg = new ForgeExecute.Config();
+
+            // "execute": 0.2 is the short spelling for "under 20%".
+            if (token.Type == JTokenType.Float ||
+                token.Type == JTokenType.Integer)
+            {
+                cfg.percent = (float)token;
+                cfg.flat = 0f;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"execute\" should be a fraction like " +
+                        "0.2, or an object with \"percent\" and/or \"flat\". " +
+                        "Ignored.");
+                    return;
+                }
+
+                cfg.percent = (float?)o["percent"] ?? 0.15f;
+                cfg.flat = (float?)o["flat"] ?? 0f;
+                cfg.maxTargetHealth = (float?)o["maxTargetHealth"] ?? 0f;
+
+                cfg.colorSeconds = (float?)o["colorSeconds"] ?? 0.25f;
+                cfg.colorPulse = (float?)o["colorPulse"] ?? 0f;
+                cfg.tintStrength = TintStrength(o, fileName, "execute", 1f);
+
+                cfg.hasColor = ReadColor(
+                    (string)o["color"], "execute \"color\"", fileName,
+                    ref cfg.color);
+
+                string sfx = (string)o["sfx"];
+
+                if (!string.IsNullOrEmpty(sfx))
+                {
+                    cfg.sfx = sfx;
+                    cfg.sfxGuid = ForgeSfxRegistry.Resolve(
+                        sfx, null, false, fileName);
+
+                    if (string.IsNullOrEmpty(cfg.sfxGuid))
+                    {
+                        Log.LogWarning(
+                            fileName + ": execute \"sfx\": '" + sfx + "' is not " +
+                            "a sound I know, so the execute will be silent. " +
+                            "Custom sounds go in the mod's sounds folder; the " +
+                            "startup log lists what loaded.");
+                    }
+                }
+            }
+
+            // A PERCENTAGE ABOVE 1 IS ALMOST CERTAINLY A TYPO FOR A PERCENT
+            // SIGN, and left alone it executes everything the weapon touches -
+            // "percent": 20 means "under 2000% health", which every living
+            // thing satisfies. Caught here rather than in play.
+            if (cfg.percent > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": execute \"percent\": " +
+                    cfg.percent.ToString("0.##") + " is a FRACTION, not a " +
+                    "percentage - 0.2 means 20%. A value above 1 would finish " +
+                    "everything you hit, so it has been read as " +
+                    (cfg.percent / 100f).ToString("0.###") + " instead. Write " +
+                    "it as a fraction to silence this.");
+
+                cfg.percent /= 100f;
+            }
+
+            if (cfg.percent <= 0f && cfg.flat <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": \"execute\" has neither a \"percent\" nor a " +
+                    "\"flat\" threshold above zero, so it can never fire. Set " +
+                    "one, or drop the block.");
+                return;
+            }
+
+            ForgeExecute.Register(weapon, cfg);
+            ForgeExecute.Describe(cfg, fileName);
+        }
+
+        // STUN - it cannot move and it cannot shoot.
+        //
+        // See ForgeStun, including why this is not `slow` with amount 0 (slow
+        // cannot reach zero by construction, and its three levers are all the
+        // wrong shape for a freeze).
+        private static void ApplyStun(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["stun"];
+
+            if (token == null)
+                return;
+
+            var cfg = new ForgeStun.Config();
+
+            // "stun": 1.5 is the short spelling for a 1.5 second freeze.
+            if (token.Type == JTokenType.Float ||
+                token.Type == JTokenType.Integer)
+            {
+                cfg.duration = (float)token;
+            }
+            else if (token.Type == JTokenType.Boolean)
+            {
+                if (!(bool)token)
+                    return;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"stun\" should be a duration in seconds " +
+                        "like 1.5, or an object with \"duration\", \"chance\" " +
+                        "and \"cooldown\". Ignored.");
+                    return;
+                }
+
+                if ((bool?)o["enabled"] == false)
+                {
+                    Log.LogInfo(
+                        fileName + ": \"stun\" is present but " +
+                        "\"enabled\": false, so nothing is frozen. The " +
+                        "settings are kept for whenever you turn it back on.");
+                    return;
+                }
+
+                cfg.duration = (float?)o["duration"] ?? 1.2f;
+                cfg.chance = (float?)o["chance"] ?? 1f;
+                cfg.cooldown = Mathf.Max(0f, (float?)o["cooldown"] ?? 0f);
+                cfg.refresh = (bool?)o["refresh"] ?? true;
+                cfg.stopGun = (bool?)o["stopGun"] ?? true;
+                cfg.stopMovement = (bool?)o["stopMovement"] ?? true;
+                cfg.stopMotion = (bool?)o["stopMotion"] ?? true;
+                cfg.maxTargetHealth =
+                    Mathf.Max(0f, (float?)o["maxTargetHealth"] ?? 0f);
+                cfg.tintPulse = (float?)o["tintPulse"] ?? 0f;
+                cfg.tintStrength = TintStrength(o, fileName, "stun", 1f);
+
+                // A tint is ON by default here, unlike slow's. A stun is a
+                // total shutdown with no other tell - no slowed animation, no
+                // reduced rate of fire to notice - so without a colour the
+                // player cannot see that it worked, and "did that do anything?"
+                // is the report I would otherwise get.
+                JToken tintToken = o["tint"];
+
+                if (tintToken != null && tintToken.Type == JTokenType.Boolean)
+                {
+                    cfg.hasTint = (bool)tintToken;
+                }
+                else if (tintToken != null)
+                {
+                    Color c = cfg.tint;
+
+                    if (ReadColor((string)tintToken, "stun \"tint\"",
+                                  fileName, ref c))
+                    {
+                        cfg.tint = c;
+                        cfg.hasTint = true;
+                    }
+                }
+
+                string sfx = (string)o["sfx"];
+
+                if (!string.IsNullOrEmpty(sfx))
+                {
+                    cfg.sfx = sfx;
+                    cfg.sfxGuid = ForgeSfxRegistry.Resolve(
+                        sfx, null, false, fileName);
+
+                    if (string.IsNullOrEmpty(cfg.sfxGuid))
+                    {
+                        Log.LogWarning(
+                            fileName + ": stun \"sfx\": '" + sfx + "' is not a " +
+                            "sound I know, so the stun will be silent. Game " +
+                            "sounds can be named directly - see SOUNDS.txt - " +
+                            "and custom ones go in the mod's sounds folder.");
+                    }
+                }
+            }
+
+            if (cfg.duration <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": stun \"duration\" is " +
+                    cfg.duration.ToString("0.##") + ", so nothing would be " +
+                    "frozen for any length of time and the block is ignored. " +
+                    "Set it to the seconds a hit should freeze something.");
+                return;
+            }
+
+            float chanceAsked = cfg.chance;
+            cfg.chance = Mathf.Clamp01(cfg.chance);
+
+            // A CHANCE ABOVE 1 IS ALMOST CERTAINLY A PERCENT SIGN, the same
+            // typo `execute`'s percent guard exists for - except here it fails
+            // SAFE (always stuns) rather than loud, so it needs saying.
+            if (chanceAsked > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": stun \"chance\": " +
+                    chanceAsked.ToString("0.##") + " is a FRACTION, not a " +
+                    "percentage - 0.25 means a quarter of hits. Anything above " +
+                    "1 simply means every hit, which is what this will now do.");
+            }
+
+            if (!cfg.stopGun && !cfg.stopMovement && !cfg.stopMotion)
+            {
+                Log.LogWarning(
+                    fileName + ": stun has \"stopGun\", \"stopMovement\" and " +
+                    "\"stopMotion\" all false, so it would freeze nothing at " +
+                    "all. The block is ignored - turn one of them back on, or " +
+                    "drop it.");
+                return;
+            }
+
+            ForgeStun.Register(weapon, cfg);
+            ForgeStun.Describe(cfg, fileName, weapon.fireRate);
+
+            if (!cfg.hasTint)
+            {
+                Log.LogInfo(
+                    fileName + ": stun \"tint\": false - no colour cue. Worth " +
+                    "knowing that a stun has no other tell: nothing about a " +
+                    "frozen unit looks different from one that happens to be " +
+                    "standing still, so the colour is usually the only way to " +
+                    "see that it landed.");
+            }
+        }
+
+        // GUIDED PROJECTILES - the shot follows your crosshair while it flies.
+        //
+        // See ForgeGuided. The short version: it reads the crosshair EVERY
+        // frame, where homing picks its own target and converge reads the
+        // cursor once at launch. It is the only one of the three that is an
+        // input rather than an automation.
+        private static void ApplyGuided(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["guided"];
+
+            if (token == null)
+                return;
+
+            var pw = weapon as ProjectileWeaponData;
+
+            // supportsPhysics: TRUE as of R13.
+            //
+            // This used to pass `false` with the hint "a lobbed shot cannot be
+            // steered at all: rewriting its velocity cancels the fall". Every
+            // clause of that is true about the technique it assumed and the
+            // game does not use that technique - see ForgeGuidedPhysics. The
+            // rocket has `gravityScale 0` and the engine already torque-steers
+            // it toward a point, so `usePhysics` was the wrong thing to key on.
+            if (!ProjectileTargetOk(pw, "guided", fileName, true, null))
+                return;
+
+            float turnRate = 240f;
+            float delay = 0f;
+            float duration = 0f;
+            float arrive = 1.5f;
+            bool whileHeld = false;
+            bool faceTravel = true;
+
+            // "guided": true is the short spelling, and "guided": 300 sets the
+            // turn rate directly - both match how the other blocks read.
+            if (token.Type == JTokenType.Boolean)
+            {
+                if (!(bool)token)
+                    return;
+            }
+            else if (token.Type == JTokenType.Float ||
+                     token.Type == JTokenType.Integer)
+            {
+                turnRate = (float)token;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"guided\" should be true, a turn rate " +
+                        "like 240, or an object with \"turnRate\", \"delay\", " +
+                        "\"duration\" and \"while\". Ignored.");
+                    return;
+                }
+
+                if ((bool?)o["enabled"] == false)
+                {
+                    Log.LogInfo(
+                        fileName + ": \"guided\" is present but " +
+                        "\"enabled\": false, so shots fly straight. The " +
+                        "settings are kept for whenever you turn it back on.");
+                    return;
+                }
+
+                turnRate = (float?)o["turnRate"] ?? 240f;
+                delay = Mathf.Max(0f, (float?)o["delay"] ?? 0f);
+                duration = Mathf.Max(0f, (float?)o["duration"] ?? 0f);
+                arrive = Mathf.Max(0f, (float?)o["arrive"] ?? 1.5f);
+                faceTravel = (bool?)o["faceTravel"] ?? true;
+
+                string when = (string)o["while"];
+
+                if (!string.IsNullOrEmpty(when))
+                {
+                    string w = when.Trim().ToLowerInvariant();
+
+                    if (w == "held" || w == "hold" || w == "trigger")
+                    {
+                        whileHeld = true;
+                    }
+                    else if (w != "always" && w != "life" && w != "ever")
+                    {
+                        Log.LogWarning(
+                            fileName + ": guided \"while\": '" + when +
+                            "' is not recognised - use \"always\" (the " +
+                            "default: it steers for its whole flight) or " +
+                            "\"held\" (it steers only while you hold the " +
+                            "trigger, and commits the moment you let go). " +
+                            "Read as \"always\".");
+                    }
+                }
+            }
+
+            if (turnRate <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": guided \"turnRate\" is " +
+                    turnRate.ToString("0.##") + ", so the shot could never " +
+                    "turn and the block is ignored. Set it to the degrees per " +
+                    "second it may steer - 240 keeps up with the mouse, 90 is " +
+                    "a heavy missile.");
+                return;
+            }
+
+            // ---- the ROCKET path ------------------------------------------
+            if (pw.usePhysics)
+            {
+                ApplyGuidedPhysics(
+                    pw, token as JObject, fileName,
+                    turnRate, delay, duration, arrive, whileHeld);
+                return;
+            }
+
+            // THE FOUR ROCKET-ONLY KEYS MUST NOT GO QUIET ON A BULLET.
+            //
+            // `cruise`, `thrust`, `speedCap` and `wobble` are read only inside
+            // ApplyGuidedPhysics, because they configure the engine's own
+            // `homingData` steering loop and a plain `Projectile` has no such
+            // thing. Left unmentioned that is a silent default on a tuning
+            // path - the failure shape this project pays for most often - and
+            // it is a very easy mistake to make, because the same block accepts
+            // them one template away.
+            JObject keys = token as JObject;
+
+            if (keys != null)
+            {
+                var stray = new List<string>();
+
+                foreach (string k in new[]
+                         { "cruise", "thrust", "speedCap", "wobble" })
+                {
+                    if (keys[k] != null)
+                        stray.Add(k);
+                }
+
+                if (stray.Count > 0)
+                {
+                    Log.LogWarning(
+                        fileName + ": guided \"" +
+                        string.Join("\", \"", stray.ToArray()) +
+                        "\" " + ((stray.Count == 1) ? "is" : "are") +
+                        " IGNORED on this weapon, because it fires an " +
+                        "ordinary bullet rather than a rigidbody. Those keys " +
+                        "configure the engine's own thrust-and-torque loop, " +
+                        "which only a \"usePhysics\" shot (a rocket or a " +
+                        "grenade) has. On a bullet the speed is " +
+                        "\"projectileSpeed\" and the turn is \"turnRate\" - " +
+                        "both of which work here.");
+                }
+            }
+
+            GameObject clone = VisualCustomizer.ClonePrefab(
+                pw.projectilePrefab.gameObject);
+
+            var comp = clone.GetComponentInChildren<Projectile>(true);
+
+            if (comp == null)
+            {
+                Log.LogWarning(
+                    fileName + ": guided - no Projectile on the prefab, so " +
+                    "there is nothing to steer.");
+                return;
+            }
+
+            // The SAME GameObject as the Projectile, because the patch finds
+            // this with GetComponent, not GetComponentInChildren - and on
+            // several stock prefabs the Projectile sits on a CHILD rather than
+            // the root, so adding to the clone root would be invisible to it.
+            var g = comp.GetComponent<ForgeGuided>();
+
+            if (g == null)
+                g = comp.gameObject.AddComponent<ForgeGuided>();
+
+            g.turnRate = turnRate;
+            g.delay = delay;
+            g.duration = duration;
+            g.arrive = arrive;
+            g.whileHeld = whileHeld;
+            g.faceTravel = faceTravel;
+
+            pw.projectilePrefab = comp;
+            ForgeGuided.Any = true;
+
+            // THE TURN RADIUS IS WHAT PEOPLE ACTUALLY SEE, and it grows with
+            // speed - so the same turn rate that whips a slow shot round barely
+            // bends a fast one. Do that sum for them, the same way `homing`
+            // does, because "my guided shot ignores the mouse" is otherwise a
+            // mystery with a perfectly correct log line above it.
+            float speed = pw.projectileSpeed;
+            string radiusNote = string.Empty;
+
+            if (speed > 0f)
+            {
+                float radius = speed / (turnRate * Mathf.Deg2Rad);
+
+                radiusNote =
+                    " At projectileSpeed " + speed.ToString("0.#") +
+                    " its tightest turn circle is about " +
+                    radius.ToString("0.0") + " units in radius." +
+                    (radius > 10f
+                        ? " THAT IS WIDE - it will feel sluggish and miss what " +
+                          "you point at. Raise turnRate or lower " +
+                          "projectileSpeed."
+                        : string.Empty);
+            }
+
+            Log.LogInfo(
+                fileName + ": guided - shots follow your CROSSHAIR at " +
+                turnRate.ToString("0.#") + " deg/s" +
+                (delay > 0f
+                    ? ", starting " + delay.ToString("0.##") + "s after launch"
+                    : "") +
+                (duration > 0f
+                    ? ", for " + duration.ToString("0.##") + "s"
+                    : ", for its whole flight") +
+                "." + radiusNote);
+
+            // SLOWDOWN QUIETLY TAKES THE GUIDANCE AWAY, and the most-cloned
+            // stock template ships it ON. Steering re-normalises to the shot's
+            // CURRENT speed, so it composes with a decelerating shot right up
+            // until the speed reaches zero - at which point there is no heading
+            // to rotate and guidance stops for good. The shot then hangs where
+            // it stopped, ignoring the mouse. Found by simulating rather than
+            // by playing, and it is exactly the shape of trap `slowDown` has
+            // sprung on this project before.
+            if (pw.rangeData.enabled && pw.rangeData.slowDown)
+            {
+                Log.LogWarning(
+                    fileName + ": guided + \"rangeData\": " +
+                    "{ \"slowDown\": true } - slowDown decelerates the shot to " +
+                    "a DEAD STOP at its range, and a shot with no speed has no " +
+                    "heading to steer, so guidance fades out as it slows and " +
+                    "stops entirely at the end. The stock White Popper ships " +
+                    "slowDown ON, so this is easy to inherit without asking " +
+                    "for it. Set \"rangeData\": { \"slowDown\": false } for a " +
+                    "guided shot that answers the mouse for its whole flight.");
+            }
+
+            Log.LogInfo(
+                fileName + ": guided - " +
+                (whileHeld
+                    ? "\"while\": \"held\" - it steers only while you hold the " +
+                      "trigger and COMMITS the moment you let go. Note a " +
+                      "GADGET has no trigger, so a gadget-fired shot flies " +
+                      "straight in this mode."
+                    : "it steers for its whole flight; set " +
+                      "\"while\": \"held\" if you would rather let go and " +
+                      "have it commit.") +
+                " It stops steering within " + arrive.ToString("0.##") +
+                " units of the cursor, so it cannot end up orbiting it. This " +
+                "reads the UNASSISTED crosshair, not the aim-assisted firing " +
+                "direction, so it goes where you point.");
+        }
+
+        // GUIDED ON A PHYSICS SHOT - a rocket you fly, or a steerable grenade.
+        //
+        // Split out rather than folded into ApplyGuided because almost nothing
+        // is shared: this writes the weapon's own `homingData` and lets the
+        // ENGINE steer, where the plain path installs a steering loop of ours.
+        // See ForgeGuidedPhysics for why that is possible at all.
+        private static void ApplyGuidedPhysics(
+            ProjectileWeaponData pw, JObject o, string fileName,
+            float turnRate, float delay, float duration, float arrive,
+            bool whileHeld)
+        {
+            // ---- extra knobs, all of which exist because the ROCKET's own
+            // homingData overrides things the author already set elsewhere ----
+            //
+            // `wobble` defaults to 0 for a guided shot and that is a real
+            // decision, not tidiness: `Weapon Rocket Fire` ships
+            // `turbulenceTorque 2.5` against `torque 2`, so the WOBBLE IS
+            // STRONGER THAN THE STEERING and a missile you are trying to fly by
+            // hand would fight you. There is no existing behaviour to preserve
+            // here - guidance on a physics shot has never worked - so the
+            // default can be the one that makes the feature work.
+            float wobble = 0f;
+            float speedCap = -1f;
+            float thrust = -1f;
+            float cruise = -1f;
+
+            if (o != null)
+            {
+                wobble = Mathf.Max(0f, (float?)o["wobble"] ?? 0f);
+                speedCap = (float?)o["speedCap"] ?? -1f;
+                thrust = (float?)o["thrust"] ?? -1f;
+                cruise = (float?)o["cruise"] ?? -1f;
+            }
+
+            PhysicsProjectile prefab = pw.physicsProjectilePrefab;
+
+            if (prefab == null)
+            {
+                Log.LogWarning(
+                    fileName + ": guided - this weapon is usePhysics but has " +
+                    "no physicsProjectilePrefab, so there is nothing to steer.");
+                return;
+            }
+
+            GameObject clone = VisualCustomizer.ClonePrefab(prefab.gameObject);
+
+            var comp = clone.GetComponentInChildren<PhysicsProjectile>(true);
+
+            if (comp == null)
+            {
+                Log.LogWarning(
+                    fileName + ": guided - no PhysicsProjectile on the prefab, " +
+                    "so there is nothing to steer.");
+                return;
+            }
+
+            // Same GameObject as the PhysicsProjectile: the patch finds this
+            // with GetComponent, and on some prefabs the shot component is on a
+            // child rather than the clone root.
+            var g = comp.GetComponent<ForgeGuidedPhysics>();
+
+            if (g == null)
+                g = comp.gameObject.AddComponent<ForgeGuidedPhysics>();
+
+            g.turnRate = turnRate;
+            g.delay = delay;
+            g.duration = duration;
+            g.arrive = arrive;
+            g.whileHeld = whileHeld;
+
+            pw.physicsProjectilePrefab = comp;
+            ForgeGuidedPhysics.Any = true;
+
+            // ---- the weapon's own homingData, which is what actually steers --
+            //
+            // `maxAngularVelocity` IS a degrees-per-second cap, because Unity 2D
+            // measures angularVelocity in degrees - so turnRate maps onto it
+            // exactly with no calibration. The stock rocket ships 1000, which
+            // is "no limit".
+            ProjectileHomingData h = pw.homingData;
+
+            float wasCap = h.maxAngularVelocity;
+            float wasWobble = h.turbulenceTorque;
+
+            h.maxAngularVelocity = turnRate;
+            h.turbulenceTorque = wasWobble * wobble;
+
+            if (speedCap >= 0f)
+                h.maxSpeed = speedCap;
+
+            // ---- "cruise" IS THE FIELD ANYONE ACTUALLY WANTS -------------
+            //
+            // A SIMULATION CAUGHT THIS AND IT WOULD HAVE SHIPPED WRONG.
+            //
+            // `acceleration` is a FORCE, and a constant force does not produce
+            // a speed - it settles at `force / (mass * linearDamping)`. The
+            // rocket is mass 4 with damping 3, so its stock `acceleration: 70`
+            // cruises at 70 / 12 = **5.8 units/second**, and its
+            // `maxSpeed: 100` is a ceiling nothing can ever reach.
+            //
+            // I had already written a build warning saying the shot "thrusts up
+            // to 100 units/second", which is what `maxSpeed` looks like it
+            // means and is off by a factor of seventeen. And the WireGuided
+            // preset was about to ship `thrust: 18`, which is a cruise of
+            // **1.5 u/s** - a rocket that visibly stops in mid-air.
+            //
+            // This is the exact rule already written down in this repo for the
+            // gravity well ("a constant force settles at force/(mass*damping),
+            // so compensate rather than shipping a raw number") applied to a
+            // different subsystem, and I made the same mistake the well made.
+            // So `cruise` takes the speed and does the compensation, and
+            // `thrust` stays for anyone who wants the raw force.
+            var body = comp.GetComponent<Rigidbody2D>();
+            float mass = (body != null) ? Mathf.Max(0.0001f, body.mass) : 1f;
+            float damping = (body != null) ? body.linearDamping : 0f;
+
+            if (cruise >= 0f)
+            {
+                if (damping <= 0.0001f)
+                {
+                    Log.LogWarning(
+                        fileName + ": guided \"cruise\" needs the shot to have " +
+                        "linear damping to settle at a speed, and this one's " +
+                        "is " + damping.ToString("0.##") + " - with no damping " +
+                        "a constant thrust accelerates without limit and only " +
+                        "\"speedCap\" bounds it. Use \"speedCap\" and " +
+                        "\"thrust\" instead. Ignored.");
+                }
+                else
+                {
+                    h.acceleration = cruise * mass * damping;
+
+                    // The cap has to be above the cruise or it becomes the
+                    // real limit and `cruise` silently means nothing.
+                    if (h.maxSpeed > 0f && h.maxSpeed < cruise)
+                        h.maxSpeed = cruise * 1.1f;
+
+                    Log.LogInfo(
+                        fileName + ": guided \"cruise\": " +
+                        cruise.ToString("0.##") + " units/second -> " +
+                        "acceleration " + h.acceleration.ToString("0.#") +
+                        " (mass " + mass.ToString("0.##") + " x damping " +
+                        damping.ToString("0.##") + "). A thrust is a FORCE, " +
+                        "not a speed: it settles at force/(mass x damping), so " +
+                        "the raw number that gives 13 units/second on this " +
+                        "shot gives a different speed on any other. This is " +
+                        "the field to use.");
+                }
+            }
+            else if (thrust >= 0f)
+            {
+                h.acceleration = thrust;
+            }
+
+            pw.homingData = h;
+
+            Log.LogInfo(
+                fileName + ": guided on a PHYSICS shot (a rocket or a lobbed " +
+                "one) - you fly it with the CROSSHAIR at up to " +
+                turnRate.ToString("0.#") + " deg/s" +
+                (delay > 0f
+                    ? ", starting " + delay.ToString("0.##") + "s after launch"
+                    : "") +
+                (duration > 0f
+                    ? ", for " + duration.ToString("0.##") + "s"
+                    : ", for its whole flight") +
+                ". This steers a DIFFERENT way from a bullet and it is worth " +
+                "knowing which: nothing rewrites its velocity. The engine's " +
+                "own PhysicsProjectile.Homing() torques the nose toward a " +
+                "target point and thrusts along it, and all this feature does " +
+                "is put your cursor in that point every frame. So gravity, " +
+                "damping and its own thrust all keep working.");
+
+            if (whileHeld)
+            {
+                Log.LogInfo(
+                    fileName + ": guided - \"while\": \"held\", so letting go " +
+                    "aims it 10,000 units along its own nose and stops - it " +
+                    "commits to wherever it was pointing rather than freezing " +
+                    "or curling back. (A GADGET has no trigger to hold, so a " +
+                    "gadget-fired shot commits immediately in this mode.)");
+            }
+
+            // WHAT SPEED THE SHOT ACTUALLY ENDS UP AT, which is neither
+            // `projectileSpeed` nor `maxSpeed`.
+            //
+            // `projectileSpeed` is only the launch. `Homing()` then thrusts
+            // along the nose forever, and damping fights it, so the shot
+            // converges on `acceleration / (mass * damping)` from EITHER
+            // direction - a fast launch decelerates to it and a slow one
+            // accelerates to it. `maxSpeed` is a ceiling that on the stock
+            // rocket (5.8 against 100) is never reached at all.
+            //
+            // So a guided rocket's real speed is a number that appears nowhere
+            // in the weapon file, and it is the one that decides whether the
+            // thing is flyable. Print it.
+            float terminal = (damping > 0.0001f)
+                ? h.acceleration / (mass * damping)
+                : 0f;
+
+            if (terminal > 0f)
+            {
+                float capped = (h.maxSpeed > 0f)
+                    ? Mathf.Min(terminal, h.maxSpeed) : terminal;
+
+                Log.LogInfo(
+                    fileName + ": guided - this shot SETTLES AT " +
+                    capped.ToString("0.#") + " units/second in flight" +
+                    ((h.maxSpeed > 0f && h.maxSpeed < terminal)
+                        ? " (its own maxSpeed cap of " +
+                          h.maxSpeed.ToString("0.#") + " binds first)"
+                        : " (thrust " + h.acceleration.ToString("0.#") +
+                          " / mass " + mass.ToString("0.##") +
+                          " / damping " + damping.ToString("0.##") + ")") +
+                    ", whatever \"projectileSpeed\" (" +
+                    pw.projectileSpeed.ToString("0.##") + ") says - that " +
+                    "field is only the launch. A thrusting shot converges on " +
+                    "this speed from either direction, so a fast launch slows " +
+                    "down to it. Use guided \"cruise\" to choose it directly.");
+
+                if (capped > 25f)
+                {
+                    Log.LogWarning(
+                        fileName + ": guided - " + capped.ToString("0.#") +
+                        " units/second is FAST for something you fly by hand. " +
+                        "Set guided \"cruise\": 12 (or so) for a missile you " +
+                        "can actually steer; the crosshair cannot lead a shot " +
+                        "that crosses the room in under a second.");
+                }
+                else if (capped < 3f)
+                {
+                    Log.LogWarning(
+                        fileName + ": guided - " + capped.ToString("0.#") +
+                        " units/second means the shot visibly STOPS in mid-air " +
+                        "after its launch speed bleeds off, because a thrust " +
+                        "of " + h.acceleration.ToString("0.#") + " against " +
+                        "mass " + mass.ToString("0.##") + " and damping " +
+                        damping.ToString("0.##") + " settles there. Raise " +
+                        "guided \"cruise\" (which does this sum for you) or " +
+                        "\"thrust\".");
+                }
+            }
+
+            if (wobble <= 0f && wasWobble > 0f)
+            {
+                Log.LogInfo(
+                    fileName + ": guided - the shot's turbulence wobble " +
+                    "(turbulenceTorque " + wasWobble.ToString("0.##") + ") is " +
+                    "switched OFF, because it is a random torque and it was " +
+                    "stronger than the steering torque - it would fight your " +
+                    "cursor. Set guided \"wobble\": 1 to keep the stock " +
+                    "wobble, or 0.3 for a little of it.");
+            }
+
+            if (wasCap > 0f && turnRate > wasCap)
+            {
+                Log.LogInfo(
+                    fileName + ": guided - \"turnRate\" " +
+                    turnRate.ToString("0.#") + " is above this shot's own " +
+                    "maxAngularVelocity of " + wasCap.ToString("0.#") +
+                    ", which has been raised to match. Note the cap is only " +
+                    "the ceiling: how fast it gets there is homingData " +
+                    "\"torque\" (" + pw.homingData.torque.ToString("0.##") +
+                    " here), and that is raised for you at launch if it is too " +
+                    "weak to reach the rate you asked for.");
+            }
+
+            // A LOBBED shot with gravity can be guided too, and the honest
+            // description is different from a rocket's - so say which one this
+            // is rather than leaving the author to work it out from a number.
+            float gravity = (body != null) ? body.gravityScale : 0f;
+
+            if (gravity > 0.01f)
+            {
+                Log.LogInfo(
+                    fileName + ": guided - this shot HAS GRAVITY " +
+                    "(gravityScale " + gravity.ToString("0.##") + "), so it is " +
+                    "a grenade rather than a rocket. Guidance aims its nose " +
+                    "and its thrust; gravity still pulls it down the whole " +
+                    "time. Expect to fly it in an arc and to have to lead " +
+                    "upward - which is a real weapon, just not the same one as " +
+                    "a rocket. \"converge\" is still the answer if you want a " +
+                    "lobbed shot to LAND on a point without steering it.");
+            }
+            else
+            {
+                Log.LogInfo(
+                    fileName + ": guided - gravityScale is 0 on this shot, so " +
+                    "it is a rocket: it flies where it is pointed and there is " +
+                    "no arc to fight. (This is the case the old build warning " +
+                    "refused outright, on the grounds that steering would " +
+                    "cancel a fall. There is no fall.)");
+            }
+
+            // ---- WHAT "arrive" DOES AND DOES NOT DO ON A ROCKET ------------
+            //
+            // The plain-projectile half of this feature describes `arrive` as
+            // the thing that stops a shot "orbiting the cursor", and that is
+            // true there: a bullet's velocity is rewritten directly, so it can
+            // be turned as hard as the code likes and will sit on a point
+            // spinning. A ROCKET cannot. It has momentum and a minimum turn
+            // radius, so it flies THROUGH the cursor and comes back round.
+            //
+            // I nearly shipped two different false claims about this. The first
+            // was to copy the bullet's sentence. The second - after a
+            // simulation showed the shot circling three times in eight seconds
+            // - was to conclude the threshold must be the turn radius, and to
+            // raise `arrive` to it automatically. Measured across its whole
+            // range, that buys almost nothing:
+            //
+            //     arrive  0.0  0.5  1.5  3.0  4.1  8.0   (turn radius 3.7)
+            //     laps    3.7  3.8  3.1  3.2  3.0  1.9
+            //
+            // So the honest answer is that **nothing you can set here stops a
+            // rocket circling a stationary point** - only its range, its
+            // lifetime, or you moving the cursor does. The field is kept
+            // because it still shaves the loop and it stops the thrash right on
+            // top of the point, and the log now says what it is worth.
+            //
+            // > A measurement that refutes your fix is worth as much as one
+            // > that confirms it. Both of my explanations were plausible and
+            // > the second was going to rewrite the author's number.
+            float radius = (terminal > 0f && turnRate > 0f)
+                ? Mathf.Min(terminal, (h.maxSpeed > 0f) ? h.maxSpeed : terminal)
+                  / (turnRate * Mathf.Deg2Rad)
+                : 0f;
+
+            Log.LogInfo(
+                fileName + ": guided - its tightest turn circle is " +
+                radius.ToString("0.##") + " units in radius" +
+                ((radius > 8f)
+                    ? " - THAT IS WIDE, and it will feel sluggish. Raise " +
+                      "\"turnRate\" or lower \"cruise\"."
+                    : ".") +
+                " It stops steering within " + arrive.ToString("0.##") +
+                " units of the cursor. Note that unlike a bullet, a rocket " +
+                "cannot settle ON your cursor: it has momentum and that turn " +
+                "radius, so it flies through and comes back round for another " +
+                "pass. Nothing in this block changes that - its range, its " +
+                "lifetime, or you moving the cursor are what end the flight.");
+        }
+
+        // ROTATING SPIRAL - successive shots step a fixed angle.
+        //
+        // See ForgeSpiral for the design. The short version: `AngleOffset` is a
+        // public per-instance property that `GetDirections` reads to place the
+        // whole volley, so advancing it rotates the fan as a rigid body and
+        // composes with `spread` and `angleVariance` for free.
+        private static void ApplySpiral(
+            WeaponData weapon, JObject root, bool isGadget, string fileName)
+        {
+            JToken token = root["spiral"];
+
+            if (token == null)
+                return;
+
+            var cfg = new ForgeSpiral.Config();
+
+            // "spiral": 20 is the short spelling for "20 degrees a shot",
+            // matching how `execute` and `fade` take a bare number.
+            if (token.Type == JTokenType.Float ||
+                token.Type == JTokenType.Integer)
+            {
+                cfg.step = (float)token;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"spiral\" should be a number of degrees " +
+                        "like 20, or an object with \"step\", \"sweep\" and " +
+                        "\"reset\". Ignored.");
+                    return;
+                }
+
+                // An explicit "enabled": false is an off switch that keeps the
+                // rest of the block in the file for later.
+                if ((bool?)o["enabled"] == false)
+                {
+                    Log.LogInfo(
+                        fileName + ": \"spiral\" is present but " +
+                        "\"enabled\": false, so shots leave on your aim as " +
+                        "normal. The settings are kept for whenever you turn " +
+                        "it back on.");
+                    return;
+                }
+
+                cfg.step = (float?)o["step"] ?? 20f;
+                cfg.sweep = Mathf.Max(0f, (float?)o["sweep"] ?? 0f);
+
+                string reset = (string)o["reset"];
+
+                if (!string.IsNullOrEmpty(reset))
+                {
+                    string r = reset.Trim().ToLowerInvariant();
+
+                    if (r == "pull" || r == "trigger" || r == "release")
+                    {
+                        cfg.resetOnPull = true;
+                    }
+                    else if (r != "never" && r != "none")
+                    {
+                        Log.LogWarning(
+                            fileName + ": spiral \"reset\": '" + reset +
+                            "' is not recognised - use \"pull\" (each trigger " +
+                            "pull starts on your aim again) or \"never\" (the " +
+                            "default: the rotation carries on across pulls). " +
+                            "Read as \"never\".");
+                    }
+                }
+            }
+
+            // A STEP OF ZERO WOULD ROTATE NOTHING, and a block that parses,
+            // logs a summary and then does nothing is the failure shape this
+            // project keeps paying for. Refused out loud instead.
+            if (Mathf.Approximately(cfg.step, 0f))
+            {
+                Log.LogWarning(
+                    fileName + ": spiral \"step\" is 0, so nothing would " +
+                    "rotate and the block is ignored. Set it to the degrees " +
+                    "each shot should advance - 20 gives a full turn every 18 " +
+                    "shots. A negative value spins the other way.");
+                return;
+            }
+
+            // A step that outruns its own arc turns a sweep into a two-position
+            // flip-flop. Legal, occasionally wanted, never intended silently.
+            if (cfg.sweep > 0f && Mathf.Abs(cfg.step) >= cfg.sweep)
+            {
+                Log.LogWarning(
+                    fileName + ": spiral \"step\" (" +
+                    Mathf.Abs(cfg.step).ToString("0.#") + " degrees) is as big " +
+                    "as its \"sweep\" (" + cfg.sweep.ToString("0.#") +
+                    "), so instead of sweeping it will flip between the two " +
+                    "ends of the arc. Use a smaller step for a smooth pass - " +
+                    "sweep divided by step is roughly the shots per pass.");
+            }
+
+            // SPIRAL ITSELF WORKS ON A GADGET - the stepping rides
+            // `WeaponBase.DoShoot`, which a gadget goes through - but
+            // `reset: "pull"` does not. That reset watches the trigger's
+            // falling edge through a `Shooter.Update` postfix, and a gadget has
+            // no held trigger to fall. Worth one line because the rest of the
+            // block behaving correctly is what makes the missing half hard to
+            // spot.
+            if (isGadget && cfg.resetOnPull)
+            {
+                Log.LogWarning(
+                    fileName + ": spiral \"reset\": \"pull\" does nothing " +
+                    "on a GADGET - it watches the ship trigger being released, " +
+                    "and a gadget has no trigger to hold. The spiral itself " +
+                    "still steps normally; the angle simply carries on from " +
+                    "where it was instead of restarting. Use \"reset\": " +
+                    "\"never\" to say that on purpose, or move this to the " +
+                    "primary or secondary slot.");
+            }
+
+            ForgeSpiral.Register(weapon, cfg);
+
+            ForgeSpiral.Describe(
+                cfg, fileName, weapon.name, weapon.fireRate,
+                weapon is HitscanWeaponData);
+        }
+
+        // EXECUTE - finish anything already below a health threshold.
+        //
+        // See ForgeExecute for the design. The short version: it hooks the one
+        // method every damage route funnels into, and calls the game's own
+        // Die() so the game's own kill-credit line pays out normally.
+        // WHICH enemy this weapon's targeting picks. Opt-in, per weapon.
+        //
+        // Runs LAST of the feature appliers, because it stamps itself onto two
+        // of them and they have to exist first - the same ordering ApplyRally
+        // depends on. See ForgeTargeting for why the scope is airtight: the
+        // registry is keyed on WeaponData, so a weapon without this block
+        // resolves to null and every finder takes its original code path.
+        // WHICH enemy this weapon's targeting picks. Opt-in, per weapon.
+        //
+        // Runs LAST of the feature appliers, because it stamps itself onto two
+        // of them and they have to exist first - the same ordering ApplyRally
+        // depends on. See ForgeTargeting for why the scope is airtight: the
+        // registry is keyed on WeaponData, so a weapon without this block
+        // resolves to null and every finder takes its original code path.
+        private static void ApplyTargeting(
+            WeaponData weapon, JObject root, string fileName)
+        {
+            JToken token = root["targeting"];
+
+            if (token == null)
+                return;
+
+            var cfg = new ForgeTargeting.Config();
+            string word;
+
+            // "targeting": "lowest" is the short spelling; the object form
+            // exists for `unitsOnly`.
+            if (token.Type == JTokenType.String)
+            {
+                word = (string)token;
+            }
+            else
+            {
+                var o = token as JObject;
+
+                if (o == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"targeting\" should be a priority name " +
+                        "like \"lowest\", or an object with a \"priority\" key. " +
+                        "Ignored, so this weapon targets the way it always did.");
+                    return;
+                }
+
+                word = (string)o["priority"] ?? (string)o["mode"];
+                cfg.unitsOnly = (bool?)o["unitsOnly"] ?? false;
+            }
+
+            bool known;
+            cfg.mode = ForgeTargeting.Parse(word, out known);
+
+            if (!known)
+            {
+                Log.LogWarning(
+                    fileName + ": targeting \"priority\": '" + word +
+                    "' is not one I know. Use nearest, farthest, lowest, " +
+                    "highest, weakest, toughest, unshielded, shielded or " +
+                    "forward. Ignored, so this weapon targets the way it " +
+                    "always did.");
+                return;
+            }
+
+            if (cfg.mode == ForgeTargeting.Default)
+            {
+                Log.LogWarning(
+                    fileName + ": \"targeting\" has no \"priority\" in it, so " +
+                    "there is nothing to change. Add one, or drop the block.");
+                return;
+            }
+
+            ForgeTargeting.Register(weapon, cfg);
+
+            // STAMPED ONTO THE TWO CONFIGS THAT CANNOT RESOLVE A WEAPON
+            // THEMSELVES, and this is the part to get right - it is exactly the
+            // shape of the rally bug, where a reflector was left unwired and the
+            // feature silently did nothing on it.
+            //
+            // Everything else resolves the priority from the SHOT (homing,
+            // chain, ricochet, split - `ForgeKillsPatch` stamps every projectile
+            // with its weapon) or from the weapon directly (the curve beam). The
+            // catalyst picks targets from a NODE, and converge picks its focus
+            // at DoShoot before any shot exists, so those two need the config
+            // handed to them.
+            int stamped = 0;
+
+            ForgeCatalyst.Config catalyst;
+
+            if (ForgeCatalyst.TryGet(weapon, out catalyst) && catalyst != null)
+            {
+                catalyst.targeting = cfg;
+                stamped++;
+            }
+
+            ForgeTargeting.Describe(weapon, cfg, fileName);
+
+            if (stamped > 0)
+            {
+                Log.LogInfo(
+                    fileName + ": targeting priority also handed to " + stamped +
+                    " block(s) that pick targets without a shot to read it " +
+                    "from (the catalyst node).");
+            }
+        }
+
         private static void ApplyRally(
             WeaponData weapon, JObject root, string fileName)
         {
@@ -6441,7 +11428,17 @@ namespace WeaponForge
             cfg.hostile = ForgeRally.ParseHostile((string)o["hostile"]);
             cfg.hostileAfter = Mathf.Max(1, (int?)o["hostileAfter"] ?? 3);
 
-            cfg.sfx = (string)o["sfx"] ?? "";
+            // THE ONE SOUND KEY THAT NEVER RESOLVED ANYTHING. This stored the
+            // raw string and ForgeRally handed it straight to
+            // AudioManager.PlaySfx, which looks up by guid - so a rally sfx had
+            // to be a raw id, a custom sound name silently did nothing, and no
+            // warning was printed either way. Every other sound key in the mod
+            // goes through ResolveChargeSfx; this one was missed. Found while
+            // auditing the sound keys for SOUNDS.txt.
+            cfg.sfx = ResolveChargeSfx(
+                (string)o["sfx"], weapon.shootSfx, false, "rally sfx",
+                fileName) ?? "";
+
             cfg.tint = (bool?)o["tint"] ?? false;
 
             string hot = (string)o["hotColor"];
@@ -6473,32 +11470,97 @@ namespace WeaponForge
                 attached++;
             }
 
+            // SWIPE - the third reflector, and the one this function forgot.
+            //
+            // Round 11 test 101: *"it doesn't rally the projectiles, only
+            // reflects once."* Exactly right, and the cause was one missing
+            // line here. `ForgeSwipe.Config` already had a `rally` field and
+            // `ForgeSwipeController` already passed it into the reflect call -
+            // BOTH ENDS WERE BUILT AND THE WIRE BETWEEN THEM WAS NEVER RUN, so
+            // every swipe reflected with a null rally and no stacks accrued.
+            // The build log even said so ("rally needs something that CATCHES
+            // bullets"), which read as advice about his file rather than as the
+            // mod reporting its own gap.
+            //
+            // A blade only counts if it is actually set to bat shots back;
+            // `deflects: false` is a pure damage swing with nothing to rally.
+            ForgeSwipe.Config swipe;
+
+            if (ForgeSwipe.TryGet(weapon, out swipe) && swipe != null)
+            {
+                if (swipe.deflects)
+                {
+                    swipe.rally = cfg;
+                    attached++;
+                }
+                else
+                {
+                    Log.LogWarning(
+                        fileName + ": \"rally\" found a \"swipe\" block with " +
+                        "\"deflects\": false - a blade that does not bat shots " +
+                        "back has nothing to rally. Set \"deflects\": true.");
+                }
+            }
+
+            // DEFLECT, which used to be refused here.
+            //
+            // ForgeDeflect rides the PROJECTILE PREFAB, and a plain
+            // config-class reference on a prefab-attached component arrives
+            // NULL on every clone - the trap that silently disabled the whole
+            // of gas and catalyst once. So it takes the same route those two
+            // now use: an int id, which Unity serializes happily, resolved
+            // through ForgeConfigTable in Awake.
+            //
+            // ApplyDeflect runs before ApplyRally, so the component already
+            // exists on the cloned prefab by the time we get here.
+            var deflectPw = weapon as ProjectileWeaponData;
+
+            if (root["deflect"] != null && deflectPw != null &&
+                !deflectPw.usePhysics && deflectPw.projectilePrefab != null)
+            {
+                var dComp = deflectPw.projectilePrefab
+                    .GetComponentInChildren<ForgeDeflect>(true);
+
+                if (dComp != null)
+                {
+                    if (dComp.mode == ForgeDeflect.ModeReflect)
+                    {
+                        dComp.rallyId = ForgeConfigTable.Id(cfg);
+                        attached++;
+                    }
+                    else
+                    {
+                        // A deflector set to DESTROY never sends anything back,
+                        // so there is nothing for a rally to buff. Naming it
+                        // beats letting the module look broken.
+                        Log.LogWarning(
+                            fileName + ": \"rally\" needs deflect's " +
+                            "\"mode\" to be \"reflect\" - on \"destroy\" the " +
+                            "shot is deleted rather than returned, so there " +
+                            "is nothing to catch again.");
+                    }
+                }
+            }
+
+            // THE "NOTHING CATCHES BULLETS" CHECK BELONGS HERE, NOT ABOVE THE
+            // DEFLECT BLOCK. It used to sit before it and `return` early, which
+            // meant a weapon with `rally` + `deflect` and no shield or catalyst
+            // was refused on its way to the one thing that WOULD have worked -
+            // the deflect wiring is twenty lines further down. Same shape as the
+            // swipe gap above: the code to make it work existed and was
+            // unreachable. Counting all four reflectors first, then reporting,
+            // is what makes the message true.
             if (attached == 0)
             {
                 Log.LogWarning(
                     fileName + ": \"rally\" needs something that CATCHES " +
-                    "bullets to hang off - add a \"shield\" block (with " +
-                    "\"onBlock\": \"reflect\") or a \"catalyst\" block. On its " +
-                    "own it does nothing, because there is nothing to reflect " +
-                    "with.");
+                    "bullets to hang off, and this weapon has none of the four " +
+                    "- a \"shield\" block (with \"onBlock\": \"reflect\"), a " +
+                    "\"catalyst\" block, a \"swipe\" block with " +
+                    "\"deflects\": true, or a \"deflect\" block with " +
+                    "\"mode\": \"reflect\". On its own rally does nothing, " +
+                    "because there is nothing to reflect with.");
                 return;
-            }
-
-            // Deflect is deliberately not supported, and it is worth being
-            // explicit rather than silently ignoring it: ForgeDeflect is a
-            // component on the PROJECTILE PREFAB, and a plain config-class
-            // reference on a prefab-attached component arrives NULL on every
-            // clone. That exact trap silently disabled the whole of gas and
-            // catalyst once. Supporting it properly means the ForgeConfigTable
-            // int-id route, which is a separate change.
-            if (root["deflect"] != null)
-            {
-                Log.LogWarning(
-                    fileName + ": \"rally\" does not apply to \"deflect\" yet " +
-                    "- only to \"shield\" and \"catalyst\". A deflector's " +
-                    "settings live on the projectile prefab, which cannot " +
-                    "carry a config reference safely. Your deflect still " +
-                    "reflects normally, it just will not stack.");
             }
 
             // A reflect that cannot be caught again is not a rally, so say so
@@ -6577,7 +11639,10 @@ namespace WeaponForge
                 "statMode", "health", "healthPerLevel", "speed", "turnSpeed",
                 "sight", "attackRange", "leash", "followDistance", "iFrames",
                 "fireproof", "untargetable", "resources", "regen", "shield",
-                "extendFuel", "hurtsOwner", "hurtsAllies",
+                "extendFuel", "hurtsOwner", "hurtsAllies", "solidToOwner",
+                "seek", "seeEnemies", "friendlyShots",
+                "follow", "followSpeed", "followDelay",
+                "hold", "holdRadius", "holdDelay", "holdSpeed",
                 "weaponStats", "explosion", "lightning", "burn"
             };
 
@@ -6749,6 +11814,7 @@ namespace WeaponForge
         private static void ApplyTractor(
             WeaponData weapon,
             JObject root,
+            bool isGadget,
             string fileName)
         {
             JToken token = root["tractor"];
@@ -6801,6 +11867,15 @@ namespace WeaponForge
                     Mathf.Max(0f, (float?)o["drainPerSecond"] ?? 2f);
                 cfg.affectsPlayer = (bool?)o["affectsPlayer"] ?? false;
 
+                // Both of these were documented in the builder page and used by
+                // ForgeTractorPatch, and neither was ever read from the file -
+                // so the field existed at both ends and only the wire between
+                // them was missing. Defaults match ForgeTractor.Config, so a
+                // file that says nothing behaves exactly as it did before.
+                cfg.holdStiffness =
+                    Mathf.Clamp01((float?)o["holdStiffness"] ?? 0.65f);
+                cfg.grappleDebug = (bool?)o["grappleDebug"] ?? true;
+
                 cfg.grappleToUnits = (bool?)o["grappleToUnits"] ?? false;
                 cfg.grappleSlamsYou = (bool?)o["grappleSlamsYou"] ?? false;
                 cfg.grappleStopDistance =
@@ -6818,6 +11893,25 @@ namespace WeaponForge
                 cfg.slamHitsUnits = (bool?)o["slamHitsUnits"] ?? true;
                 cfg.slamHitsPlayer = (bool?)o["slamHitsPlayer"] ?? false;
 
+                cfg.slamTintPulse =
+                    Mathf.Max(0f, (float?)o["slamTintPulse"] ?? 3f);
+                cfg.slamTintStrength =
+                    TintStrength(o, fileName, "tractor slam", 1f);
+
+                string slamTint = (string)o["slamTint"];
+
+                if (!string.IsNullOrEmpty(slamTint))
+                {
+                    Color st = Color.white;
+
+                    if (ReadColor(
+                            slamTint, "tractor \"slamTint\"", fileName, ref st))
+                    {
+                        cfg.slamTint = st;
+                        cfg.slamHasTint = true;
+                    }
+                }
+
                 cfg.drawBeam = (bool?)o["drawBeam"] ?? true;
 
                 Color c = cfg.color;
@@ -6833,13 +11927,36 @@ namespace WeaponForge
                     "tractor sfx", fileName);
             }
 
-            // NOTE, and it cannot be checked from here: a tractor beam must go
-            // in a NORMAL weapon slot. Gadgets bypass Shooter entirely, and
-            // Shooter's held trigger is the only thing that drives the beam - so
-            // one placed in a gadget slot simply never runs. The compiler proves
-            // the check is impossible at this level (a gadget *holds* a
-            // WeaponData rather than being one), so it is documented in the
-            // builder page and the txt instead of warned about here.
+            // A TRACTOR BEAM MUST GO IN A NORMAL WEAPON SLOT, and this now
+            // says so at build time.
+            //
+            // THE COMMENT THAT USED TO SIT HERE TALKED ITSELF OUT OF THE
+            // WARNING ON A FALSE PREMISE: *"the compiler proves the check is
+            // impossible at this level (a gadget holds a WeaponData rather than
+            // being one), so it is documented in the builder page and the txt
+            // instead."* The first half is wrong - the slot the FILE declares is
+            // known right here, and three other blocks already take it
+            // (`overheat`, `spinUp`, `shield`). The second half is true and is
+            // not a substitute: page documentation is read by someone browsing
+            // the page, and the person who needs this is the one who hand-edited
+            // a JSON file and is now staring at a beam that does nothing.
+            //
+            // `Shooter.Update`'s postfix is the ONLY thing that drives this
+            // beam, and a gadget calls `weapon.Fire(new FakeBarrel(...))`
+            // directly, so the whole feature is inert there - not degraded,
+            // inert.
+            if (isGadget)
+            {
+                Log.LogWarning(
+                    fileName + ": \"tractor\" cannot work on a GADGET. The " +
+                    "beam is driven entirely by the ship's held trigger " +
+                    "(Shooter), and a gadget bypasses that completely - it " +
+                    "fires its weapon directly the moment the module " +
+                    "activates. Nothing about the beam will run. Put it in the " +
+                    "primary or secondary slot.");
+                return;
+            }
+
             ForgeTractor.Register(weapon, cfg);
 
             Log.LogInfo(
@@ -7356,6 +12473,7 @@ namespace WeaponForge
         private static void ApplySticky(
             WeaponData weapon,
             JObject root,
+            bool isGadget,
             string fileName)
         {
             JToken token = root["sticky"];
@@ -7563,6 +12681,34 @@ namespace WeaponForge
                 pw.physicsProjectilePrefab = (PhysicsProjectile)comp;
             else
                 pw.projectilePrefab = (Projectile)comp;
+
+            // A GADGET CAN LAY STICKIES AND THEN NEVER DETONATE THEM, and
+            // `refire` - the trigger this happens to - IS THE DEFAULT.
+            //
+            // The two halves of the feature reach a gadget differently, which
+            // is exactly what makes it invisible. Laying one rides
+            // `Projectile.OnObjectHit`, which every shot goes through whatever
+            // fired it. Detonating one on `refire` is a `Shooter.Shoot` PREFIX
+            // - the press that would be the detonator - and a gadget never
+            // touches a Shooter. So the mines appear, stick, and sit there
+            // forever, which reads as "the explosion is broken" rather than as
+            // "this trigger needs a trigger".
+            //
+            // Half-working is worse than not working: there is something on
+            // screen, so nobody suspects the slot.
+            if (isGadget && s.trigger == ForgeSticky.Trigger.Refire)
+            {
+                Log.LogWarning(
+                    fileName + ": sticky \"trigger\": \"refire\" (the " +
+                    "DEFAULT) cannot work on a GADGET. The shots will stick " +
+                    "fine, but the thing that sets them off is the next pull " +
+                    "of the ship's trigger - and a gadget fires directly " +
+                    "without going through it, so they would stick and never " +
+                    "blow. Use \"trigger\": \"fuse\" (a timer) or " +
+                    "\"proximity\" (something comes close), both of which " +
+                    "work on a gadget, or move this to the primary or " +
+                    "secondary slot.");
+            }
 
             ForgeStickySpec.Register(weapon, spec);
 
@@ -7958,6 +13104,22 @@ namespace WeaponForge
                 cfg.count = (int?)o["count"] ?? 0;
                 cfg.pierce = (int?)o["pierce"] ?? 0;
 
+                // Said at BUILD time, because the runtime guard alone leaves a
+                // file that reads as if it works. `projectileCount: 0` means
+                // "this gun fires no bullets" - a pure melee swipe, a lunge-only
+                // ram - so charge "count" has nothing to add pellets to, and it
+                // used to produce a shotgun blast on release (round 11 test 80).
+                if (cfg.count > 0 && weapon.projectileCount <= 0f)
+                {
+                    Log.LogWarning(
+                        fileName + ": charge \"count\": " + cfg.count +
+                        " is ignored, because this weapon is " +
+                        "\"projectileCount\": 0 - it fires no bullets at all by " +
+                        "design, so there is nothing to add pellets to. Drop " +
+                        "charge \"count\", or give the weapon a real " +
+                        "projectileCount if you did want it to shoot.");
+                }
+
                 cfg.meter = (bool?)o["meter"] ?? true;
                 cfg.meterSprite = (string)o["meterSprite"];
                 cfg.meterFrom = (float?)o["meterFrom"] ?? 0.2f;
@@ -8035,6 +13197,40 @@ namespace WeaponForge
                     "first wins, and the loser silently does nothing. Pick " +
                     "one - or set \"orbitSuppressFire\": false so the ring is " +
                     "passive and the charge owns the trigger.");
+            }
+
+            // "holdFire": false MAKES THE CHARGED SHOT COMPETE WITH THE
+            // WEAPON'S OWN AUTO-FIRE FOR ONE FIRE-RATE GATE, and on a fast
+            // weapon that is why a release "does nothing" at random.
+            //
+            // `Release` ends with `if (!shooter.FireRatePassed) return;` - the
+            // weapon's own cadence still applies. With holdFire ON that is
+            // harmless, because nothing else has fired while you held. With it
+            // OFF the gun has been firing all along, so at the instant you let
+            // go there is nearly always a normal shot inside the last
+            // 1/fireRate seconds and the charged one is refused in silence.
+            //
+            // Reported for R12 (carried from R11 test 14) as "the charge shot
+            // doesn't fire". Warned rather than changed, because exempting the
+            // release from the gate would alter every charge weapon already
+            // written - see the R13 question.
+            if (cfg.mode == ForgeCharge.Mode.Release && !cfg.holdFire &&
+                weapon.fireRate > 0f)
+            {
+                float gap = 1f / weapon.fireRate;
+
+                Log.LogWarning(
+                    fileName + ": charge \"holdFire\": false on a " +
+                    "\"release\" charge means the gun keeps firing normally " +
+                    "while you hold - and the charged shot then has to pass " +
+                    "the SAME fire-rate gate as those shots. At fireRate " +
+                    weapon.fireRate.ToString("0.##") + " that is one shot " +
+                    "every " + gap.ToString("0.###") + "s, so letting go " +
+                    "inside that window drops the charged shot silently. It " +
+                    "looks exactly like the charge not working. Either set " +
+                    "\"holdFire\": true (hold builds, release fires, nothing " +
+                    "in between) or lower \"fireRate\" so the window is " +
+                    "wide enough to release in.");
             }
 
             if (weapon.warmupTime > 0f &&
@@ -8191,9 +13387,40 @@ namespace WeaponForge
                     ? ForgeCatalyst.Trigger.Any
                     : ForgeCatalyst.Trigger.Different;
 
+                // AN UNRECOGNISED VALUE USED TO BECOME THE DEFAULT IN SILENCE,
+                // and that is worse than an error. R10 test 84 was reported as
+                // *"catalyst.trigger is not inside weapon builder.html"* - the
+                // control is there, but it offers `different` and `any` while
+                // the file said `"shot"`. That fell through to `different`,
+                // which happens to look right (you shoot the node with your
+                // other gun), so nothing seemed wrong except that the value
+                // could not be found on the page. Say so instead.
+                if (tr != "different" && tr != "any" && tr != "all" &&
+                    tr != "self")
+                {
+                    Log.LogWarning(
+                        fileName + ": catalyst \"trigger\": '" + tr + "' is " +
+                        "not a value this key takes, so it fell back to " +
+                        "\"different\". The two choices are \"different\" (only " +
+                        "a shot from ANOTHER weapon sets the node off - the combo " +
+                        "reading, and the default) and \"any\" (this weapon's own " +
+                        "shots count too). The builder page's dropdown lists " +
+                        "exactly those two.");
+                }
+
                 string rd =
                     ((string)o["redirect"] ?? "chain")
                         .Trim().ToLowerInvariant();
+
+                if (rd != "chain" && rd != "split" && rd != "burst" &&
+                    rd != "fan")
+                {
+                    Log.LogWarning(
+                        fileName + ": catalyst \"redirect\": '" + rd + "' is " +
+                        "not a value this key takes, so it fell back to " +
+                        "\"chain\" (one shot leaping target to target). The " +
+                        "other is \"split\" (one shot per target, all at once).");
+                }
 
                 cfg.redirect = (rd == "split" || rd == "burst" || rd == "fan")
                     ? ForgeCatalyst.Redirect.Split
@@ -8227,11 +13454,38 @@ namespace WeaponForge
                 // Where a reflected shot goes. The older "aimReflected" bool
                 // still works and still means "at the nearest enemy"; this is
                 // the fuller answer and adds the cursor.
+                //
+                // ForgeCatalystNode reads `aimReflected ? AimNearest : aimMode`,
+                // so while that bool is true it DISCARDS aimMode entirely - and
+                // it defaults to true. Setting only "reflectAim" therefore used
+                // to do precisely nothing, silently. Naming the fuller key is
+                // now taken as choosing it: the old bool keeps its default only
+                // while the new one is absent.
+                JToken reflectAimTok = o["reflectAim"];
+
                 cfg.aimMode =
-                    ForgeBulletTurn.ParseAim((string)o["reflectAim"]);
+                    ForgeBulletTurn.ParseAim((string)reflectAimTok);
                 cfg.reflectSpeed =
                     Mathf.Max(0.05f, (float?)o["reflectSpeed"] ?? 1.5f);
-                cfg.aimReflected = (bool?)o["aimReflected"] ?? true;
+
+                bool? aimReflected = (bool?)o["aimReflected"];
+
+                cfg.aimReflected =
+                    aimReflected ?? (reflectAimTok == null);
+
+                // Both given, and the old one wins by the rule above. That is
+                // legal but almost never meant, and it fails silently, so name
+                // it rather than letting the weapon look merely wrong.
+                if (aimReflected == true && reflectAimTok != null &&
+                    cfg.aimMode != ForgeBulletTurn.AimNearest)
+                {
+                    Log.LogWarning(
+                        fileName + ": catalyst sets \"reflectAim\": \"" +
+                        ForgeBulletTurn.AimWord(cfg.aimMode) + "\" AND " +
+                        "\"aimReflected\": true. The bool wins and reflected " +
+                        "shots will go at the nearest enemy. Drop " +
+                        "\"aimReflected\" to use \"reflectAim\".");
+                }
                 cfg.enemyShotsConsume =
                     (bool?)o["enemyShotsConsume"] ?? true;
 
@@ -8424,22 +13678,22 @@ namespace WeaponForge
 
             ForgeSpriteLibrary.Art custom;
 
-            if (ForgeSpriteLibrary.TryGetArt(cfg.nodeSprite, out custom) &&
+            if (ForgeSpriteLibrary.TryGetAnyArt(cfg.nodeSprite, out custom) &&
                 custom.sprite != null)
             {
                 cfg.nodeArt = custom.sprite;
+
+                cfg.nodeFrames =
+                    ForgeSpriteLibrary.OptInFrames(custom, out cfg.nodeFps);
+
                 return;
             }
 
-            string known = ForgeSpriteLibrary.Count > 0
-                ? " Loaded custom art: " +
-                  string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                : " There is no art in the sprites folder yet.";
-
             Log.LogWarning(
                 fileName + ": catalyst \"nodeSprite\": '" + cfg.nodeSprite +
-                "' is neither \"coin\" nor one of your sprites - the node " +
-                "keeps the weapon's own bullet art." + known);
+                "' is neither \"coin\" nor a sprite I can find - the " +
+                "node keeps the weapon's own bullet art." +
+                ForgeSpriteLibrary.NotFoundHint());
         }
 
         // ------------------------------------------------------------------
@@ -8474,8 +13728,7 @@ namespace WeaponForge
                 iconName = iconName.Trim();
 
                 cfg.indicatorIcon =
-                    (JsonFieldMapper.FindAsset(typeof(Sprite), iconName)
-                        as Sprite)
+                    ForgeSpriteLibrary.ResolveStockIcon(iconName)
                     ?? ForgeSpriteLibrary.ResolveIconSprite(iconName);
             }
 
@@ -8669,18 +13922,7 @@ namespace WeaponForge
 
             if (o != null)
             {
-                string c =
-                    ((string)o["cloud"] ?? "grow").Trim().ToLowerInvariant();
-
-                if (c == "hang" || c == "still" || c == "static")
-                    cfg.cloud = ForgeGas.Cloud.Hang;
-                else if (c == "drift" || c == "roll" || c == "move")
-                    cfg.cloud = ForgeGas.Cloud.Drift;
-                else if (c == "single" || c == "burst" || c == "grenade" ||
-                         c == "impact")
-                    cfg.cloud = ForgeGas.Cloud.Single;
-                else
-                    cfg.cloud = ForgeGas.Cloud.Grow;
+                ReadCloudMode(cfg, o, fileName);
 
                 cfg.radius = Mathf.Max(0.1f, (float?)o["radius"] ?? 1.6f);
                 cfg.growTo = Mathf.Max(0.1f, (float?)o["growTo"] ?? 3.2f);
@@ -8755,6 +13997,7 @@ namespace WeaponForge
                 cfg.trailPuffs = Mathf.Clamp((int?)o["trailPuffs"] ?? 2, 1, 24);
                 cfg.trailMax = Mathf.Clamp((int?)o["trailMax"] ?? 40, 1, 200);
                 cfg.bloomOnDeath = (bool?)o["bloomOnDeath"] ?? true;
+                cfg.bloomOnImpact = (bool?)o["bloomOnImpact"] ?? false;
             }
 
             if (!cfg.DoesAnything)
@@ -8863,13 +14106,23 @@ namespace WeaponForge
                         "finally dies.");
                 }
 
-                if (cfg.cloud == ForgeGas.Cloud.Single)
+                if (cfg.impactOnly)
                 {
                     Log.LogInfo(
                         fileName + ": gas - \"single\" describes one cloud " +
                         "where the shot lands, which a trail cannot be, so the " +
-                        "TRAIL clouds use \"grow\" instead. The end cloud is " +
-                        "still a single bloom.");
+                        "TRAIL clouds drop that half" +
+                        (cfg.drifts ? " and keep the drift" : "") +
+                        ". The end cloud is still a single bloom.");
+                }
+
+                if (cfg.bloomOnImpact && !cfg.impactOnly)
+                {
+                    Log.LogInfo(
+                        fileName + ": gas - \"bloomOnImpact\" is on, so the " +
+                        "cloud lands at the FIRST thing this shot hits rather " +
+                        "than wherever it finally dies. One cloud per shot " +
+                        "either way.");
                 }
             }
 
@@ -8960,6 +14213,36 @@ namespace WeaponForge
                     pw.impactBehaviour = ib;
                 }
 
+                // AND WITH IMPACT OFF IT RE-DAMAGES EVERY FRAME IT OVERLAPS
+                // SOMETHING. Re-hitting one target is rate-limited by
+                // `piercingData.damageRepeatDelay` and by nothing else, and a
+                // delay of ZERO means "no limit" rather than "no repeat" - so a
+                // puff that flies THROUGH an enemy instead of dying on it hits
+                // it once per physics step, fifty times a second. That is what
+                // "the preset has no impact so it hits the same target a ton"
+                // was: not too much damage per hit, far too many hits, each one
+                // firing the victim's own damage sound.
+                //
+                // 0.25s is the game's own instinct - it is the default
+                // `HitscanWeaponData.damageRepeatDelay`, i.e. what the devs
+                // chose for the other continuous-contact weapon in the game.
+                PiercingData pd = pw.piercingData;
+
+                if (pd.damageRepeatDelay <= 0f)
+                {
+                    pd.damageRepeatDelay = 0.25f;
+                    pw.piercingData = pd;
+
+                    Log.LogInfo(
+                        fileName + ": gas - the puff's re-hit delay was 0, " +
+                        "which means it damages one target EVERY PHYSICS STEP " +
+                        "while overlapping it (about 50 times a second, each " +
+                        "with its own hit sound). Set to 0.25s - the same " +
+                        "delay the game's own beams use. Set " +
+                        "\"weapon\".piercingData.damageRepeatDelay yourself to " +
+                        "choose a different one.");
+                }
+
                 // With impact off, a puff would otherwise live forever - the
                 // same trap the harpoon has. Make sure something still ends it.
                 ProjectileLifetimeData lt = pw.lifetimeData;
@@ -8994,9 +14277,9 @@ namespace WeaponForge
             ResolveGasArt(weapon, cfg, fileName);
 
             Log.LogInfo(
-                fileName + ": gas - " + cfg.cloud + " cloud, radius " +
+                fileName + ": gas - " + cfg.ModeWords + " cloud, radius " +
                 cfg.radius.ToString("0.##") +
-                (cfg.cloud == ForgeGas.Cloud.Grow
+                (cfg.grows
                     ? (" -> " + cfg.growTo.ToString("0.##"))
                     : "") +
                 ", " + cfg.duration.ToString("0.#") + "s" +
@@ -9039,22 +14322,21 @@ namespace WeaponForge
 
                 ForgeSpriteLibrary.Art custom;
 
-                if (ForgeSpriteLibrary.TryGetArt(cfg.sprite, out custom) &&
+                if (ForgeSpriteLibrary.TryGetAnyArt(cfg.sprite, out custom) &&
                     custom.sprite != null)
                 {
                     cfg.art = custom.sprite;
+                    cfg.artFrames =
+                        ForgeSpriteLibrary.OptInFrames(
+                            custom, out cfg.artFps);
                 }
                 else
                 {
-                    string known = ForgeSpriteLibrary.Count > 0
-                        ? " Loaded custom art: " +
-                          string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                        : " There is no art in the sprites folder yet.";
-
                     Log.LogWarning(
                         fileName + ": gas \"sprite\": '" + cfg.sprite +
-                        "' is not one of your sprites - the soft puff is " +
-                        "drawn for you instead." + known);
+                        "' is not a sprite I can find - the soft puff is " +
+                        "drawn for you instead." +
+                        ForgeSpriteLibrary.NotFoundHint());
                 }
             }
 
@@ -9142,6 +14424,7 @@ namespace WeaponForge
                 cfg.inheritBurn = (bool?)o["inheritBurn"] ?? true;
                 cfg.inheritExplosion = (bool?)o["inheritExplosion"] ?? true;
                 cfg.inheritDischarge = (bool?)o["inheritDischarge"] ?? true;
+                cfg.resetSlowdown = (bool?)o["resetSlowdown"] ?? true;
 
                 ReadSplitDamage(o["damage"], cfg, fileName);
                 ReadSplitAim(o["aim"], cfg, fileName);
@@ -9404,6 +14687,110 @@ namespace WeaponForge
         }
 
         // "damage" is either a word or a plain multiplier.
+        // "cloud" is now a COMBINATION rather than one of four words.
+        //
+        // The four names still work exactly as before - they are just presets
+        // over three independent switches now (see ForgeGas.Cloud). What is new
+        // is that they compose: "grow drift" is a swelling cloud that also
+        // rolls, and "single drift" is one big impact cloud that rolls away
+        // from where it landed. Those were the two he asked for, and neither
+        // had a name before.
+        //
+        // Separators are space, "+" and "," so every way a person might write
+        // it lands in the same place. Explicit booleans win over the words, so
+        // "cloud": "grow", "drift": true is unambiguous.
+        private static void ReadCloudMode(
+            ForgeGas.Config cfg, JObject o, string fileName)
+        {
+            string raw = ((string)o["cloud"] ?? "grow").Trim().ToLowerInvariant();
+
+            string[] words = raw.Split(
+                new char[] { ' ', '+', ',', '/', '&' },
+                StringSplitOptions.RemoveEmptyEntries);
+
+            bool grows = false, drifts = false, impact = false, hang = false;
+            var unknown = new List<string>();
+
+            foreach (string w in words)
+            {
+                switch (w)
+                {
+                    case "grow":
+                    case "growing":
+                    case "swell":
+                    case "expand":
+                        grows = true;
+                        break;
+
+                    case "hang":
+                    case "still":
+                    case "static":
+                    case "stay":
+                        hang = true;
+                        break;
+
+                    case "drift":
+                    case "drive":
+                    case "roll":
+                    case "move":
+                    case "moving":
+                    case "drifting":
+                        drifts = true;
+                        break;
+
+                    case "single":
+                    case "burst":
+                    case "grenade":
+                    case "impact":
+                        impact = true;
+                        break;
+
+                    case "and":
+                    case "cloud":
+                        break;
+
+                    default:
+                        unknown.Add(w);
+                        break;
+                }
+            }
+
+            if (unknown.Count > 0)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"cloud\" - did not recognise " +
+                    string.Join(", ", unknown.ToArray()) +
+                    ". The words are \"grow\", \"hang\", \"drift\" and " +
+                    "\"single\", and they COMBINE - \"grow drift\" is a " +
+                    "swelling cloud that also rolls, \"single drift\" is one " +
+                    "impact cloud that rolls away. Ignoring what I could not " +
+                    "read.");
+            }
+
+            // Growth is opt-in by word, with one exception: a "cloud" value
+            // nobody could read at all falls back to the documented default.
+            // That reproduces the old four modes exactly - only "grow" grew.
+            if (!grows && !hang && !drifts && !impact)
+                grows = true;
+
+            // Explicit booleans win over the words. Note the KEY NAMES: not
+            // "drift", which is already the drift SPEED in units/second, and
+            // casting a number to bool? throws - the exact shape of bug that
+            // has cost this project two rounds. "grows" / "drifts" /
+            // "impactOnly" collide with nothing.
+            cfg.grows = (bool?)o["grows"] ?? grows;
+            cfg.drifts = (bool?)o["drifts"] ?? drifts;
+            cfg.impactOnly = (bool?)o["impactOnly"] ?? impact;
+
+            // The enum is now only a label, so give it the closest one for the
+            // benefit of anything that still prints it.
+            cfg.cloud =
+                cfg.impactOnly ? ForgeGas.Cloud.Single :
+                cfg.drifts ? ForgeGas.Cloud.Drift :
+                cfg.grows ? ForgeGas.Cloud.Grow :
+                ForgeGas.Cloud.Hang;
+        }
+
         private static void ReadSplitDamage(
             JToken token, ForgeSplit.Config cfg, string fileName)
         {
@@ -9751,22 +15138,196 @@ namespace WeaponForge
 
             ForgeSpriteLibrary.Art custom;
 
-            if (ForgeSpriteLibrary.TryGetArt(cfg.sprite, out custom) &&
+            if (ForgeSpriteLibrary.TryGetAnyArt(cfg.sprite, out custom) &&
                 custom.sprite != null)
             {
                 cfg.art = custom.sprite;
+
+                cfg.artFrames =
+                    ForgeSpriteLibrary.OptInFrames(custom, out cfg.artFps);
+
                 return;
             }
 
-            string known = ForgeSpriteLibrary.Count > 0
-                ? " Loaded custom art: " +
-                  string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                : " There is no art in the sprites folder yet.";
-
             Log.LogWarning(
                 fileName + ": shield \"sprite\": '" + cfg.sprite +
-                "' is not one of your sprites - the arc will be drawn from " +
-                "\"angle\", \"radius\" and \"thickness\" instead." + known);
+                "' is not a sprite I can find - the arc will be drawn from " +
+                "\"angle\", \"radius\" and \"thickness\" instead." +
+                ForgeSpriteLibrary.NotFoundHint());
+        }
+
+        // HOW HARD A TINT COMES THROUGH - read once, for every block that
+        // tints a unit.
+        //
+        // His R13 ask, and it is a single number in ForgeUnitTint, so the only
+        // real work is that NINE blocks apply a tint and they must all take it
+        // or the answer to "can I do that for all the weapons that tint?" is
+        // "for some of them", which is worse than no.
+        //
+        // BOTH SPELLINGS ARE ACCEPTED, deliberately. This mod's blocks are
+        // split between a `tint`/`tintPulse` naming and a `color`/`colorPulse`
+        // one - `slow` and `stun` use the first, `crit` and `charm` the second
+        // - and that split is now baked into files people have written. Making
+        // the author remember which block uses which prefix for the NEW key
+        // would generate exactly one bug report per block. Reading either is
+        // two lines here and no lines anywhere else.
+        //
+        // Out-of-range values are clamped rather than refused, but a value
+        // above 1 is reported, because "opacity 100" is a reasonable thing to
+        // type and silently means 1.
+        private static float TintStrength(
+            JObject o, string fileName, string block, float fallback)
+        {
+            if (o == null)
+                return fallback;
+
+            JToken t = o["tintStrength"] ?? o["colorStrength"];
+
+            if (t == null)
+                return fallback;
+
+            float v;
+
+            if (t.Type == JTokenType.Float || t.Type == JTokenType.Integer)
+            {
+                v = (float)t;
+            }
+            else
+            {
+                Log.LogWarning(
+                    fileName + ": " + block + " tint strength should be a " +
+                    "number from 0 to 1 (1 is the full colour, 0.35 is a hint " +
+                    "of it). Ignored, so the tint stays at full strength.");
+                return fallback;
+            }
+
+            if (v > 1.0001f)
+            {
+                Log.LogWarning(
+                    fileName + ": " + block + " tint strength is " +
+                    v.ToString("0.##") + " - the scale is 0 to 1, not a " +
+                    "percentage, so this reads as 1 (the full colour). Use " +
+                    "0.5 for half.");
+            }
+            else if (v < 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": " + block + " tint strength is negative, " +
+                    "which reads as 0 - the unit will not be tinted at all. " +
+                    "Set the block's own tint switch off if that is what you " +
+                    "meant.");
+            }
+
+            return Mathf.Clamp01(v);
+        }
+
+        // A TINT STRENGTH WITH NO TINT DOES NOTHING - say so.
+        //
+        // Six of the nine tinting blocks have their colour OFF until a colour
+        // is named, so `"slam": { "tintStrength": 0.4 }` with no `"tint"` is a
+        // number that cannot possibly have an effect. That is a silent default
+        // on a tuning path, which is the failure shape this project pays for
+        // most often, and an easy mistake because the strength reads like an
+        // opacity that would work on its own.
+        //
+        // WHY THIS IS ONE METHOD READING THE JSON rather than a check inside
+        // each block: most of those blocks parse the strength BEFORE they
+        // resolve their colour (the colour goes through `ReadColor`, which can
+        // fail), so an in-place check would be asking a flag that is not set
+        // yet. Reordering six parse blocks to suit a warning is the riskier
+        // change. Asking the JSON is order-independent by construction.
+        private static void WarnUnusedTintStrengths(
+            JObject root, string fileName)
+        {
+            if (root == null)
+                return;
+
+            // block, the key that turns its colour on, whether that colour is on
+            // by DEFAULT, and (optionally) the fix to suggest when the generic
+            // "name a colour" advice is wrong for that block. The defaults-on
+            // blocks can only fail the other way - by being switched off
+            // explicitly.
+            //
+            // THE LAST TWO TINT A MUZZLE FLASH RATHER THAN A UNIT, so their gate
+            // is a BOOL (`tintMuzzle`) and not a colour: the colour has a
+            // default and cannot be missing, so the only way to set a strength
+            // with nothing to apply it to is to have switched the tint off.
+            // Which is exactly the case a generic "add a colour" message would
+            // have sent the reader hunting for.
+            var blocks = new[]
+            {
+                new[] { "slow", "tint", "off", "" },
+                new[] { "slam", "tint", "off", "" },
+                new[] { "contactDamage", "tint", "off", "" },
+                new[] { "tractor", "slamTint", "off", "" },
+                new[] { "crit", "color", "off", "" },
+                new[] { "execute", "color", "off", "" },
+                new[] { "charm", "color", "on", "" },
+                new[] { "stun", "tint", "on", "" },
+                new[] { "adaptive", "tint", "on", "" },
+                new[] { "overheat", "tintMuzzle", "on",
+                        "Set \"tintMuzzle\": true to get the heat colour back, " +
+                        "or drop the strength." },
+                new[] { "spinUp", "tintMuzzle", "on",
+                        "Set \"tintMuzzle\": true to get the wind-up colour " +
+                        "back, or drop the strength." },
+            };
+
+            foreach (string[] b in blocks)
+            {
+                try
+                {
+                    var o = root[b[0]] as JObject;
+
+                    if (o == null)
+                        continue;
+
+                    // Either spelling, matching what TintStrength accepts.
+                    JToken s = o["tintStrength"] ?? o["colorStrength"];
+
+                    if (b[0] == "tractor")
+                        s = o["slamTintStrength"] ?? s;
+
+                    if (s == null)
+                        continue;
+
+                    JToken tint = o[b[1]];
+                    bool defaultOn = (b[2] == "on");
+
+                    bool off = defaultOn
+                        // On by default, so only an explicit false turns it off.
+                        ? (tint != null &&
+                           tint.Type == JTokenType.Boolean && !(bool)tint)
+                        // Off by default, so a missing key means no colour.
+                        : (tint == null ||
+                           (tint.Type == JTokenType.Boolean && !(bool)tint));
+
+                    if (!off)
+                        continue;
+
+                    string fix = (b.Length > 3 && !string.IsNullOrEmpty(b[3]))
+                        ? b[3]
+                        : "Add \"" + b[1] + "\": \"#8CCCFF\" (or any colour " +
+                          "name) to make it visible, or drop the strength.";
+
+                    Log.LogWarning(
+                        fileName + ": " + b[0] + " tint strength is set but " +
+                        "that block has NO COLOUR" +
+                        (defaultOn
+                            ? " (\"" + b[1] + "\" is switched off)"
+                            : " (\"" + b[1] + "\" is not set, and it is off " +
+                              "until you name one)") +
+                        ", so the strength does nothing at all. " + fix);
+                }
+                catch (Exception)
+                {
+                    // A WARNING-ONLY READ MUST NEVER BE THE THING THAT THROWS.
+                    // Standing rule here since a validation line took five
+                    // tests down with it: this whole method is advisory, so
+                    // every block is guarded on its own and a surprising shape
+                    // costs one missing warning rather than a broken weapon.
+                }
+            }
         }
 
         private static void ResolveShieldResource(
@@ -9801,6 +15362,16 @@ namespace WeaponForge
             if (IsSilence(name))
                 return null;
 
+            // An EMPTY string means "no sound", not "a sound whose name is
+            // nothing". It used to fall through to the not-found warning, so
+            // every file that left a sound slot blank - which is most of them -
+            // produced a line reading `charge "sfx" is set to '', which is
+            // neither a custom sound nor a sound id this game has`. Four of
+            // those in one log, all of them noise, one of them for a slot the
+            // author never touched.
+            if (string.IsNullOrEmpty(name) || name.Trim().Length == 0)
+                return null;
+
             ForgeSoundLibrary.LoadAll();
 
             string guid = ForgeSfxRegistry.Resolve(
@@ -9814,7 +15385,7 @@ namespace WeaponForge
                 if (forceLoop)
                 {
                     Log.LogInfo(
-                        fileName + ": charge \"" + key + "\" is the stock " +
+                        fileName + ": sound \"" + key + "\" is the stock " +
                         "sound '" + name + "', which is used as-is. Held " +
                         "sounds are started and stopped by handle, so this " +
                         "only fills the whole hold if that clip already " +
@@ -9835,7 +15406,7 @@ namespace WeaponForge
                   "the 'sounds' folder next to the DLL?";
 
             Log.LogWarning(
-                fileName + ": charge \"" + key + "\" is set to '" + name +
+                fileName + ": sound \"" + key + "\" is set to '" + name +
                 "', which is neither a custom sound nor a sound id this game " +
                 "has, so it will be SILENT." + known);
 
@@ -9882,22 +15453,22 @@ namespace WeaponForge
 
                 ForgeSpriteLibrary.Art custom;
 
-                if (ForgeSpriteLibrary.TryGetArt(cfg.meterSprite, out custom) &&
+                if (ForgeSpriteLibrary.TryGetAnyArt(cfg.meterSprite, out custom) &&
                     custom.sprite != null)
                 {
                     art = custom.sprite;
+
+                    cfg.meterFrames =
+                        ForgeSpriteLibrary.OptInFrames(
+                            custom, out cfg.meterFps);
                 }
                 else
                 {
-                    string known = ForgeSpriteLibrary.Count > 0
-                        ? " Loaded custom art: " +
-                          string.Join(", ", ForgeSpriteLibrary.Names) + "."
-                        : " There is no art in the sprites folder yet.";
-
                     Log.LogWarning(
                         fileName + ": charge \"meterSprite\": '" +
-                        cfg.meterSprite + "' is not one of your sprites." +
-                        known + " Falling back to the weapon's own bullet.");
+                        cfg.meterSprite + "' is not a sprite I can find." +
+                        ForgeSpriteLibrary.NotFoundHint() +
+                        " Falling back to the weapon's own bullet.");
                 }
             }
 
@@ -10082,8 +15653,7 @@ namespace WeaponForge
 
             iconName = iconName.Trim();
 
-            var stock =
-                JsonFieldMapper.FindAsset(typeof(Sprite), iconName) as Sprite;
+            var stock = ForgeSpriteLibrary.ResolveStockIcon(iconName);
 
             Sprite custom = ForgeSpriteLibrary.ResolveIconSprite(iconName);
 

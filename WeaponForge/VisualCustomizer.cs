@@ -674,11 +674,13 @@ namespace WeaponForge
             int? count,
             float? size,
             bool? rotate,
-            float? spread)
+            float? spread,
+            float? lifetime = null,
+            float? gravity = null)
         {
             if (root == null ||
                 (!count.HasValue && !size.HasValue && !rotate.HasValue &&
-                 !spread.HasValue))
+                 !spread.HasValue && !lifetime.HasValue && !gravity.HasValue))
             {
                 return null;
             }
@@ -721,6 +723,28 @@ namespace WeaponForge
                 {
                     ParticleSystem.MainModule main = ps.main;
                     main.startSize = size.Value;
+                }
+
+                if (lifetime.HasValue)
+                {
+                    // A flat constant, so it replaces whatever range the stock
+                    // system had. That is the point: a puff you asked to live
+                    // 2 seconds should live 2 seconds, not 0.6-2.
+                    ParticleSystem.MainModule mainLife = ps.main;
+                    mainLife.startLifetime =
+                        new ParticleSystem.MinMaxCurve(
+                            Mathf.Max(0.01f, lifetime.Value));
+                }
+
+                if (gravity.HasValue)
+                {
+                    // Unity's sign convention, kept deliberately rather than
+                    // flipped into a friendlier "rise" key: values here get
+                    // copied verbatim off stock prefabs while tuning, and
+                    // `ImpactParticle Cell Tuff` reads -0.05. Inventing an
+                    // opposite sign would make every such number wrong.
+                    ParticleSystem.MainModule mainGrav = ps.main;
+                    mainGrav.gravityModifier = gravity.Value;
                 }
 
                 if (rotate.HasValue)
@@ -783,6 +807,17 @@ namespace WeaponForge
                 parts.Add(spread.Value <= 0f
                     ? "pinned to one spot (no scatter)"
                     : "scatter x" + spread.Value);
+            }
+
+            if (lifetime.HasValue)
+                parts.Add("lifetime " + lifetime.Value.ToString("0.###") + "s");
+
+            if (gravity.HasValue)
+            {
+                parts.Add("gravity " + gravity.Value.ToString("0.###") +
+                          (gravity.Value < 0f
+                              ? " (drifts UP)"
+                              : (gravity.Value > 0f ? " (falls)" : " (none)")));
             }
 
             return string.Join(", ", parts.ToArray()) +
@@ -880,12 +915,69 @@ namespace WeaponForge
             if (art.animation == null)
                 return true;
 
+            // Same reason as the note in ForgeSpriteLibrary.OptInFrames: a
+            // projectile is drawn by a SpriteRenderer, so there is no particle
+            // lifetime for `@life` to fit to. Do not default in silence.
+            if (art.spec != null && art.spec.fitLifetime)
+            {
+                Log.LogWarning(
+                    "'@life' fits an animation to a PARTICLE's lifetime, and " +
+                    "projectileSprite is drawn by a sprite renderer. It works " +
+                    "on impactSprite, muzzleSprite, the trail and the beam's " +
+                    "impactSprite. Using " +
+                    art.animation.fps.ToString("0.##") + " fps here instead.");
+            }
+
             var anim = root.AddComponent<ForgeSpriteAnimation>();
             anim.frames = art.animation.frames;
             anim.fps = art.animation.fps;
             anim.loop = art.animation.loop;
             anim.randomStart = art.animation.randomStart;
             return true;
+        }
+
+        // Flip ONE named renderer through a frame list.
+        //
+        // `ApplyArt` above takes a GameObject and lets the animator find a
+        // renderer for itself, which is right for a projectile prefab whose art
+        // is on the root. The opt-in animation on the gas puff, shield arc,
+        // swipe blade, catalyst node and charge meter is the other shape: the
+        // caller has already built the exact renderer it wants driven, and some
+        // of those objects hold SEVERAL (a gas cloud is up to 24 puffs, a
+        // catalyst node has a face per child). Attaching to `sr.gameObject`
+        // makes the animator's own `GetComponent<SpriteRenderer>()` resolve to
+        // that one renderer and no other.
+        //
+        // `randomStart` matters wherever a caller drives more than one: without
+        // it, 24 puffs flip in lock-step and read as one strobing blob rather
+        // than a churning cloud - the same reason a shotgun's pellets need it.
+        // `restart` is for a renderer reused across separate appearances - pass
+        // true from the swipe blade, which is one object switched on per swing.
+        public static void AnimateRenderer(
+            SpriteRenderer sr,
+            Sprite[] frames,
+            float fps,
+            bool randomStart,
+            bool restart = false)
+        {
+            if (sr == null || frames == null || frames.Length < 2)
+                return;
+
+            // Idempotent: a caller that re-dresses a live object (the catalyst
+            // node re-runs Dress, the swipe blade re-shows every swing) must not
+            // stack animators fighting over one renderer.
+            var anim = sr.GetComponent<ForgeSpriteAnimation>();
+
+            if (anim == null)
+                anim = sr.gameObject.AddComponent<ForgeSpriteAnimation>();
+
+            anim.frames = frames;
+            anim.fps = (fps > 0f) ? fps : 12f;
+            anim.loop = ForgeSpriteAnimation.LoopMode.Loop;
+            anim.randomStart = randomStart;
+
+            if (restart)
+                anim.Restart();
         }
 
         // Multiply the visual (and, for a caller-passed radius, physics)

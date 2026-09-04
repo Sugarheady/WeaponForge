@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -109,6 +110,9 @@ namespace WeaponForge
                 if (cfg.hasColor)
                     Recolour(minion, cfg);
 
+                if (cfg.hasTrailColor || cfg.trailMatchesBody)
+                    PaintTrail(minion, cfg);
+
                 if (cfg.scale != 1f && cfg.scale > 0f)
                     Resize(minion, cfg);
             }
@@ -116,6 +120,78 @@ namespace WeaponForge
             {
                 Log.LogError("Restyling a minion failed: " + e);
             }
+        }
+
+        // ------------------------------------------------------------------
+        // The movement smear - the little coloured streak a unit leaves as it
+        // moves, themed per drone module (Caps orange, Electron cyan, Purple
+        // and Phantom violet, Suicide red).
+        //
+        // WHY THE BODY RECOLOUR NEVER TOUCHED IT: Recolour walks
+        // SpriteRenderers, and a trail is a ParticleSystem. It already sits
+        // inside the Visual subtree we scope to, so it was excluded by TYPE,
+        // not by location - which is why the body recoloured and the trail
+        // stayed factory.
+        //
+        // IDENTIFIED BY SHAPE, NOT BY NAME. Every trail in this game is a
+        // child ParticleSystem emitting by rateOverDistance (there is no
+        // TrailRenderer anywhere in PUNK), and every unit prefab has exactly
+        // one - `ParticlesSmear`. Matching on "emits by distance" rather than
+        // on a name means this works on any unit without a lookup table, and
+        // leaves the engine fire and hover puffs (which emit over time) alone.
+        private static void PaintTrail(Unit minion, ForgeMinion.Config cfg)
+        {
+            Color c = cfg.trailMatchesBody ? cfg.color : cfg.trailColor;
+
+            Transform visual = FindVisual(minion.transform);
+
+            Component root = (visual != null) ? (Component)visual : minion;
+
+            int touched = 0;
+
+            foreach (ParticleSystem ps in
+                     root.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                if (ps == null || !EmitsByDistance(ps))
+                    continue;
+
+                // startColor is the whole job here, and only because the
+                // lifetime gradient happens to be colourless: all 106
+                // ParticlesSmear instances in the game fade pure white from
+                // alpha 0.74 to 0. colorOverLifetime MULTIPLIES startColor, so
+                // a COLOURED gradient would tint whatever we asked for - if a
+                // future prefab ever has one, this is where to neutralise it.
+                var main = ps.main;
+                main.startColor = c;
+
+                touched++;
+            }
+
+            if (touched == 0)
+            {
+                Log.LogWarning(
+                    "minion \"trailColor\": '" + minion.name + "' has no " +
+                    "movement trail to paint (nothing on it emits particles " +
+                    "by distance). Every stock unit has one, so this is " +
+                    "likely a prefab that was never meant to leave a streak. " +
+                    "Everything else still applied.");
+            }
+        }
+
+        // A trail emits as the object MOVES; everything else emits over time.
+        private static bool EmitsByDistance(ParticleSystem ps)
+        {
+            var emission = ps.emission;
+
+            if (!emission.enabled)
+                return false;
+
+            // `.constant` is the right read: the stock trails all use a plain
+            // scalar (5 on a drone, 3 on a Cross) rather than a curve.
+            return emission.rateOverDistance.constant > 0f ||
+                   emission.rateOverDistanceMultiplier > 0f &&
+                   emission.rateOverDistance.mode !=
+                       ParticleSystemCurveMode.Constant;
         }
 
         // ------------------------------------------------------------------
@@ -158,18 +234,38 @@ namespace WeaponForge
             }
         }
 
+        // A renderer's ALPHA is a visibility decision, never a colour one -
+        // and Replace mode used to overwrite it.
+        //
+        // THE BUG THIS FIXES, because it was reported as something much
+        // stranger than it is. Every Larva and Maggot prefab keeps a
+        // `HighlightSprite` inside its `Visual_*` subtree: a full silhouette of
+        // the creature, held at alpha 0 and flashed by the damage effect.
+        // `sr.color = cfg.color` set that sprite to an OPAQUE colour, so a
+        // recoloured minion wore its own silhouette over its real art - which
+        // is exactly "changing the color puts their weird default sprite to the
+        // forefront and not this diamond shape".
+        //
+        // So: multiply the requested alpha by the renderer's own in BOTH modes.
+        // Something invisible stays invisible; something opaque still takes the
+        // colour asked for. And skip anything named like a highlight outright,
+        // since it is an effect rather than art and there is nothing to gain by
+        // colouring it.
         private static bool Paint(SpriteRenderer sr, ForgeMinion.Config cfg)
         {
             if (sr == null)
                 return false;
+
+            if (IsHighlight(sr.transform))
+                return false;
+
+            Color had = sr.color;
 
             if (cfg.colorMode == ColorTint)
             {
                 // Multiply over what the prefab already had. A fresh instance
                 // still carries the prefab's authored colour at this point, so
                 // this needs no "original" bookkeeping.
-                Color had = sr.color;
-
                 sr.color = new Color(
                     had.r * cfg.color.r,
                     had.g * cfg.color.g,
@@ -178,10 +274,24 @@ namespace WeaponForge
             }
             else
             {
-                sr.color = cfg.color;
+                sr.color = new Color(
+                    cfg.color.r,
+                    cfg.color.g,
+                    cfg.color.b,
+                    cfg.color.a * had.a);
             }
 
             return true;
+        }
+
+        // Internal rather than private: ForgeUnitTint has to skip exactly the
+        // same renderers, for exactly the same reason. One owner of the rule.
+        internal static bool IsHighlight(Transform t)
+        {
+            return t != null &&
+                   t.name.IndexOf(
+                       "highlight",
+                       StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         // Internal rather than private: ForgeSlow tints a slowed unit and
@@ -216,7 +326,9 @@ namespace WeaponForge
             return null;
         }
 
-        private static bool IsStateSprite(Transform t)
+        // Internal for the same reason as IsHighlight above - the tint owner
+        // needs the identical fallback rule when there is no Visual subtree.
+        internal static bool IsStateSprite(Transform t)
         {
             for (Transform p = t; p != null; p = p.parent)
             {

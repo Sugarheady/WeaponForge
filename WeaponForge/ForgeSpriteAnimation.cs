@@ -25,6 +25,7 @@ namespace WeaponForge
         private SpriteRenderer _renderer;
         private float _startTime;
         private int _lastIndex = -1;
+        private bool _offsetDone;
 
         private void Awake()
         {
@@ -38,17 +39,56 @@ namespace WeaponForge
 
             _startTime = Time.time;
 
-            // Awake runs per INSTANCE (the prefab clone sits under an
-            // inactive holder), so this genuinely desyncs each shot.
-            if (randomStart && frames != null && frames.Length > 1 && fps > 0f)
-                _startTime -= Random.Range(0f, frames.Length / fps);
-
+            Offset();
             Apply();
         }
 
         private void Update()
         {
+            // Retried here, and that is the whole point: `randomStart` used to
+            // be read in Awake alone, and `AddComponent` runs Awake
+            // SYNCHRONOUSLY - before either caller (VisualCustomizer.ApplyArt
+            // and the leech orb) has assigned `frames`. So the offset was always
+            // computed against a null array and randomStart had never once done
+            // anything. The symptom it was written to prevent is exactly what
+            // shipped: a 10-pellet shotgun firing ten sprites flipping in
+            // lock-step, reading as one big strobe rather than ten spinning
+            // bullets.
+            Offset();
             Apply();
+        }
+
+        // Play from frame 0 again.
+        //
+        // For anything that lives as long as it animates - a projectile, a gas
+        // puff - there is nothing to restart, and this is never called. It
+        // exists for a renderer that is REUSED for separate appearances: the
+        // swipe blade is one GameObject switched on for ~0.2s per swing, so
+        // without this the second swing catches the animation at whatever phase
+        // it happened to reach and a "slash that draws itself" only draws itself
+        // correctly the first time. Cheap enough to call unconditionally.
+        public void Restart()
+        {
+            _startTime = Time.time;
+            _lastIndex = -1;
+
+            // Deliberately NOT re-offsetting: `randomStart` desyncs siblings
+            // from each other, and a caller asking for a restart wants frame 0,
+            // not a fresh random phase.
+            Apply();
+        }
+
+        // Desyncs this instance from its siblings. Runs once, as soon as there
+        // is actually a frame list to measure.
+        private void Offset()
+        {
+            if (_offsetDone || frames == null || frames.Length == 0)
+                return;
+
+            _offsetDone = true;
+
+            if (randomStart && frames.Length > 1 && fps > 0f)
+                _startTime -= Random.Range(0f, frames.Length / fps);
         }
 
         private void Apply()

@@ -93,8 +93,20 @@ namespace WeaponForge
             public bool slowFire = true;
             public bool slowKnockback = true;
 
+            // Shots a slowed enemy fires come out slow too.
+            //
+            // `slowFire` already halves how OFTEN it shoots; this is how fast
+            // the bullets travel, which is the half you can actually see and
+            // dodge. Separate toggles because they are separately useful: a
+            // sniper that fires at a normal cadence but whose shots crawl is a
+            // different weapon from one that fires half as often at full speed.
+            public bool slowShots = true;
+
             public bool hasTint;             // off by default, on request
             public Color tint = Color.white;
+
+            // See ForgeUnitTint - 0..1, 1 is the full colour (today's look).
+            public float tintStrength = 1f;
 
             // ---- bending time itself ----
             public bool hasTimeSlow;
@@ -255,17 +267,12 @@ namespace WeaponForge
         private float _damping;
         private float _angularDamping;
         private float _mass;
-        private float _fireRate;
 
         private ForgeSlow.Config _cfg;
         private int _stacks = 1;
         private float _endsAt;
         private bool _applied;
         private float _lastHitAt = -999f;
-
-        private readonly List<SpriteRenderer> _tinted =
-            new List<SpriteRenderer>();
-        private readonly List<Color> _tintWas = new List<Color>();
 
         public void Begin(Unit victim, ForgeSlow.Config cfg)
         {
@@ -288,11 +295,12 @@ namespace WeaponForge
                 _mass = _rb.mass;
             }
 
+            // No `_fireRate` capture any more - ForgeWeaponStats owns the
+            // baseline, and it captures once per weapon rather than once per
+            // debuff. That is the part that a second slow landing on the same
+            // enemy used to get wrong in principle.
             if (_shooter != null && _shooter.Weapon != null)
-            {
                 _weapon = _shooter.Weapon;
-                _fireRate = _weapon.FireRate;
-            }
 
             Push();
         }
@@ -316,6 +324,31 @@ namespace WeaponForge
 
             _endsAt = Time.time + cfg.duration;
             Push();
+        }
+
+        // How slow is this unit right now, as a fraction of normal? 1 means
+        // "not slowed", which is also the answer for a unit with no debuff.
+        //
+        // Exists so the projectile hook can ask a question of the SHOOTER
+        // rather than keep its own bookkeeping. `Apply` puts the component on
+        // the Unit's own GameObject, and `Projectile.Owner` is that Unit, so
+        // this is a single GetComponent on a path that already has one.
+        public static float FactorFor(Unit unit)
+        {
+            if (unit == null)
+                return 1f;
+
+            var live = unit.gameObject.GetComponent<ForgeSlowed>();
+
+            if (live == null || live._cfg == null || !live._cfg.slowShots)
+                return 1f;
+
+            // Expired but not yet cleaned up - Update removes it, and a shot
+            // fired in between should not be slowed.
+            if (Time.time >= live._endsAt)
+                return 1f;
+
+            return live.Factor();
         }
 
         // The one factor everything is derived from. Recomputed from scratch
@@ -360,8 +393,18 @@ namespace WeaponForge
                     _rb.mass = Mathf.Max(0.05f, _mass * f);
             }
 
+            // PUBLISHED, NOT ASSIGNED. This was the third feature writing
+            // `FireRate` from its own captured base; it only ever touches an
+            // ENEMY'S weapon, so it never collided in play the way overheat and
+            // the onKill buff did - but leaving one direct writer standing means
+            // the next feature gets copied from the wrong example, which is how
+            // this project's bugs have historically spread. See
+            // ForgeWeaponStats.
             if (_cfg.slowFire && _weapon != null)
-                _weapon.FireRate = _fireRate * f;
+            {
+                ForgeWeaponStats.Set(
+                    _weapon, ForgeWeaponStats.FireRate, "slow", f);
+            }
 
             if (_cfg.hasTint && !_applied)
                 Tint();
@@ -404,14 +447,14 @@ namespace WeaponForge
                         _rb.mass = _mass;
                 }
 
-                // Only if it is still the SAME weapon object. A cluster
-                // refresh builds a new WeaponBase, and writing our remembered
-                // rate onto that one would be writing a stale number over a
-                // fresh weapon.
-                if (_cfg.slowFire && _weapon != null && _shooter != null &&
-                    ReferenceEquals(_shooter.Weapon, _weapon))
+                // The weapon-identity check this used to do by hand is free
+                // now: the stack keys on the `WeaponBase` instance, so a
+                // cluster refresh is a key it has never seen and a withdrawal
+                // against the old one cannot reach the new gun.
+                if (_cfg.slowFire && _weapon != null)
                 {
-                    _weapon.FireRate = _fireRate;
+                    ForgeWeaponStats.Clear(
+                        _weapon, ForgeWeaponStats.FireRate, "slow");
                 }
 
                 Untint();
@@ -422,46 +465,39 @@ namespace WeaponForge
             }
         }
 
-        // Scoped to the prefab's Visual subtree for the same reason the minion
-        // recolour is: a unit's AI state indicators are SpriteRenderers too and
-        // are deliberately colour-coded, so tinting everything would paint over
-        // the AI's own tells.
+        // GOES THROUGH ForgeUnitTint RATHER THAN PAINTING DIRECTLY, and the
+        // change is not cosmetic. This used to remember each `sr.color` and
+        // write it back on expiry, which is correct for exactly one tint at a
+        // time: a second feature tinting the same unit would remember the
+        // ALREADY-SLOWED colour and bake the blue in permanently when it
+        // expired. That is precisely why the slam tint could not be built
+        // until there was one owner. See ForgeUnitTint for the full shape.
+        //
+        // The scoping and the alpha rule now live there too, so there is one
+        // place that knows which renderers a tint may touch.
         private void Tint()
         {
-            Transform visual = ForgeMinionLook.FindVisual(transform);
+            Unit unit = GetComponent<Unit>();
 
-            if (visual == null)
-                return;
+            if (unit == null)
+                unit = GetComponentInParent<Unit>();
 
-            foreach (SpriteRenderer sr in
-                     visual.GetComponentsInChildren<SpriteRenderer>(true))
-            {
-                if (sr == null)
-                    continue;
-
-                _tinted.Add(sr);
-                _tintWas.Add(sr.color);
-
-                Color had = sr.color;
-
-                sr.color = new Color(
-                    had.r * _cfg.tint.r,
-                    had.g * _cfg.tint.g,
-                    had.b * _cfg.tint.b,
-                    had.a);
-            }
+            // Duration is left open and cleared on Restore, rather than timed
+            // here: a slow can be refreshed or re-stacked, and a layer that
+            // expired on its own schedule would flicker off mid-debuff.
+            ForgeUnitTint.Set(
+                unit, ForgeUnitTint.Slow, _cfg.tint, 0f, 0f,
+                _cfg.tintStrength);
         }
 
         private void Untint()
         {
-            for (int i = 0; i < _tinted.Count; i++)
-            {
-                if (_tinted[i] != null)
-                    _tinted[i].color = _tintWas[i];
-            }
+            Unit unit = GetComponent<Unit>();
 
-            _tinted.Clear();
-            _tintWas.Clear();
+            if (unit == null)
+                unit = GetComponentInParent<Unit>();
+
+            ForgeUnitTint.Clear(unit, ForgeUnitTint.Slow);
         }
     }
 }

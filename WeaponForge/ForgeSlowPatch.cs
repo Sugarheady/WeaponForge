@@ -133,4 +133,91 @@ namespace WeaponForge
             ForgeSlow.Apply(unit, cfg);
         }
     }
+
+    // A slowed enemy's SHOTS come out slow too.
+    //
+    // WHY THIS HOOKS Shoot AND NOT THE PROJECTILE IN FLIGHT. Scaling a live
+    // bullet's Velocity looks like the obvious move and is wrong twice over.
+    // `Projectile.FixedUpdate` rebuilds Velocity from the private `startSpeed`
+    // whenever `rangeData.slowDown` is on - the most-copied template in the
+    // game ships that - so the change would be undone on the next physics
+    // step. And `HandleRange` compares elapsed time against a
+    // `timeToReachRange` computed at Shoot from the ORIGINAL speed, so a bullet
+    // slowed afterwards would despawn well short of its range for no visible
+    // reason.
+    //
+    // `Shoot()` is where all three of those are derived - `startSpeed`,
+    // `idealDirection` and `timeToReachRange` - so a prefix that scales
+    // Velocity first gets every one of them consistent for free, including
+    // slowDown and range. Verified against the order in
+    // `ProjectileWeapon.FireSingle`: `Owner` is assigned before `Shoot()` is
+    // called, so the owner really is readable here.
+    //
+    // Shots ALREADY in the air when the slow lands keep their speed. That is a
+    // deliberate line rather than a limitation: a bullet is a thing that has
+    // left, and reaching back into flight is where both traps above live.
+    public static class ForgeSlowShotPatch
+    {
+        private static readonly ManualLogSource Log =
+            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slow");
+
+        [HarmonyPatch(typeof(Projectile), "Shoot")]
+        public class OnPlainShot
+        {
+            static void Prefix(Projectile __instance)
+            {
+                if (!ForgeSlow.Any || __instance == null)
+                    return;
+
+                try
+                {
+                    Slow(__instance.Owner, __instance);
+                }
+                catch (Exception e)
+                {
+                    Log.LogError("Slowing a shot failed: " + e);
+                }
+            }
+        }
+
+        [HarmonyPatch(typeof(PhysicsProjectile), "Shoot")]
+        public class OnLobbedShot
+        {
+            static void Prefix(PhysicsProjectile __instance)
+            {
+                if (!ForgeSlow.Any || __instance == null)
+                    return;
+
+                try
+                {
+                    // PhysicsProjectile.Shoot is called TWICE and the first
+                    // call is against a blank - no Owner, no velocity. Scaling
+                    // a zero vector is harmless, but going through the shared
+                    // guard keeps this consistent with every other feature that
+                    // hooks here.
+                    if (ForgePhysicsShot.NotReady(__instance))
+                        return;
+
+                    Slow(__instance.Owner, __instance);
+                }
+                catch (Exception e)
+                {
+                    Log.LogError("Slowing a lobbed shot failed: " + e);
+                }
+            }
+        }
+
+        private static void Slow(Unit owner, IProjectile shot)
+        {
+            if (owner == null || shot == null)
+                return;
+
+            float f = ForgeSlowed.FactorFor(owner);
+
+            if (f >= 0.999f)
+                return;
+
+            shot.Velocity = shot.Velocity * f;
+        }
+    }
 }

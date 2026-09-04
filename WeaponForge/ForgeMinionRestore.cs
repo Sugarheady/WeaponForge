@@ -98,6 +98,11 @@ namespace WeaponForge
                 ForgeMinionLife.Attach(minion, cfg.lifetime);
 
             ForgeMinionBlast.Attach(minion, owner, cfg);
+            // And stop it holding a grudge against you: your own
+            // explosions carry no owner filter, so one stray blast
+            // would otherwise make it hunt you for life. See
+            // ForgeMinionGrudge.
+            ForgeMinionGrudge.Attach(minion, owner);
 
             Log.LogInfo(
                 "Restored '" + minion.name + "' after a load - side, colour, " +

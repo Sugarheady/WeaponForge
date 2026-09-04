@@ -811,6 +811,9 @@ namespace WeaponForge
             if (cfg.art != null)
             {
                 sr.sprite = cfg.art;
+
+                VisualCustomizer.AnimateRenderer(
+                    sr, cfg.artFrames, cfg.artFps, false);
             }
             else
             {

@@ -496,12 +496,24 @@ namespace WeaponForge
             if (string.IsNullOrEmpty(spec.spriteName))
                 return;
 
-            Sprite[] frames = ResolveFrames(spec.spriteName, fileName);
+            ForgeSpriteLibrary.Art art;
+            Sprite[] frames =
+                ResolveFrames(spec.spriteName, fileName, "trail sprite",
+                              out art);
 
             if (frames == null || frames.Length == 0)
                 return;
 
-            VisualCustomizer.ApplyParticleSprite(ps, frames, spec.fps);
+            // Fallback NULL, which is this key's long-standing behaviour rather
+            // than a new choice: a trail with neither an `fps` key nor an `@`
+            // has always animated by particle lifetime, because the old code
+            // passed the name's fps straight through and that is 0 when absent.
+            // Deliberately NOT the animation's own authored fps - see
+            // ForgeSpriteLibrary.ParticleFps for why the four callers differ.
+            float? use = ForgeSpriteLibrary.ParticleFps(
+                art, spec.fps, null, "trail sprite", fileName);
+
+            VisualCustomizer.ApplyParticleSprite(ps, frames, use);
         }
 
         // Custom art first, then the game's own sprite atlas - same order
@@ -511,9 +523,33 @@ namespace WeaponForge
         public static Sprite[] ResolveFrames(
             string name, string fileName, string what = "trail sprite")
         {
-            ForgeSpriteLibrary.Art art;
+            ForgeSpriteLibrary.Art ignored;
+            return ResolveFrames(name, fileName, what, out ignored);
+        }
 
-            if (ForgeSpriteLibrary.TryGetArt(name, out art))
+        // Kept separate so the callers that have no fps key of their own (the
+        // two beam sprite slots and the curve beam's chain, all of which can
+        // only ever show one frame) need no change.
+        // Hands the resolved `Art` back so the caller can put it through
+        // `ForgeSpriteLibrary.ParticleFps` - which owns the "block key beats the
+        // name, and `@life` means fit each particle's lifetime" rule for all
+        // four particle keys. This overload replaced an `out float nameFps` one
+        // that re-Split the name to recover only the fps: the Art already
+        // carries the whole parsed spec, so asking twice was a second answer to
+        // a question that already had an owner.
+        public static Sprite[] ResolveFrames(
+            string name, string fileName, string what,
+            out ForgeSpriteLibrary.Art art)
+        {
+            // BOTH stock and custom resolution now happen in ForgeSpriteLibrary,
+            // including the numbered runs and the `:frames@fps` suffix. This used
+            // to keep a third copy of the stock lookup and a second call to
+            // TryGetStockFrames; one owner per question is what makes the suffix
+            // work everywhere at once.
+            bool found = ForgeSpriteLibrary.TryGetArt(name, out art) ||
+                         ForgeSpriteLibrary.TryGetStockArt(name, out art);
+
+            if (found && art != null)
             {
                 if (art.animation != null &&
                     art.animation.frames != null &&
@@ -522,14 +558,9 @@ namespace WeaponForge
                     return art.animation.frames;
                 }
 
-                return new[] { art.sprite };
+                if (art.sprite != null)
+                    return new[] { art.sprite };
             }
-
-            var stock =
-                JsonFieldMapper.FindAsset(typeof(Sprite), name) as Sprite;
-
-            if (stock != null)
-                return new[] { stock };
 
             string known = ForgeSpriteLibrary.Count > 0
                 ? " Loaded custom sprites: " +
