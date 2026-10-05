@@ -14,7 +14,7 @@ namespace WeaponForge
     public static class ForgeGravityPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Gravity");
+            ForgeLog.Source("WeaponForge.Gravity");
 
         // ---- Flight: the well travels with the shot ----------------------
 

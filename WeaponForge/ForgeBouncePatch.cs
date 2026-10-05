@@ -28,7 +28,7 @@ namespace WeaponForge
     public static class ForgeBouncePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Bounce");
+            ForgeLog.Source("WeaponForge.Bounce");
 
         [HarmonyPatch(typeof(PhysicsProjectile), "Shoot")]
         public class OnShoot

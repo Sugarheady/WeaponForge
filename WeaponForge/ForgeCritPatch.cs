@@ -10,7 +10,7 @@ namespace WeaponForge
     public static class ForgeCritPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Crit");
+            ForgeLog.Source("WeaponForge.Crit");
 
         // The shot currently delivering damage, so the damage prefix can reach
         // it. Set in a prefix and cleared in a finalizer on the same method -

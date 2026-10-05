@@ -51,7 +51,7 @@ namespace WeaponForge
     public static class ForgeDrone
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Drone");
+            ForgeLog.Source("WeaponForge.Drone");
 
         // The per-minion options (weapon / faction / lifetime) keyed by the
         // MODULE that spawns them.

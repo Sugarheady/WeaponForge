@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -52,7 +52,7 @@ namespace WeaponForge
     public static class ForgeAdaptive
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Adaptive");
+            ForgeLog.Source("WeaponForge.Adaptive");
 
         // The full set worth trying by default: every resource that is either a
         // strong attacker somewhere, or a NEUTRAL one that dodges the Tech
@@ -88,6 +88,11 @@ namespace WeaponForge
             // See ForgeUnitTint. The COLOUR here is the damage type's own, so
             // this is the only control over how loud it is.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
         }
 
         private static readonly Dictionary<WeaponData, Config> _weapons =

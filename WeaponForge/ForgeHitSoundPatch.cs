@@ -9,7 +9,7 @@ namespace WeaponForge
     public static class ForgeHitSoundPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.HitSound");
+            ForgeLog.Source("WeaponForge.HitSound");
 
         // ------------------------------------------------------------------
         // How much damage this tick is for.

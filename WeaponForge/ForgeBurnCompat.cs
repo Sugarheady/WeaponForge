@@ -26,7 +26,7 @@ namespace WeaponForge
     public static class ForgeBurnCompat
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static bool _init;
         private static bool _moduleForgePresent;

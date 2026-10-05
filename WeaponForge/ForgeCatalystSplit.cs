@@ -10,7 +10,7 @@ namespace WeaponForge
     public static class ForgeCatalystSplit
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Catalyst");
+            ForgeLog.Source("WeaponForge.Catalyst");
 
         // "With more damage." Goes through the shared stack rather than onto
         // Damage directly - growth, the damage ramp and a chain's falloff all

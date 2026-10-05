@@ -13,7 +13,7 @@ namespace WeaponForge
     public class ForgeGravityController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Gravity");
+            ForgeLog.Source("WeaponForge.Gravity");
 
         private ForgeGravity g;
         private ContactFilter2D filter;

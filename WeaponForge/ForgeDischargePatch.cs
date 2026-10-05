@@ -15,7 +15,7 @@ namespace WeaponForge
     public class ForgeDischargePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static void Postfix(
             HitscanWeapon __instance,

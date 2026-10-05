@@ -15,7 +15,7 @@ namespace WeaponForge
     public static class ForgeDamageRampPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // ---- plain projectiles -----------------------------------------
 

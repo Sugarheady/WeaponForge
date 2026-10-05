@@ -36,7 +36,7 @@ namespace WeaponForge
     public class ForgeFade : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Fade");
+            ForgeLog.Source("WeaponForge.Fade");
 
         // Seconds of fade at each end. Serialized, so plain fields.
         public float inSeconds;
@@ -52,6 +52,35 @@ namespace WeaponForge
         private readonly List<SpriteRenderer> _sprites =
             new List<SpriteRenderer>();
         private readonly List<float> _alpha = new List<float>();
+
+        // THE TRAIL AND THE GLOW ARE PARTICLE SYSTEMS, NOT SPRITES, and until
+        // R15 this class did not touch them while its own build log said
+        // "trail and glow included".
+        //
+        // `ammo_Popper` - the most-cloned template in the mod - carries exactly
+        // ONE SpriteRenderer (the bullet) and THREE ParticleSystems: `particle`,
+        // `particle_glow` and `trail`. So `everything: true` walked
+        // `GetComponentsInChildren<SpriteRenderer>` and found the same single
+        // renderer `everything: false` would have found. The bullet faded, its
+        // glow and its streak did not, and that is his *"I want EVERYTHING
+        // regarding the projectile to fade, not some alpha"*.
+        //
+        // > **"Include the children" is only a coverage claim if the children
+        // > are the same KIND of thing.** The flag was real, the walk was real,
+        // > and the set it walked was a set of one. This repo already knew
+        // > there is no `TrailRenderer` anywhere in PUNK and that every trail is
+        // > a child ParticleSystem - written down, in this same repo, and not
+        // > applied here.
+        private readonly List<ParticleSystem> _systems =
+            new List<ParticleSystem>();
+        private readonly List<Color> _psMin = new List<Color>();
+        private readonly List<Color> _psMax = new List<Color>();
+        private readonly List<int> _psMode = new List<int>();
+
+        // ParticleSystemGradientMode, by value rather than by name so this
+        // reads the same as the prefab YAML it was checked against.
+        private const int ModeColor = 0;      // one colour
+        private const int ModeTwoColors = 2;  // random between two
 
         private IProjectile _shot;
         private float _born;
@@ -110,7 +139,11 @@ namespace WeaponForge
 
                     Log.LogInfo(
                         "fade RUNTIME on '" + gameObject.name + "': " +
-                        _sprites.Count + " sprite renderer(s), first alpha " +
+                        _sprites.Count + " sprite renderer(s) and " +
+                        _systems.Count + " particle system(s) (the trail and " +
+                        "the glow - until R15 this line counted only the " +
+                        "sprites and the particles were never faded at all, " +
+                        "while the build log said they were), first alpha " +
                         ((_alpha.Count > 0)
                             ? _alpha[0].ToString("0.##") : "n/a") +
                         ", measured life " +
@@ -160,7 +193,70 @@ namespace WeaponForge
                 // somebody already made.
                 _alpha.Add(all[i].color.a);
             }
+
+            CollectSystems();
         }
+
+        // Only when "everything" is on - the bullet's own body has no particle
+        // system, so this IS the trail-and-glow half and nothing else.
+        private void CollectSystems()
+        {
+            _systems.Clear();
+            _psMin.Clear();
+            _psMax.Clear();
+            _psMode.Clear();
+
+            if (!everything)
+                return;
+
+            ParticleSystem[] all = GetComponentsInChildren<ParticleSystem>(true);
+            int skipped = 0;
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                ParticleSystem ps = all[i];
+
+                if (ps == null)
+                    continue;
+
+                ParticleSystem.MinMaxGradient g = ps.main.startColor;
+                int mode = (int)g.mode;
+
+                // Gradient / TwoGradients / RandomColor carry a `Gradient`
+                // object, and scaling one means building a new Gradient every
+                // frame - which is an allocation per system per frame on every
+                // shot in the air. Skipped and SAID rather than skipped
+                // quietly; the two that matter on a stock shot (the trail is
+                // Color, the glow is TwoColors) are both handled.
+                if (mode != ModeColor && mode != ModeTwoColors)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                _systems.Add(ps);
+                _psMode.Add(mode);
+                _psMin.Add(mode == ModeTwoColors ? g.colorMin : g.color);
+                _psMax.Add(mode == ModeTwoColors ? g.colorMax : g.color);
+            }
+
+            if (skipped > 0 && !_saidGradient)
+            {
+                _saidGradient = true;
+
+                Log.LogInfo(
+                    "fade: " + skipped + " particle system(s) on '" +
+                    gameObject.name + "' set their start colour from a " +
+                    "GRADIENT rather than a flat colour, so they keep their " +
+                    "own alpha while the rest of the shot fades. Scaling a " +
+                    "gradient means rebuilding it every frame for every shot " +
+                    "in the air, which is not worth it for a spawn burst. The " +
+                    "trail and the glow are both flat and do fade. Said once " +
+                    "per run.");
+            }
+        }
+
+        private static bool _saidGradient;
 
         // How long has this shot got? Read AFTER Shoot has run, which Start is
         // guaranteed to be: FireSingle instantiates, assigns, then calls
@@ -374,6 +470,40 @@ namespace WeaponForge
 
                 Color c = sr.color;
                 sr.color = new Color(c.r, c.g, c.b, _alpha[i] * f);
+            }
+
+            // THE TRAIL AND THE GLOW. Scaling `startColor` fades what the
+            // system emits FROM NOW ON; particles already laid down keep the
+            // alpha they were born with and die on their own lifetime, which is
+            // the behaviour you want - a streak behind the shot is in the world
+            // and should not retroactively brighten or dim.
+            for (int i = 0; i < _systems.Count; i++)
+            {
+                ParticleSystem ps = _systems[i];
+
+                if (ps == null)
+                    continue;
+
+                ParticleSystem.MainModule main = ps.main;
+
+                Color lo = _psMin[i];
+                Color hi = _psMax[i];
+
+                if (_psMode[i] == ModeTwoColors)
+                {
+                    // BOTH ends of the range, scaled from the captured pair -
+                    // assigning a single colour here would flatten a
+                    // two-colour range into one, the same trap as writing a
+                    // particle's startSpeed instead of its multiplier.
+                    main.startColor = new ParticleSystem.MinMaxGradient(
+                        new Color(lo.r, lo.g, lo.b, lo.a * f),
+                        new Color(hi.r, hi.g, hi.b, hi.a * f));
+                }
+                else
+                {
+                    main.startColor = new ParticleSystem.MinMaxGradient(
+                        new Color(hi.r, hi.g, hi.b, hi.a * f));
+                }
             }
         }
     }

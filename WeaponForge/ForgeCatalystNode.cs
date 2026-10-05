@@ -13,7 +13,7 @@ namespace WeaponForge
     public class ForgeCatalystNode : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Catalyst");
+            ForgeLog.Source("WeaponForge.Catalyst");
 
         // The ID is what survives Instantiate; the reference does not. See
         // ForgeConfigTable - a plain `public Config cfg` on a prefab-attached

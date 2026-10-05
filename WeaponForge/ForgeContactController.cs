@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -21,7 +21,7 @@ namespace WeaponForge
     public class ForgeContactController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Contact");
+            ForgeLog.Source("WeaponForge.Contact");
 
         private ForgeContact.Config cfg;
         private Unit self;
@@ -39,6 +39,24 @@ namespace WeaponForge
         // a marked hit and a lunge's contact window own their own lifetimes and
         // must survive it.
         private bool fromWorld;
+
+        // ⚠ A KINEMATIC BODY HAS NO `linearVelocity`, AND THE SWEEP IS BUILT ON
+        // ONE. `DetectSwept` reads `rigidbody.linearVelocity` every FixedUpdate
+        // and returns early below 0.01 - and a body moved by its transform
+        // (every wingman drone under the default `physics: false`) reports
+        // exactly 0. So contact damage on one would have done NOTHING AT ALL,
+        // silently, with every number in the build log correct.
+        //
+        // Whoever is driving such a body knows where it was last frame, so it
+        // supplies the velocity instead. That fixes the sweep AND makes
+        // `scaleBySpeed` meaningful there, which is the whole appeal of a
+        // tackle: a fast-spinning ring hits harder than a parked one.
+        //
+        // `recoil` still does nothing on a kinematic body - there is no
+        // simulation to push back - and that is said where the block is built
+        // rather than swallowed here.
+        public Vector2 drivenVelocity;
+        public bool hasDrivenVelocity;
 
         private readonly Dictionary<HealthBase, float> lastHit =
             new Dictionary<HealthBase, float>();
@@ -82,13 +100,33 @@ namespace WeaponForge
                 {
                     ForgeUnitTint.Set(
                         target, ForgeUnitTint.Contact, cfg.tint,
-                        seconds, cfg.tintPulse, cfg.tintStrength);
+                        seconds, cfg.tintPulse, cfg.tintStrength,
+                        cfg.tintMode);
                 }
             }
             catch (Exception e)
             {
                 Log.LogError("Giving a unit contact damage failed: " + e);
             }
+        }
+
+        // WHO GETS THE CREDIT, supplied late.
+        //
+        // `Give` takes an attacker and a weapon, and for every caller but one
+        // both are known at that moment. A WINGMAN DRONE is the exception: the
+        // body exists from the moment it is deployed, and the weapon it would
+        // credit - the runtime copy of whatever you are carrying - is not built
+        // until the first shot, and is rebuilt whenever the module grid
+        // changes. Without this, a tackle kill would credit nobody and no
+        // `onKill` reward would ever pay for one, silently.
+        //
+        // Two field writes, so the driver can call it every frame rather than
+        // tracking whether the weapon has changed. `Give` is the wrong tool
+        // for that - it re-runs Setup and re-publishes the tint layer.
+        public void Attribute(Unit by, WeaponBase with)
+        {
+            attacker = by;
+            weapon = with;
         }
 
         // Put the world back: strip every controller the always-on sweep handed
@@ -210,10 +248,13 @@ namespace WeaponForge
                 if (!ready)
                     Setup();
 
-                if (body == null || mask == 0)
+                if ((body == null && !hasDrivenVelocity) || mask == 0)
                     return;
 
-                Vector2 v = body.linearVelocity;
+                Vector2 v = hasDrivenVelocity
+                    ? drivenVelocity
+                    : body.linearVelocity;
+
                 float speed = v.magnitude;
 
                 if (speed < 0.01f)
@@ -259,7 +300,10 @@ namespace WeaponForge
                 if (collision == null || collision.collider == null)
                     return;
 
-                Vector2 v = (body != null) ? body.linearVelocity : Vector2.zero;
+                Vector2 v = hasDrivenVelocity
+                    ? drivenVelocity
+                    : (body != null) ? body.linearVelocity : Vector2.zero;
+
                 float speed = v.magnitude;
 
                 Vector2 dir = (speed > 0.01f) ? v / speed : Vector2.right;
@@ -339,8 +383,17 @@ namespace WeaponForge
             // The carrier bounces off, exactly as ChargerHead does. Without it
             // a shoved unit ploughs straight on and the impact reads as
             // nothing having happened.
-            if (cfg.recoil != 0f && body != null)
+            //
+            // A KINEMATIC carrier cannot bounce - it is not simulated, so there
+            // is nothing to push back - and asking anyway is a silent no-op
+            // rather than an error. Tested explicitly so the omission is a
+            // decision in the code rather than a fact about Unity that has to
+            // be remembered.
+            if (cfg.recoil != 0f && body != null &&
+                body.bodyType == RigidbodyType2D.Dynamic)
+            {
                 body.AddForceAtPosition(-dir * cfg.recoil, at, ForceMode2D.Impulse);
+            }
         }
 
         private void Hurt(HealthBase hb, Unit victim, float amount)

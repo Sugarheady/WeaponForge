@@ -27,7 +27,7 @@ namespace WeaponForge
     public static class ForgeDronePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Drone");
+            ForgeLog.Source("WeaponForge.Drone");
 
         [HarmonyPatch(typeof(Unit), "SetOwner")]
         public class OnSetOwner

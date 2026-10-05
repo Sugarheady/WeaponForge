@@ -9,7 +9,7 @@ namespace WeaponForge
     public static class ForgeCharmPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Charm");
+            ForgeLog.Source("WeaponForge.Charm");
 
         private class Scope
         {

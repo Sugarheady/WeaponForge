@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Reflection;
 using BepInEx.Logging;
 
@@ -10,7 +9,9 @@ namespace WeaponForge
     // Warnings about a misconfigured weapon are gated so they are said once
     // instead of once per shot - `_said`, `_warned`, `_saidNoLevel`, and a
     // `HashSet<string>` keyed by weapon label where the answer differs per
-    // weapon. There are 26 of them across 19 files.
+    // weapon. There are 26 of them across 19 files: **20 one-shot bools and 6
+    // keyed sets**, and the split matters - see the note on ClearMethod for how
+    // the first version of this class swept the 20 and silently dropped all 6.
     //
     // THE PROBLEM THEY ALL SHARE: the gate is per SESSION, while the thing it
     // describes is per RUN. Die, start again, and every one of those warnings
@@ -40,7 +41,7 @@ namespace WeaponForge
     public static class ForgeDiagnosticGates
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static FieldInfo[] _gates;
 
@@ -82,12 +83,14 @@ namespace WeaponForge
                 // A keyed gate - one entry per weapon that has been warned
                 // about. Readonly, so the collection is emptied rather than
                 // replaced.
-                var set = f.GetValue(null) as ICollection;
+                //
+                // Deliberately NOT cast to ICollection - see ClearMethod.
+                object set = f.GetValue(null);
 
                 if (set == null)
                     return;
 
-                MethodInfo clear = f.FieldType.GetMethod("Clear");
+                MethodInfo clear = ClearMethod(f.FieldType);
 
                 if (clear != null)
                     clear.Invoke(set, null);
@@ -149,10 +152,27 @@ namespace WeaponForge
 
             _gates = found.ToArray();
 
+            // BOTH KINDS ARE COUNTED SEPARATELY, and that is the whole point of
+            // this line rather than a nicety.
+            //
+            // The first version printed one total, said "20", and I read that
+            // as a pass while my own grep of the source said 26. The six it was
+            // silently dropping were every one of the KEYED gates - so the log
+            // line reported success at exactly the thing that had failed.
+            // A count is only evidence when it can be checked against a count
+            // derived some other way, so print the split the source can be
+            // grepped for.
+            int bools = 0;
+
+            for (int i = 0; i < _gates.Length; i++)
+                if (_gates[i].FieldType == typeof(bool))
+                    bools++;
+
             Log.LogInfo(
                 "Once-only log gates found: " + _gates.Length +
-                " (reset at each run entry, so a second run in one session " +
-                "still reports its own warnings).");
+                " (" + bools + " one-shot, " + (_gates.Length - bools) +
+                " keyed per weapon) - reset at each run entry, so a second run " +
+                "in one session still reports its own warnings.");
         }
 
         private static bool IsGate(FieldInfo f)
@@ -175,7 +195,46 @@ namespace WeaponForge
             if (f.FieldType == typeof(bool))
                 return !f.IsInitOnly;
 
-            return typeof(ICollection).IsAssignableFrom(f.FieldType);
+            return ClearMethod(f.FieldType) != null;
+        }
+
+        // `HashSet<T>` DOES NOT IMPLEMENT THE NON-GENERIC `ICollection`, and
+        // every keyed gate in this mod is a `HashSet<string>`.
+        //
+        // That one framework detail is the whole bug. `List<T>` and
+        // `Dictionary<K,V>` both implement `System.Collections.ICollection`, so
+        // `ICollection.IsAssignableFrom` reads as a safe, conservative test for
+        // "is this a collection" and passes every container you are likely to
+        // try it against - except the one actually used here. So `IsGate`
+        // accepted the 20 bools, refused all 6 keyed sets, and the swept count
+        // in the log looked plausible.
+        //
+        // The honest test is the capability being used rather than an interface
+        // that implies it: a public parameterless instance `Clear()`. It is
+        // also the same method the reset then calls, so acceptance and action
+        // cannot disagree - which is what went wrong the first time, where the
+        // filter asked one question (`is ICollection`) and the work did another
+        // (`GetMethod("Clear")`).
+        private static MethodInfo ClearMethod(Type t)
+        {
+            if (t == null || t.IsValueType)
+                return null;
+
+            try
+            {
+                MethodInfo m = t.GetMethod(
+                    "Clear",
+                    BindingFlags.Instance | BindingFlags.Public,
+                    null,
+                    Type.EmptyTypes,
+                    null);
+
+                return (m != null && m.ReturnType == typeof(void)) ? m : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }

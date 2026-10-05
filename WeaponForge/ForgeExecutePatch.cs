@@ -11,7 +11,7 @@ namespace WeaponForge
     public static class ForgeExecutePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Execute");
+            ForgeLog.Source("WeaponForge.Execute");
 
         // Carried prefix -> postfix through Harmony's `__state`, never a static.
         //

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace WeaponForge
@@ -341,6 +342,35 @@ namespace WeaponForge
 
                 return t;
             }
+        }
+
+        // ------------------------------------------------------------------
+        // The weapon -> cloud registry
+        // ------------------------------------------------------------------
+        //
+        // The cloud a SHOT leaves is carried on the projectile prefab as an int
+        // id (see ForgeConfigTable - a reference there arrives null on every
+        // clone). That route is exact for a bullet and useless for anything
+        // else, because `onKill` can be paid by a kill that had no projectile
+        // at all.
+        //
+        // So the same config is ALSO filed against the WeaponData, which is the
+        // idiom ForgeOnKill itself uses and for the identical reason. Nothing
+        // is duplicated - both point at the one Config object, so a trail
+        // derived from it or art resolved onto it is shared.
+        private static readonly Dictionary<WeaponData, Config> _weapons =
+            new Dictionary<WeaponData, Config>();
+
+        public static void Register(WeaponData weapon, Config config)
+        {
+            if (weapon != null && config != null)
+                _weapons[weapon] = config;
+        }
+
+        public static bool TryGet(WeaponData weapon, out Config config)
+        {
+            config = null;
+            return weapon != null && _weapons.TryGetValue(weapon, out config);
         }
     }
 }

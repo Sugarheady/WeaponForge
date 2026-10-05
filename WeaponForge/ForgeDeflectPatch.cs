@@ -19,7 +19,7 @@ namespace WeaponForge
     public static class ForgeDeflectPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Deflect");
+            ForgeLog.Source("WeaponForge.Deflect");
 
         // Reused so a sweep does not allocate. Component, because enemies fire
         // both Projectile and PhysicsProjectile and these share no base class.

@@ -14,7 +14,7 @@ namespace WeaponForge
     public class ForgeBurnColorTerrainPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static ParticleSystem.MinMaxGradient[] _saved;
         private static ParticleSystem[] _tintedSystems;

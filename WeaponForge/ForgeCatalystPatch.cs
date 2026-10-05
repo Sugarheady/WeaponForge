@@ -10,7 +10,7 @@ namespace WeaponForge
     public static class ForgeCatalystPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Catalyst");
+            ForgeLog.Source("WeaponForge.Catalyst");
 
         private static void Arm(Component shot)
         {

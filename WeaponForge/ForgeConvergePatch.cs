@@ -38,7 +38,7 @@ namespace WeaponForge
     public static class ForgeConvergePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Converge");
+            ForgeLog.Source("WeaponForge.Converge");
 
         private static bool _ready;
         private static int _groundMask = -1;

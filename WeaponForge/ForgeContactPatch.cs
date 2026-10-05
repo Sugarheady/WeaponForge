@@ -9,7 +9,7 @@ namespace WeaponForge
     public static class ForgeContactPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Contact");
+            ForgeLog.Source("WeaponForge.Contact");
 
         // ------------------------------------------------------------------
         // 1. MARKED - this weapon touched it.

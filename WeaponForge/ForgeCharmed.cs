@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx.Logging;
@@ -15,7 +15,7 @@ namespace WeaponForge
     public class ForgeCharmed : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Charm");
+            ForgeLog.Source("WeaponForge.Charm");
 
         public Unit Owner { get; private set; }
         public ForgeCharm.Config Cfg { get; private set; }
@@ -30,6 +30,12 @@ namespace WeaponForge
         private Faction _wasFaction;
         private readonly List<Vision> _eyes = new List<Vision>();
         private readonly List<int> _wasLayers = new List<int>();
+
+        // The same pair for its headbutt - which ChargerHead components were
+        // widened and what their masks were. Only components that genuinely
+        // changed go in, so a release can never invent a mask.
+        private readonly List<Component> _ramHeads = new List<Component>();
+        private readonly List<int> _wasRamMasks = new List<int>();
 
         // Grudges this charm WITHDREW, so release can put them back exactly.
         //
@@ -110,12 +116,34 @@ namespace WeaponForge
                 // This supplies the missing test.
                 ForgeMinionRamGuard.Mark(self);
 
+                // AND THE HALF THAT WAS MISSING: A CHARMED RAMMER COULD NOT
+                // REACH ANYTHING AT ALL.
+                //
+                // R14 test 158: the shooters fought each other and "both larva
+                // and maggot dont hurt each other when they ram". The cause is
+                // the same one this repo already found for summoned minions and
+                // never carried across - `ChargerHead.collisionLayerMask` on
+                // Larva / Maggot / Child ships as **1088 = Player | Ground**,
+                // with no Entities bit, so its cast cannot see another unit
+                // however hostile the two are. Charm marked the guard and set
+                // the faction and never touched the mask.
+                //
+                // Note how much wider the bug is than the report: a charmed
+                // rammer could not hurt ENEMIES either. Its only reachable
+                // target was the player, and the guard above correctly refuses
+                // that - so charm on a Larva produced a pacifist, and only the
+                // infighting case was odd enough to notice.
+                //
+                // Recorded and undone on release, because unlike a summoned
+                // minion this is a stock enemy that goes back to being one.
+                SaveAndWidenRam();
+
                 if (cfg.hasColor)
                 {
                     ForgeUnitTint.Set(
                         self, "charm", cfg.color,
                         Mathf.Max(0.1f, cfg.seconds), cfg.colorPulse,
-                        cfg.tintStrength);
+                        cfg.tintStrength, cfg.tintMode);
                 }
             }
             catch (Exception e)
@@ -134,7 +162,7 @@ namespace WeaponForge
                 ForgeUnitTint.Set(
                     _self, "charm", Cfg.color,
                     Mathf.Max(0.1f, seconds), Cfg.colorPulse,
-                    Cfg.tintStrength);
+                    Cfg.tintStrength, Cfg.tintMode);
             }
         }
 
@@ -174,6 +202,32 @@ namespace WeaponForge
                 f.SetValue(v, mask);
             }
         }
+
+        // Its ram, through the one owner of that reflection.
+        private void SaveAndWidenRam()
+        {
+            int was;
+            int now;
+
+            int changed = ForgeMinionAllegiance.WidenRam(
+                _self, _ramHeads, _wasRamMasks, out was, out now);
+
+            if (changed == 0 || _saidRam.Contains(_self.name))
+                return;
+
+            _saidRam.Add(_self.name);
+
+            Log.LogInfo(
+                "charm RAM on '" + _self.name +
+                "': ChargerHead.collisionLayerMask " + was + " -> " + now +
+                " (added Entities, removed Player, kept Ground). A rammer's " +
+                "cast was wired to hit the PLAYER and terrain only, so a " +
+                "charmed one could not touch an enemy OR another convert - it " +
+                "chased things and connected with nothing. Put back when the " +
+                "charm wears off. Logged once per prefab per run.");
+        }
+
+        private static readonly HashSet<string> _saidRam = new HashSet<string>();
 
         // The entity instance id the game's own lists are keyed by. Public so
         // the infighting pass can read one charmed unit's id off another.
@@ -450,6 +504,13 @@ namespace WeaponForge
                     // own, or a charm cut short by the cap leaves the enemy
                     // pink for the rest of its natural life.
                     ForgeUnitTint.Clear(_self, "charm");
+
+                    // Put its headbutt back the way the prefab shipped it,
+                    // BEFORE the marker goes - the guard is what keeps a
+                    // widened mask from ploughing through your own side, so
+                    // dropping the marker first would leave a one-frame window
+                    // in which a released enemy rams everything on Entities.
+                    ForgeMinionAllegiance.RestoreRam(_ramHeads, _wasRamMasks);
 
                     // Stop supplying the ram's faction test, so the enemy goes
                     // back to the game's own behaviour exactly.

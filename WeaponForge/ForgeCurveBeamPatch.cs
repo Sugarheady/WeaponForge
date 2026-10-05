@@ -40,7 +40,7 @@ namespace WeaponForge
     public static class ForgeCurveBeamPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.CurveBeam");
+            ForgeLog.Source("WeaponForge.CurveBeam");
 
         // HitscanWeapon keeps its visual instances private, and OnBarrelMoved
         // indexes that list by pellet number.

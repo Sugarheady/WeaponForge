@@ -387,8 +387,25 @@ namespace WeaponForge
 
                         if (_weapon != null && ForgeKillsPatch.JustDied(hb))
                         {
-                            ForgeKillsPatch.Credit(
-                                owner, hb.GetComponent<Unit>(), _weapon);
+                            // Flagged across the credit so `onKill.gas` can tell
+                            // a kill scored BY a cloud from any other kill. It
+                            // is the only thing standing between "a cloud on
+                            // the corpse" and a self-feeding chain reaction,
+                            // and it is restored rather than cleared because
+                            // one cloud's kill can reach this line while
+                            // another's is still on the stack.
+                            bool prevCrediting = Crediting;
+                            Crediting = true;
+
+                            try
+                            {
+                                ForgeKillsPatch.Credit(
+                                    owner, hb.GetComponent<Unit>(), _weapon);
+                            }
+                            finally
+                            {
+                                Crediting = prevCrediting;
+                            }
                         }
                     }
                 }
@@ -435,6 +452,11 @@ namespace WeaponForge
             // bonus when crossing upward - so pulling it down is safe.
             unit.ComponentData.BurnLevel -= cfg.extinguish * dt;
         }
+
+        // TRUE only while a cloud is crediting a kill of its own. Read by
+        // `onKill.gas` - see the field comment on ForgeOnKill.Config.gasChains
+        // for why a cloud that spawns a cloud needs to be asked for.
+        public static bool Crediting;
 
         [System.NonSerialized] private Resource _damageType;
         [System.NonSerialized] private WeaponBase _weapon;

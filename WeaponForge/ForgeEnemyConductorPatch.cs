@@ -14,7 +14,7 @@ namespace WeaponForge
     public class ForgeEnemyConductorPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static void Postfix(Enemy __instance)
         {

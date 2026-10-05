@@ -16,7 +16,7 @@ namespace WeaponForge
     public static class ForgeBuffHudPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.BuffHud");
+            ForgeLog.Source("WeaponForge.BuffHud");
 
         [HarmonyPatch(typeof(ShipHud), "AssignShip")]
         public class OnAssignShip

@@ -37,7 +37,7 @@ namespace WeaponForge
     public static class ForgeBulletTurn
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.BulletTurn");
+            ForgeLog.Source("WeaponForge.BulletTurn");
 
         // WHERE a reflected shot goes.
         //

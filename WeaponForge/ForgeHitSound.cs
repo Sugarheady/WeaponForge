@@ -40,7 +40,7 @@ namespace WeaponForge
     public static class ForgeHitSound
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.HitSound");
+            ForgeLog.Source("WeaponForge.HitSound");
 
         // `Enemies/Hit`. Verified identical across all 83 prefabs that have it.
         public const string HitGuid = "ce93fadd-7bb2-4493-801d-7184299255a2";

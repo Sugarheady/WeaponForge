@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -167,6 +167,11 @@ namespace WeaponForge
             // either "tintStrength" or "colorStrength" so the two naming
             // styles in this mod's blocks both work. See ForgeUnitTint.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
 
             public bool DoesAnything
             {

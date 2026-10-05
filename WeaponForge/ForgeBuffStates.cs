@@ -23,7 +23,7 @@ namespace WeaponForge
     public static class ForgeBuffStates
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.BuffHud");
+            ForgeLog.Source("WeaponForge.BuffHud");
 
         // Distinct keys so each state owns its own indicator entry and they can
         // never overwrite one another.

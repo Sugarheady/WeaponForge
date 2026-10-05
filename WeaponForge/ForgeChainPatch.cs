@@ -22,7 +22,7 @@ namespace WeaponForge
     public static class ForgeChainPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static MethodInfo _spawnExplosion;
         private static bool _ready;

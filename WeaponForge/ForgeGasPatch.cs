@@ -191,7 +191,7 @@ namespace WeaponForge
     public static class ForgeGasPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Gas");
+            ForgeLog.Source("WeaponForge.Gas");
 
         private static void Capture(Component shot)
         {

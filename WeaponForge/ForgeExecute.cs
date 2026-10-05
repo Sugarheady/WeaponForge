@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -36,7 +36,7 @@ namespace WeaponForge
     public static class ForgeExecute
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Execute");
+            ForgeLog.Source("WeaponForge.Execute");
 
         public class Config
         {
@@ -70,6 +70,11 @@ namespace WeaponForge
             // either "tintStrength" or "colorStrength" so the two naming
             // styles in this mod's blocks both work. See ForgeUnitTint.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
         }
 
         private static readonly Dictionary<WeaponData, Config> _weapons =
@@ -135,7 +140,7 @@ namespace WeaponForge
                         ForgeUnitTint.Set(
                             hurt, "execute", cfg.color,
                             Mathf.Max(0.05f, cfg.colorSeconds),
-                            cfg.colorPulse, cfg.tintStrength);
+                            cfg.colorPulse, cfg.tintStrength, cfg.tintMode);
                     }
                 }
             }

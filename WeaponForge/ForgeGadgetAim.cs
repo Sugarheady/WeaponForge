@@ -44,7 +44,7 @@ namespace WeaponForge
     public static class ForgeGadgetAim
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // The unit whose gadget is mid-activation, or null. Set and cleared
         // around one synchronous call.

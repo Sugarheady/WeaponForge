@@ -19,7 +19,7 @@ namespace WeaponForge
     public static class ForgeBoomerangPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Boomerang");
+            ForgeLog.Source("WeaponForge.Boomerang");
 
         // How often a retrace breadcrumb is dropped. 20/sec is plenty to
         // retrace a curve smoothly and keeps the list tiny.

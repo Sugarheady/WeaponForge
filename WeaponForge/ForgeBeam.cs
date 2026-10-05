@@ -43,7 +43,7 @@ namespace WeaponForge
     public static class ForgeBeam
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Beam");
+            ForgeLog.Source("WeaponForge.Beam");
 
         // HitscanWeaponVisual keeps all of these private [SerializeField].
         // Plain FieldInfo rather than Harmony's FieldRefAccess<T,F>, which

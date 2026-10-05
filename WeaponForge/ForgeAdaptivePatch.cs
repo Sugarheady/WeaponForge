@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BepInEx.Logging;
 using HarmonyLib;
 using UnityEngine;
@@ -20,7 +20,7 @@ namespace WeaponForge
     public static class ForgeAdaptivePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Adaptive");
+            ForgeLog.Source("WeaponForge.Adaptive");
 
         [HarmonyPatch(typeof(DamagableResource), "TakeDamage",
             new[] { typeof(Damage) })]
@@ -68,7 +68,8 @@ namespace WeaponForge
                     damage.damageType = pick;
 
                     if (cfg.tint)
-                        Flash(__instance, pick, cfg.tintSeconds, cfg.tintStrength);
+                        Flash(__instance, pick, cfg.tintSeconds,
+                              cfg.tintStrength, cfg.tintMode);
                 }
                 catch (Exception e)
                 {
@@ -83,7 +84,7 @@ namespace WeaponForge
         // guard rather than assuming.
         private static void Flash(
             DamagableResource victim, Resource type, float seconds,
-            float strength)
+            float strength, int mode)
         {
             try
             {
@@ -96,7 +97,7 @@ namespace WeaponForge
                 // same hit compose instead of one restoring over the other.
                 ForgeUnitTint.Set(
                     unit, "adaptive", type.color,
-                    Mathf.Max(0.05f, seconds), 0f, strength);
+                    Mathf.Max(0.05f, seconds), 0f, strength, mode);
             }
             catch (Exception e)
             {

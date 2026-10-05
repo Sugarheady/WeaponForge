@@ -29,7 +29,7 @@ namespace WeaponForge
     public class ForgeCurveBeamChain : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.CurveBeam");
+            ForgeLog.Source("WeaponForge.CurveBeam");
 
         private Transform container;
         private readonly List<SpriteRenderer> pool = new List<SpriteRenderer>();

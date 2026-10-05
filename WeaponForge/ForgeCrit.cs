@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -29,7 +29,7 @@ namespace WeaponForge
     public static class ForgeCrit
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Crit");
+            ForgeLog.Source("WeaponForge.Crit");
 
         // When does the dice get rolled?
         public enum Roll
@@ -95,6 +95,11 @@ namespace WeaponForge
             // either "tintStrength" or "colorStrength" so the two naming
             // styles in this mod's blocks both work. See ForgeUnitTint.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
 
             // Camera kick, using the weapon's own ShakePreset.
             public bool shake;
@@ -247,10 +252,17 @@ namespace WeaponForge
             chance = 0f;
             multiplier = 0f;
 
-            foreach (Contribution c in _global.Values)
+            // ★ ONLY THE WEAPON'S OWN SHIP'S MODULES. This loop used to add
+            // every ship-grid bonus to EVERY weapon, enemy guns included - a
+            // Module Forge crit module made enemy shots crit you. R19; see
+            // ForgeModuleScope.
+            foreach (var pair in _global)
             {
-                chance += c.chance;
-                multiplier += c.multiplier;
+                if (!ForgeModuleScope.Applies(pair.Key, weapon))
+                    continue;
+
+                chance += pair.Value.chance;
+                multiplier += pair.Value.multiplier;
             }
 
             Dictionary<object, Contribution> byKey;
@@ -446,7 +458,7 @@ namespace WeaponForge
                         ForgeUnitTint.Set(
                             hurt, "crit", cfg.color,
                             Mathf.Max(0.05f, cfg.colorSeconds),
-                            cfg.colorPulse, cfg.tintStrength);
+                            cfg.colorPulse, cfg.tintStrength, cfg.tintMode);
                     }
                 }
 

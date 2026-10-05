@@ -17,7 +17,7 @@ namespace WeaponForge
     public static class ForgeGrowthPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Growth");
+            ForgeLog.Source("WeaponForge.Growth");
 
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot

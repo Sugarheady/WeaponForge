@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeChargePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Charge");
+            ForgeLog.Source("WeaponForge.Charge");
 
         private class State
         {
@@ -70,6 +70,39 @@ namespace WeaponForge
         // Set to true only while we are calling Shooter.Shoot ourselves, so
         // our own suppression prefix lets that one through.
         private static bool _firing;
+
+        // How wound up this gun's charge is right now, 0..1, for the `gauge`
+        // and `bubble` readouts.
+        //
+        // THE HELD LEVEL, NOT THE ARMED ONE, and that distinction is
+        // load-bearing rather than pedantic: an `overheat` blowout set to
+        // `vent` fires its vent shot THROUGH this machinery, arming a charged
+        // shot the player never initiated. Reading `armedLevel` would flash a
+        // phantom charge on the bar every time a gun vented.
+        public static bool TryHeldLevel(Shooter shooter, out float level)
+        {
+            level = 0f;
+
+            if (shooter == null)
+                return false;
+
+            State s;
+
+            if (!_states.TryGetValue(shooter, out s) || s == null)
+                return false;
+
+            if (s.weapon == null)
+                return false;
+
+            ForgeCharge.Config cfg;
+
+            if (!ForgeCharge.TryGet(s.weapon.TemplateData, out cfg))
+                return false;
+
+            level = ForgeCharge.Level(s.held, cfg);
+
+            return true;
+        }
 
         // --- what a charged shot does to the individual projectile ---------
         // Statics rather than a component because the whole window is one
@@ -178,6 +211,45 @@ namespace WeaponForge
             catch (Exception e)
             {
                 Log.LogError("Firing an external charged shot failed: " + e);
+                return false;
+            }
+        }
+
+        // ARM the next shot without firing one, on somebody else's behalf.
+        //
+        // The other half of `FireExternally`, and the distinction matters: that
+        // one exists because overheat's blowout needed a shot RIGHT NOW and
+        // arming alone was the bug. `surge` is the opposite case - the player
+        // is firing perfectly well and every shot in the window should simply
+        // arrive charged - so firing here would double the weapon's output.
+        //
+        // IT REFUSES TO OVERWRITE AN ARMING ALREADY IN HAND. A release-mode
+        // charge the player built themselves is theirs, and clobbering
+        // `armedLevel` with the surge's could only ever make it smaller.
+        public static bool ArmExternally(Shooter shooter, float level)
+        {
+            if (shooter == null || shooter.Weapon == null)
+                return false;
+
+            try
+            {
+                WeaponBase weapon = shooter.Weapon;
+                ForgeCharge.Config cfg;
+
+                if (!ForgeCharge.TryGet(weapon.TemplateData, out cfg))
+                    return false;
+
+                State s = Get(shooter, weapon);
+
+                if (s.armedShots > 0 && Time.time <= s.armedUntil)
+                    return true;
+
+                Arm(s, weapon, Mathf.Clamp01(level));
+                return true;
+            }
+            catch (Exception e)
+            {
+                Log.LogError("Arming an external charged shot failed: " + e);
                 return false;
             }
         }

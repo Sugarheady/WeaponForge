@@ -11,7 +11,7 @@ namespace WeaponForge
     public static class ForgeGuidedPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Guided");
+            ForgeLog.Source("WeaponForge.Guided");
 
         private static bool _warned;
 

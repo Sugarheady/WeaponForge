@@ -11,7 +11,7 @@ namespace WeaponForge
     public class ForgeBurnTickPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static void Prefix(DamagableResource __instance)
         {

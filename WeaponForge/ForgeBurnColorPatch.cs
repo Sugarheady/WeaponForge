@@ -11,7 +11,7 @@ namespace WeaponForge
     public class ForgeBurnColorPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static bool Prefix(StatusEffectParticleManager __instance, Unit.Data unit)
         {

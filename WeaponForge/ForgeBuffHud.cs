@@ -32,7 +32,7 @@ namespace WeaponForge
     public static class ForgeBuffHud
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.BuffHud");
+            ForgeLog.Source("WeaponForge.BuffHud");
 
         public enum Style { Off, Feed, Icons, Both }
 
@@ -150,6 +150,7 @@ namespace WeaponForge
             }
 
             _live.Clear();
+            _noticeUntil.Clear();
 
             // A new HUD means new rows; the old ShipLogEntry objects belong to
             // a display that no longer exists.
@@ -168,6 +169,7 @@ namespace WeaponForge
             _ship = null;
             _row = null;
             _live.Clear();
+            _noticeUntil.Clear();
             _logged.Clear();
         }
 
@@ -241,7 +243,7 @@ namespace WeaponForge
                 // re-logging each frame would chirp continuously - and with
                 // "seconds remaining" the text changes about once a second,
                 // which is exactly the cadence that stays tolerable.
-                if (text == e.text && e.widget != null)
+                if (text == e.text && Painted(e))
                     return;
 
                 e.text = text;
@@ -258,10 +260,29 @@ namespace WeaponForge
             }
         }
 
+        // Is this entry's current text already on screen, everywhere the style
+        // draws it? The old test asked only for the ICON widget, which the
+        // "feed" style never builds - so under that style it was never true and
+        // every call re-fed a line whose words had not changed. The in-place
+        // rewrite made that cheap rather than a flood, but it was still a
+        // component walk per line per frame for nothing.
+        private static bool Painted(Entry e)
+        {
+            bool feed = style == Style.Feed || style == Style.Both;
+            bool icons = style == Style.Icons || style == Style.Both;
+
+            return (!feed || _logged.ContainsKey(e.id)) &&
+                   (!icons || e.widget != null);
+        }
+
         public static void Clear(object key)
         {
             if (key == null)
                 return;
+
+            // A notice cleared early (its owner went away) must not be swept
+            // again later - by then the key could be showing something else.
+            _noticeUntil.Remove(key);
 
             Entry e;
 
@@ -286,6 +307,115 @@ namespace WeaponForge
 
             if (e.widget != null)
                 UnityEngine.Object.Destroy(e.widget);
+        }
+
+        // ------------------------------------------------------------------
+        // Lines that take themselves down
+        // ------------------------------------------------------------------
+        //
+        // ★ `endsAt` NEVER CLEARED ANYTHING. It only feeds the seconds-left
+        // label; every feature that shows a line is also the one that clears
+        // it (the kill buff on its own timer, a shield when it drops). Rank
+        // showed a line on every rank up and nothing ever took it down - R19
+        // 252: "the alert for the rank number is still permenant. It needs to
+        // go away. Have it stay for like 3 to 4 seconds". A NOTICE is a
+        // different kind of line from a buff: there is no state behind it to
+        // end, so it has to end itself.
+        public static void Notice(
+            object key, Color color, string text, int stacks, float seconds)
+        {
+            if (style == Style.Off || key == null)
+                return;
+
+            float until = Time.time + Mathf.Max(0.5f, seconds);
+
+            Show(key, null, color, text, 0f, stacks, until, Kind.Buff);
+
+            _noticeUntil[key] = until;
+            ForgeBuffHudClock.Ensure();
+        }
+
+        // ★ AN ALERT IS A NOTICE THAT IGNORES `[Buff indicator] Style`.
+        //
+        // Drone modes (2026-10-01): the alert is the ONLY thing that says which
+        // mode a press chose (his answer, 12.2 L: "alert only"), so it cannot
+        // depend on an opt-in overlay that ships OFF - a `Notice` under the
+        // default `Style = off` returns before drawing anything. An alert goes
+        // to the game's own status feed whatever the style is, with its text
+        // exactly as given (no "+0%", no countdown), under ONE key so pressing
+        // three times quickly rewrites one row rather than stacking three.
+        // It takes itself down through the same sweep as a notice.
+        public static void Alert(object key, Color color, string text, float seconds)
+        {
+            if (key == null || string.IsNullOrEmpty(text))
+                return;
+
+            try
+            {
+                Entry e;
+
+                if (!_live.TryGetValue(key, out e))
+                {
+                    e = new Entry();
+                    e.id = NextId();
+                    _live[key] = e;
+                }
+
+                e.icon = null;
+                e.color = color;
+                e.debuff = false;
+
+                float until = Time.time + Mathf.Max(0.5f, seconds);
+                e.endsAt = until;
+
+                if (text != e.text || !_logged.ContainsKey(e.id))
+                {
+                    e.text = text;
+                    Feed(e);
+                }
+
+                _noticeUntil[key] = until;
+                ForgeBuffHudClock.Ensure();
+            }
+            catch (Exception ex)
+            {
+                Log.LogError("Alert failed: " + ex);
+            }
+        }
+
+        private static readonly Dictionary<object, float> _noticeUntil =
+            new Dictionary<object, float>();
+
+        // Called once a frame by ForgeBuffHudClock while a notice is up.
+        // Returns whether any are left, so the clock can stop.
+        internal static bool SweepNotices()
+        {
+            if (_noticeUntil.Count == 0)
+                return false;
+
+            List<object> done = null;
+
+            foreach (var kv in _noticeUntil)
+            {
+                if (Time.time >= kv.Value)
+                {
+                    if (done == null)
+                        done = new List<object>();
+
+                    done.Add(kv.Key);
+                }
+            }
+
+            if (done != null)
+            {
+                for (int i = 0; i < done.Count; i++)
+                {
+                    _noticeUntil.Remove(done[i]);
+                    Clear(done[i]);
+                }
+            }
+
+            return _noticeUntil.Count > 0;
         }
 
         // Seconds-remaining labels need a nudge every second even when nothing
@@ -753,6 +883,45 @@ namespace WeaponForge
                     p.SetValue(e.textComponent, text ?? "", null);
             }
             catch { }
+        }
+    }
+    // The one per-frame tick the HUD needs - for notices, and nothing else.
+    // Its own hidden object, created by the first notice and destroyed as soon
+    // as none are waiting, so between rank ups it does not exist at all.
+    internal class ForgeBuffHudClock : MonoBehaviour
+    {
+        private static ForgeBuffHudClock _one;
+
+        public static void Ensure()
+        {
+            if (_one != null)
+                return;
+
+            var go = new GameObject("ForgeBuffHudClock");
+            UnityEngine.Object.DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            _one = go.AddComponent<ForgeBuffHudClock>();
+        }
+
+        private void Update()
+        {
+            bool more;
+
+            try
+            {
+                more = ForgeBuffHud.SweepNotices();
+            }
+            catch (System.Exception)
+            {
+                // A readout must never be able to throw every frame.
+                more = false;
+            }
+
+            if (!more)
+            {
+                _one = null;
+                Destroy(gameObject);
+            }
         }
     }
 }

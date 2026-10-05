@@ -77,7 +77,7 @@ namespace WeaponForge
     public class ForgeGuidedPhysics : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Guided");
+            ForgeLog.Source("WeaponForge.Guided");
 
         // PLAIN VALUES ONLY. This rides the projectile PREFAB and Unity copies
         // serialized state only, so a reference to a Config class would arrive

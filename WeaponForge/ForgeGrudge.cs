@@ -47,7 +47,7 @@ namespace WeaponForge
     public static class ForgeGrudge
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Grudge");
+            ForgeLog.Source("WeaponForge.Grudge");
 
         // The entity instance id the game's own lists are keyed by.
         //
