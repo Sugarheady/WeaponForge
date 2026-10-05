@@ -30,7 +30,7 @@ namespace WeaponForge
     public class ForgeLungeController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Lunge");
+            ForgeLog.Source("WeaponForge.Lunge");
 
         private ForgeLunge.Config cfg;
         private ShipMovement move;

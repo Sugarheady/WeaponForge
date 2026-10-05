@@ -26,7 +26,7 @@ namespace WeaponForge
     public static class ForgeSfxRegistry
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sounds");
+            ForgeLog.Source("WeaponForge.Sounds");
 
         private static AudioDatabase _database;
         private static bool _searched;
@@ -224,7 +224,7 @@ namespace WeaponForge
         }
 
         // One of the GAME's own sounds, named the way the audio database names
-        // it - "Cells/Fuel", "Weapons/Popper/Shoot", "UI/Click". Returns its
+        // it - "Cells/Fuel", "Weapons/Popper/Shoot", "UI/OK". Returns its
         // guid, which is what a weapon field actually holds.
         //
         // Case-insensitive, and a raw guid still works, so nothing already

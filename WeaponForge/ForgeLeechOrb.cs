@@ -22,7 +22,7 @@ namespace WeaponForge
     public class ForgeLeechOrb : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Leech");
+            ForgeLog.Source("WeaponForge.Leech");
 
         [NonSerialized] private Transform _target;
         [NonSerialized] private Unit _player;

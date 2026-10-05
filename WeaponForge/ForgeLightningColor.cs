@@ -61,7 +61,7 @@ namespace WeaponForge
     public class ForgeLightningColorPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static AccessTools.FieldRef<
             ElectricityManager, ElectricityBeam> _beamRef;

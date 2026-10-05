@@ -45,7 +45,7 @@ namespace WeaponForge
     public static class ForgeSpinUp
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.SpinUp");
+            ForgeLog.Source("WeaponForge.SpinUp");
 
         // How the reward arrives between empty and full.
         public const int Smooth = 0;   // every frame is slightly better
@@ -99,24 +99,17 @@ namespace WeaponForge
 
             // ---- the rewards ----
             //
-            // Each is opt-in and carries its own value at full, by request. Fire
-            // rate and accuracy are the two that default ON, being the two he
-            // asked for; the other three are off until named.
-            public bool rate = true;
-            public float fireRateAtFull = 2f;
-
-            public bool accuracy = true;
-            public float accuracyAtFull = 1f;   // fraction of variance removed
-            public float spreadAtFull = 1f;     // multiplier on the fan, 1 = keep
-
-            public bool damage;
-            public float damageAtFull = 1.5f;
-
-            public bool pellets;
-            public float pelletsAtFull = 2f;
-
-            public bool cheaper;
-            public float costAtFull = 0.5f;
+            // SHARED WITH `surge` - see ForgeRewards. This block shipped with
+            // five (rate, accuracy, damage, pellets, cheaper) and gained the
+            // other twelve on 2026-09-17 by being pointed at the same class,
+            // which is the whole change: range, projectile speed, projectile
+            // size, burst size and delay, burn, explosion, push, knockback,
+            // warmup and lifetime.
+            //
+            // Nothing already written changes. `fireRate` and `spread` are
+            // still accepted as the spellings of `fireRateAtFull` and
+            // `spreadAtFull`, which is what this block has always called them.
+            public ForgeRewards rewards = new ForgeRewards();
 
             // ---- feedback ----
             public bool tintMuzzle = true;

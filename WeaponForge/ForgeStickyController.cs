@@ -13,7 +13,7 @@ namespace WeaponForge
     public class ForgeStickyController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sticky");
+            ForgeLog.Source("WeaponForge.Sticky");
 
         private ForgeSticky s;
         private ContactFilter2D enemies;

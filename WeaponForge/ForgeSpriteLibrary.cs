@@ -24,7 +24,7 @@ namespace WeaponForge
     public static class ForgeSpriteLibrary
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sprites");
+            ForgeLog.Source("WeaponForge.Sprites");
 
         // The game's own scale: 20 texture pixels to one world unit.
         public const float DefaultPixelsPerUnit = 20f;
@@ -808,7 +808,72 @@ namespace WeaponForge
         {
             Art art;
 
-            return TryGetStockArt(name, out art) ? art.sprite : null;
+            if (TryGetStockArt(name, out art))
+                return art.sprite;
+
+            return PaddedIconRetry(name);
+        }
+
+        // "HUD_GridTiles_NN" IS THE WRONG SHAPE AND BOTH MODS' DOCS TAUGHT IT.
+        // The real assets are `HUD_GridTiles_0` .. `_44` and `HUD_Modules_0` ..
+        // `_35`, UNPADDED. "NN" reads as two digits, and that spelling is in
+        // five places across the two repos. R17's log is the cost:
+        // `Icon 'HUD_GridTiles_07' is neither a game sprite nor ...` - the
+        // asset exists, the name is wrong by one character, and the warning
+        // repeats the convention that caused it.
+        //
+        // > A DIAGNOSTIC THAT RESTATES A CONVENTION IS TEACHING IT, in the most
+        // > authoritative voice the mod has. If the convention is wrong, the
+        // > warning is not the safety net - it is the bug, reprinted once per
+        // > reload.
+        //
+        // Only ever a retry after the exact name misses, and only leading zeros
+        // in the trailing number group are touched, so a real asset spelled
+        // with a zero would still win. `ForgeAssets.PaddedRetry` in Module
+        // Forge is the twin - duplicated rather than bridged, like every other
+        // asset-name rule here.
+        private static Sprite PaddedIconRetry(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            int cut = name.LastIndexOf('_');
+
+            if (cut < 0 || cut >= name.Length - 1)
+                return null;
+
+            string head = name.Substring(0, cut + 1);
+            string tail = name.Substring(cut + 1);
+
+            for (int i = 0; i < tail.Length; i++)
+            {
+                if (!char.IsDigit(tail[i]))
+                    return null;
+            }
+
+            string trimmed = tail.TrimStart('0');
+
+            if (trimmed.Length == 0)
+                trimmed = "0";
+
+            if (trimmed == tail)
+                return null;
+
+            Art art;
+
+            if (!TryGetStockArt(head + trimmed, out art))
+                return null;
+
+            Log.LogWarning(
+                "icon '" + name + "' has a leading zero the game's own art " +
+                "does not use - the asset is called '" + head + trimmed +
+                "'. Using it. Stock icons are numbered without padding: " +
+                "HUD_GridTiles_0 to _44 and HUD_Modules_0 to _35, so it is " +
+                "_7 and not _07. Worth correcting in your file; some of this " +
+                "mod's own docs said \"HUD_GridTiles_NN\", which is where the " +
+                "padding comes from.");
+
+            return art.sprite;
         }
 
         // Scan the folder once. Safe to call repeatedly.
@@ -1546,9 +1611,10 @@ Four things to know, because an icon is drawn by two different renderers:
 
 * THE GAME WINS A NAME CLASH. Naming your PNG after a stock sprite gets
   the stock one, with a warning telling you to rename yours. Stock module
-  icons are called HUD_GridTiles_NN.
+  icons are HUD_GridTiles_0 to _44 and HUD_Modules_0 to _35 - numbered
+  with NO leading zero, so it is _7 and not _07.
 
-Anything the mod could not read is reported in BepInEx\LogOutput.log -
+Anything the mod could not read is reported in BepInEx\WeaponForge.log -
 search for ""WeaponForge.Sprites"".
 ";
         }

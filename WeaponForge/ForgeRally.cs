@@ -27,7 +27,7 @@ namespace WeaponForge
     public static class ForgeRally
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Rally");
+            ForgeLog.Source("WeaponForge.Rally");
 
         // When a rallied shot is dangerous to its owner.
         public const int HostileNever = 0;   // default

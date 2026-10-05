@@ -38,7 +38,7 @@ namespace WeaponForge
     public static class ForgeKillsPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Kills");
+            ForgeLog.Source("WeaponForge.Kills");
 
         // The weapon DoShoot is running for. Frame-stamped so a stale value can
         // never be believed.
@@ -202,6 +202,35 @@ namespace WeaponForge
             if (!ForgeOnKill.Any || killer == null || _credit == null)
                 return;
 
+            // ★★ KILLING YOUR OWN SIDE PAYS NOTHING, AND THIS GUARD HAS TO SIT
+            // ABOVE `CoolFromAnyKill` RATHER THAN ABOVE `Pay`.
+            //
+            // `ForgeDamageDealt` is about DAMAGE; kills are a different owner
+            // entirely, and the friendly test was never carried across. So
+            // killing your own minion, your own charmed unit or your own
+            // wingman drone paid the FULL `onKill` reward: resource on kill,
+            // the kill buff, `coolHeat`, and the pickup drop at the victim's
+            // feet. Worse than the damage hole in two ways - the reward is a
+            // flat amount per kill rather than proportional, and a companion is
+            // cheap to redeploy, so it is a resource printer rather than a
+            // trickle.
+            //
+            // `ForgeHeat.CoolFromAnyKill` fires for ANY kill at all and sits
+            // above the config lookup, so a guard placed above `Pay` alone
+            // would still have cooled a meter for every companion you shot
+            // down. **Attribution was solved for damage and never carried to
+            // kills** - the same shape as the burn-tick attribution gap one
+            // file along.
+            if (victim != null && killer.IsFriendsWith(victim))
+                return;
+
+            // ANY weapon's kill can cool a meter whose own weapon asked for it.
+            // Runs before the credited weapon's own payout and independently of
+            // it, because the weapon that scored this kill usually has no
+            // `onKill` block at all - it is the OTHER gun, the locked one, that
+            // wants to hear about this.
+            ForgeHeat.CoolFromAnyKill(killer, _credit);
+
             ForgeOnKill.Config cfg;
 
             if (!ForgeOnKill.TryGet(_credit.TemplateData, out cfg))
@@ -251,6 +280,15 @@ namespace WeaponForge
                 killer.ComponentData.BurnLevel -= cfg.clearBurn;
             }
 
+            if (cfg.coolHeat > 0f)
+            {
+                // Scoped to the weapon that scored the kill - `_credit` is that
+                // weapon, and the `onKill` block was found by looking this
+                // config up from it. A secondary's kill cooling the primary
+                // would be a different feature and not one anybody asked for.
+                ForgeHeat.CoolOn(killer, _credit, cfg.coolHeat);
+            }
+
             if (cfg.buffDuration > 0f &&
                 (cfg.buffFireRate > 0f || cfg.buffDamage > 0f))
             {
@@ -267,9 +305,73 @@ namespace WeaponForge
                     cfg.indicatorIcon, cfg.indicatorColor, indicate);
             }
 
+            if (cfg.gas)
+                LeaveGas(cfg, killer, victim);
+
             if (!string.IsNullOrEmpty(cfg.sfxGuid))
                 AudioManager.PlaySfx(cfg.sfxGuid, killer.transform.position);
         }
+
+        // A cloud on the corpse, built from the weapon's own `gas` block.
+        //
+        // The position is taken BEFORE anything else runs, because the victim
+        // is on its way out - the same reason the pickup drop above reads it
+        // where it does.
+        private static void LeaveGas(
+            ForgeOnKill.Config cfg, Unit killer, Unit victim)
+        {
+            // A cloud's own kill only seeds another cloud when the file asked
+            // for the chain. See ForgeOnKill.Config.gasChains.
+            if (ForgeGasCloud.Crediting && !cfg.gasChains)
+                return;
+
+            ForgeGas.Config gas;
+
+            // Registered by ApplyGas. The builder refuses `onKill.gas` on a
+            // weapon whose gas block is missing or was itself refused, and
+            // turns the flag off when it does - so reaching here without a
+            // config means something newer than this code introduced a third
+            // way to lose it, and staying silent would make it look like the
+            // cloud simply failed to appear.
+            if (!ForgeGas.TryGet(_credit.TemplateData, out gas) || gas == null)
+            {
+                if (!_saidNoCloud)
+                {
+                    _saidNoCloud = true;
+
+                    Log.LogWarning(
+                        "onKill \"gas\" fired on '" +
+                        ((_credit.TemplateData != null)
+                            ? _credit.TemplateData.name : "?") +
+                        "' but that weapon has no registered gas cloud, so no " +
+                        "gas was left. The \"gas\" block is what describes the " +
+                        "cloud - this key only decides WHEN one appears.");
+                }
+
+                return;
+            }
+
+            Vector2 where = (victim != null)
+                ? (Vector2)victim.transform.position
+                : (Vector2)killer.transform.position;
+
+            // No inherited velocity: nothing arrived here travelling. A drift
+            // cloud rolls from where the shot was going, and a corpse is not
+            // going anywhere - so a `drifts` cloud just sits, which is right.
+            ForgeGasCloud cloud =
+                ForgeGasCloud.Spawn(gas, where, Vector2.zero, killer);
+
+            if (cloud == null)
+                return;
+
+            // Live values, not the template's: the cloud is resisted and
+            // coloured like the gun as it is NOW, including anything adaptive
+            // damage type or a module has done to it.
+            cloud.SetDamageType(_credit.Damage.damageType);
+            cloud.SetWeapon(_credit);
+        }
+
+        private static bool _saidNoCloud;
 
         // Charge() is the right call for a normal tank - it clamps to
         // [0, Capacity] where writing Value directly would not.

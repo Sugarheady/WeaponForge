@@ -15,7 +15,7 @@ namespace WeaponForge
     public static class ForgeOrbitPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static readonly Dictionary<Shooter, ForgeOrbitController> _ctrls =
             new Dictionary<Shooter, ForgeOrbitController>();

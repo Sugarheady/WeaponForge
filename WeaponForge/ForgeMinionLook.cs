@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeMinionLook
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         public const int ColorReplace = 0;  // flat, unmistakable (default)
         public const int ColorTint = 1;     // multiply, keeps shading

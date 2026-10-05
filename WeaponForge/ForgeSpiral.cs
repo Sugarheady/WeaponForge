@@ -62,7 +62,7 @@ namespace WeaponForge
     public static class ForgeSpiral
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Spiral");
+            ForgeLog.Source("WeaponForge.Spiral");
 
         public class Config
         {

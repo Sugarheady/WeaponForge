@@ -45,7 +45,7 @@ namespace WeaponForge
     public static class ForgeMinionStats
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         public const int Absolute = 0;   // "health": 60 means 60 (default)
         public const int Multiply = 1;   // "health": 2 means twice the prefab's
@@ -116,6 +116,34 @@ namespace WeaponForge
         // `ForgeMinionPatch.Prepare` does.
         public static void Recalculate(Unit minion)
         {
+            Recalculate(minion, true);
+        }
+
+        // ★ `refill: false` IS FOR A UNIT THAT HAS JUST BEEN LOADED, and the
+        // distinction is the whole point of persisting a body rather than a
+        // count.
+        //
+        // `Unit.Data.Memento` stores `resourceValues` for every non-shared
+        // tank, so a saved drone comes back AT THE HEALTH IT HAD - which is
+        // exactly what "load the state we were in" means and what a count
+        // rebuild can never do. Recalculating with a refill immediately after
+        // that throws the restored value away and hands back a full-health
+        // companion, so the persistence would be indistinguishable from a
+        // respawn.
+        //
+        // Capacities still have to be rebuilt, because the effects we edit do
+        // NOT survive a load: `Module.Memento.Restore()` resolves the module
+        // data out of the registry and `DeepCopy()`s it, so a restored module
+        // carries the ASSET's effects and not ours. That is the same reason
+        // `ForgeMinionRestore` exists at all.
+        //
+        // The clamp is the third thing the refill was quietly doing.
+        // `ResourceTank.Value` has no ceiling of its own, and a file that
+        // LOWERS a capacity between saving and loading would otherwise leave
+        // `Value > Capacity` - which `ResourceRecharger` never corrects,
+        // because it only runs on a tank that is not full.
+        public static void Recalculate(Unit minion, bool refill)
+        {
             if (minion == null)
                 return;
 
@@ -128,7 +156,18 @@ namespace WeaponForge
                     return;
 
                 minion.ComponentData.RecalculateStats(gridOwner.ModuleGrid);
-                minion.ComponentData.RefillResources();
+
+                if (refill)
+                {
+                    minion.ComponentData.RefillResources();
+                    return;
+                }
+
+                foreach (ResourceTank tank in minion.GetNotSharedTanks())
+                {
+                    if (tank != null && tank.Value > tank.Capacity)
+                        tank.Value = tank.Capacity;
+                }
             }
             catch (Exception e)
             {
@@ -1401,6 +1440,13 @@ namespace WeaponForge
                 "minion \"" + jsonKey + "\": could not reach " + member +
                 " - the game version may have changed. This stat is ignored; " +
                 "everything else still applies.");
+        }
+
+        // The public door for diagnostics elsewhere (the wingman body
+        // trace, R19 test 259).
+        public static Resource DrainedResourceOf(DestroyWhenResourceDrained drain)
+        {
+            return drain != null ? DrainedResource(drain) : null;
         }
 
         private static Resource DrainedResource(

@@ -44,7 +44,7 @@ namespace WeaponForge
     public class ForgeMinionGrudge : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         private Unit _self;
         private Unit _owner;

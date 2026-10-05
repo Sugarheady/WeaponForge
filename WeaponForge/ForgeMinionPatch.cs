@@ -34,7 +34,7 @@ namespace WeaponForge
     public static class ForgeMinionPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         [HarmonyPatch(typeof(MinionSpawnerWeapon), MethodType.Constructor,
                       new Type[] { typeof(MinionSpawnerWeaponData) })]
@@ -263,10 +263,21 @@ namespace WeaponForge
         // reads as a bug), while KillOldest and Fizzle act at the spawn itself -
         // which also covers a spawner weapon in a GADGET slot, since those
         // bypass Shooter entirely.
+        // What one trigger pull looked like, carried from the prefix to the
+        // finalizer. In `__state` rather than a static because that is the
+        // house rule for a snapshot across a patch pair - see the leech note in
+        // CLAUDE.md about `Damage` nesting.
+        private class Watch_
+        {
+            public bool watching;
+            public bool refused;
+            public float before;
+        }
+
         [HarmonyPatch(typeof(Shooter), "Shoot")]
         public class OnShoot
         {
-            static bool Prefix(Shooter __instance)
+            static bool Prefix(Shooter __instance, ref Watch_ __state)
             {
                 if (!ForgeMinion.Any)
                     return true;
@@ -282,6 +293,15 @@ namespace WeaponForge
 
                     if (!ForgeMinion.TryGet(spawner.TemplateData, out cfg))
                         return true;
+
+                    float? clock = ForgeSwarm.ReadClock(__instance);
+
+                    if (clock.HasValue)
+                    {
+                        __state = new Watch_();
+                        __state.watching = true;
+                        __state.before = clock.Value;
+                    }
 
                     // THE PULL LOG, and this is the measurement R13 test 143
                     // needs rather than another guess.
@@ -340,6 +360,9 @@ namespace WeaponForge
                     // sentence blames.
                     ForgeSwarm.ConsumePull(__instance);
 
+                    if (__state != null)
+                        __state.refused = true;
+
                     return false;
                 }
                 catch (Exception e)
@@ -348,7 +371,87 @@ namespace WeaponForge
                     return true;
                 }
             }
+
+            // THE PULL DID NOT ALWAYS CONSUME ITS INTERVAL, and this both
+            // repairs that and names why.
+            //
+            // R14 test 170 came back with the PULLS instrument's own verdict:
+            // pulls 0.017 seconds apart - one frame - against a fire interval
+            // of 1.25s. Reading the code could not source it. `Shooter.Shoot`
+            // stamps `lastShootTime` as its LAST statement, after
+            // `weapon.Fire`, the resource subtraction, the recoil `AddForce`
+            // and `OnShoot.Invoke()`; the cap already consumed a refused pull;
+            // and `Update` calls `Shoot` once per frame. Every path I can see
+            // is once per interval.
+            //
+            // But the shape of the evidence says which HALF it has to be. Every
+            // allowed pull produced a minion, and `weapon.Fire` is the FIRST
+            // thing in `Shoot` while the stamp is the LAST - so the shot
+            // happened and the clock did not move. Something between the two
+            // is not completing, or our own write is failing. Both are
+            // invisible from any log the mod prints today.
+            //
+            // So: compare the clock across the call. If it did not advance on a
+            // pull we allowed, stamp it ourselves and say so - with
+            // `__exception` attached, which is the one thing that can name the
+            // cause outright. A finalizer returning VOID leaves the exception
+            // exactly as it was, so this observes without changing what the
+            // game does with it.
+            //
+            // This is a repair rather than a workaround: a trigger pull that
+            // reached the weapon has spent its interval whatever became of the
+            // shot. That was already the rule for a REFUSED pull (see
+            // ConsumePull); it was never applied to the pull that goes through,
+            // because nothing suggested one could fail. **A guard written for
+            // the exceptional path is not a guard for the ordinary one.**
+            static void Finalizer(
+                Shooter __instance, Watch_ __state, Exception __exception)
+            {
+                if (__state == null || !__state.watching || __state.refused)
+                    return;
+
+                try
+                {
+                    float? after = ForgeSwarm.ReadClock(__instance);
+
+                    // Advanced as it should - the overwhelmingly common case,
+                    // and the reason this costs nothing when nothing is wrong.
+                    if (!after.HasValue || after.Value > __state.before)
+                        return;
+
+                    ForgeSwarm.ConsumePull(__instance);
+
+                    if (_saidClockStuck)
+                        return;
+
+                    _saidClockStuck = true;
+
+                    Log.LogWarning(
+                        "minion CLOCK on '" + __instance.Weapon.TemplateData.name +
+                        "': a trigger pull fired a minion and Shooter's " +
+                        "fire-rate clock did NOT advance, so the weapon was " +
+                        "asked to fire again on the next frame - that is the " +
+                        "clump. `Shooter.Shoot` stamps that clock as its last " +
+                        "statement, so something above it did not finish. " +
+                        (__exception != null
+                            ? "AND HERE IS WHAT THREW: " + __exception
+                            : "Nothing threw, so the stamp was skipped rather " +
+                              "than missed - another patch returned false out " +
+                              "of Shoot after this one allowed it, or the " +
+                              "Shooter was blocked.") +
+                        " The interval has been consumed anyway so the rate is " +
+                        "correct from here. Quote this line.");
+                }
+                catch (Exception)
+                {
+                    // A diagnostic must never be the thing that throws, and
+                    // this one runs inside a finalizer where an exception of
+                    // its own would replace the game's.
+                }
+            }
         }
+
+        private static bool _saidClockStuck;
 
         [HarmonyPatch(typeof(MinionSpawnerWeapon), "FireSingle")]
         public class OnFireSingle

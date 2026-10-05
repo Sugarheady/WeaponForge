@@ -19,7 +19,7 @@ namespace WeaponForge
     public static class ForgeMuzzleFollowPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // Set by WeaponBuilder when any weapon enables muzzleFollow.
         public static bool Enabled;

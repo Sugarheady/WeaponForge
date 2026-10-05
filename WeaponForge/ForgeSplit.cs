@@ -187,7 +187,7 @@ namespace WeaponForge
         }
 
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Split");
+            ForgeLog.Source("WeaponForge.Split");
 
         // True once anything is using the feature, so the patches can cost
         // nothing at all on a run with no split weapon in it.

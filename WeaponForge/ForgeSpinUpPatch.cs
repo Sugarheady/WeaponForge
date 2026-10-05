@@ -25,7 +25,7 @@ namespace WeaponForge
     public static class ForgeSpinUpPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.SpinUp");
+            ForgeLog.Source("WeaponForge.SpinUp");
 
         [HarmonyPatch(typeof(Shooter), "Shoot")]
         public class OnShoot
@@ -64,7 +64,7 @@ namespace WeaponForge
     public class ForgeSpin : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.SpinUp");
+            ForgeLog.Source("WeaponForge.SpinUp");
 
         public const string Key = "spinUp";
 
@@ -232,64 +232,8 @@ namespace WeaponForge
 
             _active = true;
 
-            if (_cfg.rate)
-            {
-                Publish(weapon, ForgeWeaponStats.FireRate,
-                        Mathf.Lerp(1f, _cfg.fireRateAtFull, f));
-            }
-
-            if (_cfg.accuracy)
-            {
-                // `accuracyAtFull` is the FRACTION OF THE SCATTER REMOVED, so 1
-                // is pinpoint and 0.5 halves it. Expressed that way round
-                // because "how much better does it get" is the question an
-                // author is asking; the multiplier is the inverse.
-                Publish(weapon, ForgeWeaponStats.AngleVariance,
-                        Mathf.Lerp(
-                            1f, Mathf.Max(0f, 1f - _cfg.accuracyAtFull), f));
-
-                // Spread is the DELIBERATE fan, so it is left alone unless the
-                // author asked - `spreadAtFull` defaults to 1, and Publish
-                // withdraws rather than pinning a base at a multiplier of 1.
-                // Tightening a shotgun's spread to nothing turns it into a slug
-                // gun, which is a fine weapon and a terrible surprise.
-                Publish(weapon, ForgeWeaponStats.Spread,
-                        Mathf.Lerp(1f, _cfg.spreadAtFull, f));
-            }
-
-            if (_cfg.damage)
-            {
-                Publish(weapon, ForgeWeaponStats.Damage,
-                        Mathf.Lerp(1f, _cfg.damageAtFull, f));
-            }
-
-            if (_cfg.pellets)
-            {
-                Publish(weapon, ForgeWeaponStats.Pellets,
-                        Mathf.Lerp(1f, _cfg.pelletsAtFull, f));
-
+            if (_cfg.rewards.Publish(weapon, Key, f))
                 Redress(weapon);
-            }
-
-            if (_cfg.cheaper)
-            {
-                Publish(weapon, ForgeWeaponStats.Cost,
-                        Mathf.Lerp(1f, _cfg.costAtFull, f));
-            }
-        }
-
-        // A MULTIPLIER OF 1 WITHDRAWS RATHER THAN BEING PUBLISHED. Same rule as
-        // the onKill buff, and it matters for two configurations that would
-        // otherwise pin a captured base for nothing: `accuracyAtFull: 0` (a
-        // reward switched on but set to zero effect) and the default
-        // `spreadAtFull: 1`. A pinned base is not visible in play, but it stops
-        // a legitimate change to the weapon being picked up.
-        private void Publish(WeaponBase weapon, int stat, float multiplier)
-        {
-            if (Mathf.Abs(multiplier - 1f) > 0.0001f)
-                ForgeWeaponStats.Set(weapon, stat, Key, multiplier);
-            else
-                ForgeWeaponStats.Clear(weapon, stat, Key);
         }
 
         // CHANGING `ProjectileCount` AT RUNTIME IS ONLY COSMETIC ON A BULLET AND
@@ -344,11 +288,12 @@ namespace WeaponForge
 
             ForgeWeaponStats.Clear(_weapon, Key);
             ForgeMuzzleTint.Clear(_weapon, Key);
+            ForgeBeamTint.Clear(_weapon, Key);
 
             // The count is back to the weapon's own, so the visual list has to
             // come back with it - see Redress for why the downward direction is
             // the one that leaves a beam stuck on screen.
-            if (_cfg != null && _cfg.pellets && _lastPellets >= 0)
+            if (_cfg != null && _cfg.rewards.pellets && _lastPellets >= 0)
                 Redress(_weapon);
 
             if (_painted)
@@ -385,10 +330,17 @@ namespace WeaponForge
             if (amount <= 0.0001f)
             {
                 ForgeMuzzleTint.Clear(weapon, Key);
+                ForgeBeamTint.Clear(weapon, Key);
                 return;
             }
 
             ForgeMuzzleTint.Set(weapon, Key, _cfg.color, amount);
+
+            // The beam too, on a hitscan weapon - a no-op on anything else. A
+            // wound-up beam that changes only at the barrel reads as nothing
+            // happening, and this is the same pair of keys the muzzle uses, so
+            // heat and wind-up compose on the beam exactly as they do there.
+            ForgeBeamTint.Set(weapon, Key, _cfg.color, amount);
         }
 
         private void Announce()

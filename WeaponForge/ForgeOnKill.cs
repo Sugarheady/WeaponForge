@@ -38,7 +38,76 @@ namespace WeaponForge
             public float maxPerSecond;
 
             // ---- burn relief ---------------------------------------------
+            // BURN as in "your ship is on fire", NOT as in overheat. That is
+            // `coolHeat` below, and the two were one word apart in the build
+            // log until R15: `clearBurn` printed as "cools 3", which is exactly
+            // the word `overheat` uses for its own meter, on a weapon that can
+            // carry both blocks. He read that line and reasonably concluded
+            // there was a heat option, then went looking for it and found none.
             public float clearBurn;
+
+            // ---- heat relief ---------------------------------------------
+            // Heat removed from THIS weapon's `overheat` meter per kill, in the
+            // same units as `max` / `perShot`. His R15 ask, and it needed no
+            // new mechanism: a kill that drops the meter below `ventTo` also
+            // ends a vent lock on the next frame, because that is already how
+            // the lock decides it is done. So a gun that would jam can be kept
+            // running by hitting things with it, which is the design.
+            public float coolHeat;
+
+            // WHOSE kill cools this meter. False (the default) is "only a kill
+            // scored by this weapon", which is what shipped and what the
+            // comment above describes.
+            //
+            // R16 test 198 found the hole in that: *"Killing things with a
+            // different weapon while it was locked didn't let me fire again. I
+            // guess that would be a bug huh?"* It is the one state where the
+            // design above cannot reach itself. `response: "vent"` locks the
+            // gun until the meter is fully cool - so while it is locked you
+            // cannot fire it, cannot kill with it, and therefore cannot cool
+            // it. The feature exists to keep a jamming gun running, and the
+            // moment it actually jams it switches itself off. Only a shot
+            // already in flight can break the deadlock.
+            //
+            // Left OFF by default because turning it on changes a shipped
+            // weapon's behaviour silently, which is the shape this project
+            // keeps paying for. The builder warns when a `vent` weapon has
+            // `coolHeat` and has NOT set this, so the trap is stated rather
+            // than found.
+            public bool coolFromAnyWeapon;
+
+            // ---- gas on the corpse ----------------------------------------
+            // Leave a cloud where the thing died, using THIS weapon's own
+            // `gas` block - so it is one switch rather than a second copy of
+            // twenty knobs, and the cloud a kill leaves is the cloud he already
+            // tuned and can already see.
+            //
+            // It needs the `gas` block to exist. When it does not, the builder
+            // says so and turns this back off, because a flag pointing at a
+            // config that was never registered is a payout that silently does
+            // nothing - and this block already has `chance` and `maxPerSecond`
+            // to make "nothing happened" look like an ordinary unlucky roll.
+            public bool gas;
+
+            // May a cloud's OWN kill leave another cloud?
+            //
+            // ON. It shipped off for one night on my reasoning that a cloud
+            // with `damagePerSecond` credits its kills to the weapon that made
+            // it (ForgeGasCloud -> ForgeKillsPatch.Credit), so gas kills spawn
+            // gas, which kills, which spawns - a chain reaction.
+            //
+            // THE CHAIN IS REAL AND "RUNAWAY" WAS WRONG. Every enemy dies
+            // exactly once, and one death pays out once, so the clouds a fight
+            // can produce are capped by the number of things in it - it
+            // propagates through a crowd and then stops. There is no term that
+            // feeds itself. `gas.max` recycles the oldest by FADING it (not
+            // refusing, not popping), and `maxPerSecond` is still there for
+            // anyone who wants a harder limit.
+            //
+            // His call, and he is right: *"honestly gaschains, should be on by
+            // default, cause thats alot of fun."* Safe to flip because the key
+            // was hours old and no file had used it yet.
+            public bool gasChains = true;
 
             // ---- timed buff ----------------------------------------------
             public float buffDuration;
@@ -74,6 +143,8 @@ namespace WeaponForge
                 {
                     return (amount > 0f && resourceAsset != null) ||
                            clearBurn > 0f ||
+                           coolHeat > 0f ||
+                           gas ||
                            (buffDuration > 0f &&
                             (buffFireRate > 0f || buffDamage > 0f));
                 }

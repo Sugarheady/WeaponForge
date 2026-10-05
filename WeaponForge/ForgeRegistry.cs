@@ -31,6 +31,27 @@ namespace WeaponForge
         public string[] lootGroups;
         public bool inShop;    // can be bought from the shop
         public float shopPrice;
+
+        // Flat money ADDED to the price each time it is bought - the game's
+        // own escalation model (`ShopItem.IncreasePrice`). 0 = a fixed price.
+        //
+        // Module Forge has had this since it shipped and Weapon Forge wrote a
+        // hard-coded 0, so a Forge WEAPON could never get more expensive while
+        // a Forge MODULE could. Found while researching ingredient costs and
+        // closed in the same change, per the duplicate-by-default rule.
+        public float shopPriceIncrement;
+
+        // "shopCost" / "shopCostIncrement": currencies BEYOND money, kept as
+        // the authored name and amount and resolved at injection time, when
+        // the game's assets are live. See ForgeShopCost.
+        public ForgeShopCost.Cost[] shopCost;
+        public ForgeShopCost.Cost[] shopCostIncrement;
+
+        // "shopUnlock": ingredients that must have been picked up at least
+        // once before this appears in the shop at all. Independent of the
+        // price, which was his call - the stock game always pairs the two.
+        public string[] shopUnlock;
+
         public int shopUnlockLevel; // stations to unlock first
     }
 
@@ -48,7 +69,7 @@ namespace WeaponForge
     public static class ForgeRegistry
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static readonly List<ForgeEntry> _entries =
             new List<ForgeEntry>();

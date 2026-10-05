@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BepInEx.Logging;
 using UnityEngine;
 
@@ -38,7 +38,7 @@ namespace WeaponForge
     public class ForgeSlam : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slam");
+            ForgeLog.Source("WeaponForge.Slam");
 
         // ------------------------------------------------------------------
         // "slam" as a top-level block on ANY weapon.
@@ -99,6 +99,11 @@ namespace WeaponForge
             // either "tintStrength" or "colorStrength" so the two naming
             // styles in this mod's blocks both work. See ForgeUnitTint.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
 
             // ---- how the arrival is detected ------------------------------
             //
@@ -192,6 +197,11 @@ namespace WeaponForge
                         cfg.slamHitsUnits, cfg.slamHitsPlayer,
                         cfg.slamHasTint, cfg.slamTint, cfg.slamTintPulse,
                         cfg.slamTintStrength,
+                        // The tractor's slam tint has no mode of its own, so it
+                        // keeps the multiply every existing file was tuned
+                        // against. Adding one here would be a fourth place to
+                        // read the same key for a block that never asked.
+                        ForgeUnitTint.Multiply,
                         // The tractor's own slam predates the standalone block
                         // and keeps the collision route; `swept` is offered on
                         // the `slam` block only, which is where it was asked
@@ -213,7 +223,7 @@ namespace WeaponForge
                         spec.minSpeed, spec.damagePerSpeed, spec.maxDamage,
                         spec.window, spec.hitsUnits, spec.hitsPlayer,
                         spec.hasTint, spec.tint, spec.tintPulse,
-                        spec.tintStrength, spec.swept);
+                        spec.tintStrength, spec.tintMode, spec.swept);
         }
 
         private static ForgeSlam Mark(
@@ -222,7 +232,7 @@ namespace WeaponForge
             float minSpeed, float damagePerSpeed, float maxDamage,
             float window, bool hitsUnits, bool hitsPlayer,
             bool hasTint, Color tint, float tintPulse, float tintStrength,
-            bool swept)
+            int tintMode, bool swept)
         {
             if (target == null)
                 return null;
@@ -267,7 +277,7 @@ namespace WeaponForge
                 {
                     ForgeUnitTint.Set(
                         target, ForgeUnitTint.Slam, tint, life, tintPulse,
-                        tintStrength);
+                        tintStrength, tintMode);
                 }
 
                 return s;

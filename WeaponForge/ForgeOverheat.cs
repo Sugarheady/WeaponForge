@@ -28,7 +28,7 @@ namespace WeaponForge
     public static class ForgeOverheat
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Heat");
+            ForgeLog.Source("WeaponForge.Heat");
 
         // What happens at maximum heat.
         public const int Vent = 0;   // locked until cool - the Halo plasma

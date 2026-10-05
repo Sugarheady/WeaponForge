@@ -341,6 +341,39 @@ namespace WeaponForge
             return found;
         }
 
+        // Every tracked enemy shot within `radius` of `pos`, NON-destructively.
+        // For drone modes' INTERCEPTOR, which only looks: it picks which shots
+        // to stand in front of, and the game's own hit test does the blocking
+        // when a body is there (concept 4.1). Removing them from the list here
+        // would hide them from every deflector and shield in the room.
+        public static int EnemyNear(Vector2 pos, float radius, List<Component> into)
+        {
+            if (into == null || _live.Count == 0)
+                return 0;
+
+            float sqr = radius * radius;
+            int found = 0;
+
+            for (int i = _live.Count - 1; i >= 0; i--)
+            {
+                Component p = _live[i];
+
+                if (p == null)
+                {
+                    _live.RemoveAt(i);
+                    continue;
+                }
+
+                if (((Vector2)p.transform.position - pos).sqrMagnitude <= sqr)
+                {
+                    into.Add(p);
+                    found++;
+                }
+            }
+
+            return found;
+        }
+
         public static void Forget(Component projectile)
         {
             if (projectile != null)

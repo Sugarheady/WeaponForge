@@ -28,7 +28,7 @@ namespace WeaponForge
     public static class ForgeMinionCost
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // Enough spawns that one unlucky frame does not dominate, few enough
         // that the answer arrives while he is still looking at it.

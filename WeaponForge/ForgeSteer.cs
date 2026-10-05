@@ -26,7 +26,7 @@ namespace WeaponForge
     public static class ForgeSteer
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Steer");
+            ForgeLog.Source("WeaponForge.Steer");
 
         private static AccessTools.FieldRef<Projectile, Vector2> _ideal;
         private static bool _ready;
@@ -140,6 +140,31 @@ namespace WeaponForge
             }
 
             p.Velocity = unit * speed;
+        }
+
+        // A PATH THAT OWNS THE SHOT'S WHOLE MOTION - bloom's spiral, and a
+        // bloom bullet put on its circle. Publishes the heading and writes the
+        // velocity WITHOUT ceding the direction to a wave.
+        //
+        // SetHeading's deferral is right for a steerer, which bends a shot that
+        // is otherwise free: wave supplies the direction, the steerer the
+        // heading it weaves around. A path is not a steerer. It is a position
+        // at every moment, re-aimed every step at the next point on it, and a
+        // wave left in charge of the direction would fly it off the path from
+        // the first step. So this one writes both, and the build log says that
+        // wave, homing and guided are overruled on those drifts.
+        //
+        // A zero velocity is written as zero (a shot waiting at the end of its
+        // path), and the heading is left as it was.
+        public static void Drive(Projectile p, Vector2 velocity)
+        {
+            if (p == null)
+                return;
+
+            if (velocity.sqrMagnitude > 0.000001f)
+                SetIdeal(p, velocity);
+
+            p.Velocity = velocity;
         }
 
         // A wave that has actually been fired. Before `Shoot` its own prefix

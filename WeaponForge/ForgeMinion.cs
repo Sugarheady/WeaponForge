@@ -24,7 +24,7 @@ namespace WeaponForge
     public static class ForgeMinion
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         public class Config
         {

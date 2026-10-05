@@ -11,7 +11,7 @@ namespace WeaponForge
     public static class ForgeSpiralPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Spiral");
+            ForgeLog.Source("WeaponForge.Spiral");
 
         // ---- the shot itself ---------------------------------------------
         //

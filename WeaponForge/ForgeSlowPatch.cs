@@ -26,7 +26,7 @@ namespace WeaponForge
     public static class ForgeSlowPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slow");
+            ForgeLog.Source("WeaponForge.Slow");
 
         [HarmonyPatch(typeof(DamagableResource), "ProjectileCollided")]
         public class OnProjectile
@@ -159,7 +159,7 @@ namespace WeaponForge
     public static class ForgeSlowShotPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slow");
+            ForgeLog.Source("WeaponForge.Slow");
 
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnPlainShot

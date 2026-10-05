@@ -34,7 +34,7 @@ namespace WeaponForge
     public static class ForgeMinionBlast
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // Set once a minion with a protective setting exists, so the patch does
         // nothing at all in the overwhelmingly common case.

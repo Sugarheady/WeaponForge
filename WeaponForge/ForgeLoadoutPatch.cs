@@ -16,7 +16,7 @@ namespace WeaponForge
     public class ForgeLoadoutPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static void Prefix(LoadoutSelector __instance)
         {
@@ -45,6 +45,12 @@ namespace WeaponForge
 
                 if (pool == null)
                     return;
+
+                // Loadout files first, so their cards sit straight after the
+                // stock ones instead of past every single-weapon card. It
+                // catches its own failures - a broken loadout file must not
+                // cost the weapon cards below.
+                ForgeLoadoutFiles.AddTo(pool, registry);
 
                 foreach (ForgeEntry entry in ForgeRegistry.Entries)
                 {

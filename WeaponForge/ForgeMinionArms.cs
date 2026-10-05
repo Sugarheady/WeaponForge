@@ -37,7 +37,7 @@ namespace WeaponForge
     public static class ForgeMinionArms
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // Every clone we hand out has to be findable by id, because a minion is
         // a savable entity and its grid is saved as a list of module ids.

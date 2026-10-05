@@ -16,7 +16,7 @@ namespace WeaponForge
     public static class ForgeShieldPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Shield");
+            ForgeLog.Source("WeaponForge.Shield");
 
         private static readonly Dictionary<Shooter, ForgeShieldController>
             _ctrls = new Dictionary<Shooter, ForgeShieldController>();

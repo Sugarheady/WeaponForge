@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using BepInEx.Logging;
 using HarmonyLib;
@@ -63,6 +64,54 @@ namespace WeaponForge
     //     the minion was saving for an enemy. That is the behaviour you want and
     //     it comes for free.
     //
+    // ================================================================
+    // AND THE SAME WIDENING PUT THE RAMMER'S OWN BODY INSIDE ITS OWN
+    // DAMAGE CAST. R15 test 184.
+    // ================================================================
+    //
+    // *"So far with the larva and maggots they take ticking damage and pretty
+    // much die from being charmed"*, and - the same report, older and never
+    // explained - *"i think i figured out the bug why the swarmgun minions hurt
+    // themselves"*. One cause for both, and it is this one widening again.
+    //
+    // `ChargerHead.FixedUpdate` casts a circle of `radius` from the BEAK along
+    // the body's velocity. Measured off the four prefabs that have one, the beak
+    // circle and the body collider **overlap each other before the sweep even
+    // starts**:
+    //
+    //     Enemy_Larva          cast r 0.39 at 0.61 out, body r 0.39  -> 0.17 in
+    //     Enemy_Maggot         cast r 0.51 at 0.67 out, body r 0.51  -> 0.35 in
+    //     Enemy_Child          cast r 0.39 at 0.61 out, body r 0.53  -> 0.31 in
+    //     Unit Swimmer Maggot  cast r 0.51 at 0.67 out, body r 0.51  -> 0.35 in
+    //
+    // Every one of those bodies is on **Entities** (layer 7), the bit this mod
+    // adds, and `Physics2DSettings` ships `m_QueriesStartInColliders: 1` - so
+    // Unity returns a collider the shape is already inside, at fraction 0. The
+    // unit's `CircleCollider2D` and its `HealthBase` are both on the root, and
+    // `OnObjectHit` hands the damage to `hit.collider.GetComponents<IHazardSensor>()`
+    // with no self test of any kind. So a widened rammer headbutts ITSELF every
+    // `minDamageDelay` - 0.5s on a Larva, 0.3s on a Maggot - which is exactly
+    // the "ticking damage" he described, and it kills a charmed Larva well
+    // inside its charm.
+    //
+    // **And the guard below was letting it through on purpose.** The self case
+    // was folded in with terrain as `hurt == null || ReferenceEquals(hurt,
+    // rammer) -> return true`, i.e. "let the game have it". Right for terrain,
+    // exactly wrong for self.
+    //
+    // THE SECOND HALF, which the damage fix alone would not give back: a
+    // fraction-0 hit is the NEAREST hit there can be, and `CircleCast` returns
+    // only the nearest. So the self overlap was also **eating the cast** - the
+    // ram could reach an enemy only on a frame where the enemy happened to be
+    // returned instead, which is why it read as unreliable rather than as broken.
+    // `SweepWithoutSelf` re-does the cast with the rammer's own body filtered
+    // out and hands the nearest remaining hit to the original method.
+    //
+    // > **A fix that widens what a query can see has to be checked against what
+    // > the query STARTS inside.** The R10 note below reasoned carefully about
+    // > the other units the new bit exposed and never once about the unit doing
+    // > the casting.
+    //
     // WHY THIS IS PATCHED BY HAND. `ChargerHead` is not visible to this
     // assembly at compile time - `ForgeMinionAllegiance` already has to reach it
     // through `AccessTools.TypeByName` and walk `Component` rather than calling
@@ -71,7 +120,7 @@ namespace WeaponForge
     public static class ForgeMinionRamGuard
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // Marks a minion whose ram mask THIS MOD widened. Without it the guard
         // would also sit in front of every stock charger in the game, and a
@@ -80,6 +129,26 @@ namespace WeaponForge
 
         private static bool _patched;
         private static bool _saidSpare;
+        private static bool _saidSelf;
+        private static bool _warnedSweep;
+
+        // ChargerHead's own state, all private and all needed to redo its cast
+        // without the rammer in it. Resolved once in Apply; if any is missing
+        // the sweep patch is simply not applied and the damage guard below
+        // still stops the self-damage on its own.
+        private static FieldInfo _fBody;
+        private static FieldInfo _fRadius;
+        private static FieldInfo _fMask;
+        private static FieldInfo _fDelay;
+        private static FieldInfo _fLastDamage;
+        private static MethodInfo _mHit;
+
+        private static readonly List<RaycastHit2D> _hits =
+            new List<RaycastHit2D>(8);
+
+        private static readonly object[] _hitArg = new object[1];
+
+        private static ContactFilter2D _filter;
 
         // Only true once a minion has actually had its mask widened, so the
         // prefix costs a bool test in every other game.
@@ -139,6 +208,48 @@ namespace WeaponForge
                     prefix: new HarmonyMethod(
                         typeof(ForgeMinionRamGuard),
                         nameof(SkipFriendly)));
+
+                _mHit = hit;
+
+                // The second patch is OPTIONAL and deliberately so: it gives
+                // the ram its reach back, while the guard above is what stops
+                // the self-damage. If any of these five private members has
+                // been renamed by a game update, the mod loses the reach and
+                // keeps the safety rather than losing both.
+                _fBody = AccessTools.Field(charger, "rigidbody");
+                _fRadius = AccessTools.Field(charger, "radius");
+                _fMask = AccessTools.Field(charger, "collisionLayerMask");
+                _fDelay = AccessTools.Field(charger, "minDamageDelay");
+                _fLastDamage = AccessTools.Field(charger, "lastDamageTime");
+
+                MethodInfo tick = AccessTools.Method(charger, "FixedUpdate");
+
+                if (tick == null || _fBody == null || _fRadius == null ||
+                    _fMask == null || _fDelay == null || _fLastDamage == null)
+                {
+                    Log.LogWarning(
+                        "The ram's own cast could not be rebuilt (ChargerHead " +
+                        "has changed shape), so a friendly rammer will still " +
+                        "refuse to hurt itself but will connect with an enemy " +
+                        "less often than it should - its own body sits inside " +
+                        "its own cast and takes the nearest-hit slot.");
+                    return;
+                }
+
+                // Triggers ON, to match the global m_QueriesHitTriggers: 1 the
+                // original cast inherits. useDepth off for the same reason.
+                _filter = new ContactFilter2D();
+                _filter.useTriggers = true;
+                _filter.useDepth = false;
+                _filter.useOutsideDepth = false;
+                _filter.useNormalAngle = false;
+                _filter.useLayerMask = true;
+
+                harmony.Patch(
+                    tick,
+                    prefix: new HarmonyMethod(
+                        typeof(ForgeMinionRamGuard),
+                        nameof(SweepWithoutSelf)));
             }
             catch (Exception e)
             {
@@ -146,6 +257,106 @@ namespace WeaponForge
                 // it minions ram their allies, which is bad; with a throw here
                 // nothing loads at all, which is worse.
                 Log.LogError("Could not guard the minion ram: " + e);
+            }
+        }
+
+        // REDOES THE RAM'S OWN CAST WITHOUT THE RAMMER IN IT, for widened
+        // prefabs only. See the header: the beak circle starts inside the
+        // body collider, `queriesStartInColliders` is on, and the nearest hit
+        // is therefore always the rammer itself once Entities is in the mask.
+        //
+        // Returning false skips the original `FixedUpdate`, which is only the
+        // cast plus the call below - nothing else lives in it.
+        private static bool SweepWithoutSelf(object __instance)
+        {
+            if (!Any || _mHit == null || _fBody == null)
+                return true;
+
+            try
+            {
+                var head = __instance as Component;
+
+                if (head == null)
+                    return true;
+
+                if (head.GetComponentInParent<Widened>() == null)
+                    return true;
+
+                var body = _fBody.GetValue(head) as Rigidbody2D;
+
+                if (body == null)
+                    return true;
+
+                // THE RATE GATE IS CHECKED HERE TOO, and it is not an
+                // optimisation for its own sake: the original's first statement
+                // is this same test and an early return, so skipping the work
+                // when it would refuse is exactly equivalent - and it keeps a
+                // reflected `Invoke` (which boxes the hit) down to the two or
+                // three a second a ram can actually land, rather than fifty.
+                float last = (float)_fLastDamage.GetValue(head);
+                float delay = (float)_fDelay.GetValue(head);
+
+                if (Time.time - last < delay)
+                    return false;
+
+                Vector2 v = body.linearVelocity;
+                float radius = (float)_fRadius.GetValue(head);
+                LayerMask mask = (LayerMask)_fMask.GetValue(head);
+
+                _filter.SetLayerMask(mask);
+                _hits.Clear();
+
+                // Same arguments the original uses, including a zero direction
+                // and zero distance when the rammer is stationary - which is an
+                // overlap test, and is how a rammer pressed against something
+                // keeps hurting it.
+                Physics2D.CircleCast(
+                    head.transform.position, radius, v, _filter, _hits,
+                    v.magnitude * Time.deltaTime);
+
+                RaycastHit2D best = default(RaycastHit2D);
+                float bestDistance = float.MaxValue;
+
+                for (int i = 0; i < _hits.Count; i++)
+                {
+                    RaycastHit2D h = _hits[i];
+
+                    if (h.collider == null)
+                        continue;
+
+                    // Ours, by either test: same rigidbody covers a collider on
+                    // a child with no Unit of its own, and the Unit compare
+                    // covers a detached collider parented under the same unit.
+                    if (ReferenceEquals(h.collider.attachedRigidbody, body))
+                        continue;
+
+                    if (h.distance < bestDistance)
+                    {
+                        bestDistance = h.distance;
+                        best = h;
+                    }
+                }
+
+                if (best.collider == null)
+                    return false;
+
+                _hitArg[0] = best;
+                _mHit.Invoke(head, _hitArg);
+
+                return false;
+            }
+            catch (Exception e)
+            {
+                // Falling through to the original is the safe failure: the ram
+                // works the way it did before this patch existed, and the
+                // damage guard still refuses the self-hit.
+                if (!_warnedSweep)
+                {
+                    _warnedSweep = true;
+                    Log.LogError("Minion ram sweep failed, using the game's own cast: " + e);
+                }
+
+                return true;
             }
         }
 
@@ -183,8 +394,63 @@ namespace WeaponForge
                 // rammers stop stopping at walls.
                 Unit hurt = col.GetComponentInParent<Unit>();
 
-                if (hurt == null || ReferenceEquals(hurt, rammer))
+                if (hurt == null)
                     return true;
+
+                // ITSELF. This used to be folded into the line above and let
+                // through as though it were terrain, and it is the R15 test 184
+                // bug: the beak's cast circle starts INSIDE the body collider
+                // on all four rammer prefabs, `queriesStartInColliders` is on,
+                // and adding Entities to the mask is what made its own body
+                // visible to it. So a charmed Larva bit itself twice a second
+                // until it died, and so did every summoned one since R10.
+                //
+                // Nothing wants a headbutt to hurt the thing doing the
+                // headbutting, so this needs no config and no exemption - not
+                // even for `infighting`, which is about two DIFFERENT converts.
+                if (ReferenceEquals(hurt, rammer))
+                {
+                    if (!_saidSelf)
+                    {
+                        _saidSelf = true;
+
+                        Log.LogInfo(
+                            "minion RAM guard: '" + rammer.name + "' just " +
+                            "declined to headbutt ITSELF. Its beak's damage " +
+                            "cast starts inside its own body collider, and " +
+                            "widening the mask to Entities is what let it see " +
+                            "that collider - so before this it took its own " +
+                            "ram damage on a timer and could die from being " +
+                            "charmed or summoned. Logged once per run.");
+                    }
+
+                    return false;
+                }
+
+                // INFIGHTING IS AN EXPLICIT EXEMPTION, and it has to be tested
+                // before the faction question rather than after it.
+                //
+                // Two units charmed by you share your faction, so
+                // `IsEnemiesWith` is false and this guard refuses the hit -
+                // correctly, for your own swarm, and wrongly for a pair you
+                // deliberately set against each other. `charm` already carries
+                // the identical exemption at the two other places the same
+                // thing happens: the game's friendly-fire skip in
+                // `Projectile.FixedUpdate`, and charm's own `harmless` guard.
+                // This is the third, and it is the melee one.
+                //
+                // Worth noting WHY it was missed while those two were found:
+                // the `harmless` guard hangs off `ForgeKillsPatch.Source`,
+                // which is the WEAPON that dealt the damage - and a headbutt
+                // has no weapon, so a ram was never subject to that guard and
+                // never showed up when it was being reasoned about. **A hit
+                // that arrives by a different route is not covered by a rule
+                // written at a chokepoint it does not pass through.**
+                if (ForgeCharm.AnyInfighting &&
+                    ForgeCharm.AreInfightingPeers(rammer, hurt))
+                {
+                    return true;
+                }
 
                 // The game's own question, and the same one the AI asks when it
                 // chooses what to chase - so the ram can only ever hurt what the

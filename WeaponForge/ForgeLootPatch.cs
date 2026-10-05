@@ -173,7 +173,7 @@ namespace WeaponForge
     public class ForgeLootPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // Groups we've already augmented, so we add our modules once.
         private static readonly HashSet<DropTableWeightedGroup> _done =

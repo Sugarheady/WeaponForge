@@ -20,7 +20,7 @@ namespace WeaponForge
     public static class ForgeSlamPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slam");
+            ForgeLog.Source("WeaponForge.Slam");
 
         [HarmonyPatch(typeof(HealthBase), "OnCellCollision")]
         public class OnCellCollision

@@ -78,7 +78,7 @@ namespace WeaponForge
     public static class ForgeKillPickup
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.KillPickup");
+            ForgeLog.Source("WeaponForge.KillPickup");
 
         // The fallback art for a resource with no pickup of its own, in
         // preference order. All three of these are the SAME orb sprite with a

@@ -28,7 +28,7 @@ namespace WeaponForge
     public static class ForgeMinionShieldPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.MinionShield");
+            ForgeLog.Source("WeaponForge.MinionShield");
 
         [HarmonyPatch(typeof(Shield), "Update")]
         public class ShieldUpdate

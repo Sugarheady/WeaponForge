@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -43,7 +43,7 @@ namespace WeaponForge
     public static class ForgeSlow
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slow");
+            ForgeLog.Source("WeaponForge.Slow");
 
         // How a second hit on an already-slowed target behaves.
         public const int Refresh = 0;   // reset the timer (default)
@@ -108,6 +108,11 @@ namespace WeaponForge
             // See ForgeUnitTint - 0..1, 1 is the full colour (today's look).
             public float tintStrength = 1f;
 
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
+
             // ---- bending time itself ----
             public bool hasTimeSlow;
             public float timeScale = 0.35f;
@@ -139,13 +144,37 @@ namespace WeaponForge
             return weapon != null && _weapons.TryGetValue(weapon, out config);
         }
 
-        public static bool Any { get { return _weapons.Count > 0; } }
+        // ★ A GRANTED SLOW HAS TO FLIP THE GATE, OR HALF THE FEATURE IS MISSING
+        // IN EXACTLY ONE INSTALLATION.
+        //
+        // `Any` used to be `_weapons.Count > 0` - "some weapon FILE asked for a
+        // slow". Module Forge's slow modules reach `Apply` directly (it owns
+        // the rigidbody when both mods are installed, because two engines each
+        // capturing a unit's original speed makes the debuff permanent), and
+        // that path touches no weapon file at all. So with this mod installed
+        // and no weapon carrying a `slow` block, `ForgeSlowShotPatch` returned
+        // on this gate and a module-granted slow moved the enemy slowly while
+        // its bullets came out at full speed - working, and visibly missing a
+        // half nobody could account for.
+        //
+        // `ForgeCrit` has had the answer since the day it shipped: `SetBonus`
+        // sets `Any = true` beside `Register`. **The gate on a shared mechanic
+        // belongs to every way in, not to the one its author happened to build
+        // first.** Reset per run with the rest of the per-run state.
+        private static bool _granted;
+
+        public static bool Any { get { return _weapons.Count > 0 || _granted; } }
 
         // ---- applying the debuff -----------------------------------------
         public static void Apply(Unit victim, Config cfg)
         {
             if (victim == null || cfg == null || !cfg.hasSlow)
                 return;
+
+            // Set here rather than at the module's registration, because this
+            // is the public door the other mod comes through and it is the only
+            // one that cannot be bypassed. See the note on `Any`.
+            _granted = true;
 
             try
             {
@@ -247,6 +276,17 @@ namespace WeaponForge
             {
             }
         }
+
+        // Run entry. `_weapons` is deliberately NOT cleared - those configs are
+        // registered once at startup from the weapon files, and dropping them
+        // would unbuild every slow weapon for the rest of the session, which is
+        // the trap `ForgeCrit.Reset` documents. Only the per-run state goes:
+        // the live time modifiers, and the "a module granted a slow" gate.
+        public static void Reset()
+        {
+            _granted = false;
+            ClearTime();
+        }
     }
 
     // The live debuff, riding on the unit it slowed.
@@ -258,7 +298,7 @@ namespace WeaponForge
     public class ForgeSlowed : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Slow");
+            ForgeLog.Source("WeaponForge.Slow");
 
         private Rigidbody2D _rb;
         private Shooter _shooter;
@@ -487,7 +527,7 @@ namespace WeaponForge
             // expired on its own schedule would flicker off mid-debuff.
             ForgeUnitTint.Set(
                 unit, ForgeUnitTint.Slow, _cfg.tint, 0f, 0f,
-                _cfg.tintStrength);
+                _cfg.tintStrength, _cfg.tintMode);
         }
 
         private void Untint()

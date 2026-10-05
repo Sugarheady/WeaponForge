@@ -21,7 +21,7 @@ namespace WeaponForge
     public static class ForgeStickyPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sticky");
+            ForgeLog.Source("WeaponForge.Sticky");
 
         // Reused rather than allocated per detonation - this runs from a
         // trigger pull, which can be sixty times a second on a held weapon.

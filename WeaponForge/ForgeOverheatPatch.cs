@@ -41,7 +41,7 @@ namespace WeaponForge
     public static class ForgeOverheatPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Heat");
+            ForgeLog.Source("WeaponForge.Heat");
 
         [HarmonyPatch(typeof(Shooter), "Shoot")]
         public class OnShoot
@@ -71,8 +71,13 @@ namespace WeaponForge
                         return;
                     }
 
+                    // NOT `Add`. A trigger pull can ADD heat, DRAIN heat or do
+                    // neither, and which of those it is belongs to the surge
+                    // block rather than to this patch - `surge.fill` can take
+                    // firing out of the set entirely, and `surge.drain` can put
+                    // shots on the other side of the ledger. One owner.
                     ForgeHeat.For(__instance, cfg)
-                        .Add(cfg.perShot * Mathf.Max(1, weapon.BurstSize));
+                        .OnShotFired(cfg.perShot * Mathf.Max(1, weapon.BurstSize));
                 }
                 catch (Exception e)
                 {
@@ -86,7 +91,7 @@ namespace WeaponForge
     public class ForgeHeat : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Heat");
+            ForgeLog.Source("WeaponForge.Heat");
 
         private Shooter _shooter;
         private ForgeOverheat.Config _cfg;
@@ -104,6 +109,25 @@ namespace WeaponForge
         // be wearing.
         private WeaponBase _tintWeapon;
 
+        // ---- the surge --------------------------------------------------
+        //
+        // The overload window: the meter blows and the gun gets BETTER as it
+        // drains. It lives here rather than in a component of its own because
+        // it is a phase of this meter - it needs `_heat`, `_locked` and the
+        // blow, all of which are private, and "one owner per mechanic" is the
+        // rule that has saved this project the most.
+        public const string SurgeKey = "surge";
+
+        private ForgeSurge.Config _surge;
+        private bool _surging;
+        private WeaponBase _surgeWeapon;   // whoever we last published to
+        private int _surgePellets = -1;
+
+        // EVERY LIVE METER, so the damage hook can find the one belonging to a
+        // weapon without a `GetComponentsInChildren` per point of damage dealt
+        // in the game. There are never more than a handful.
+        private static readonly List<ForgeHeat> _all = new List<ForgeHeat>();
+
         public static ForgeHeat For(Shooter shooter, ForgeOverheat.Config cfg)
         {
             var heat = shooter.gameObject.GetComponent<ForgeHeat>();
@@ -117,16 +141,83 @@ namespace WeaponForge
             return heat;
         }
 
+        // The meter belonging to this exact weapon, or null. Used by the surge
+        // fill hook, which knows a `WeaponBase` and nothing else.
+        public static ForgeHeat FindFor(WeaponBase weapon)
+        {
+            if (weapon == null)
+                return null;
+
+            for (int i = 0; i < _all.Count; i++)
+            {
+                ForgeHeat h = _all[i];
+
+                if (h == null || h._cfg == null || h._shooter == null)
+                    continue;
+
+                if (ReferenceEquals(h._shooter.Weapon, weapon))
+                    return h;
+            }
+
+            return null;
+        }
+
+        private void OnEnable()
+        {
+            if (!_all.Contains(this))
+                _all.Add(this);
+        }
+
         // True only while the blowout's own vent shot is being fired. See Vent.
         private bool _venting;
 
         public bool Venting { get { return _venting; } }
+
+        // ONE TRIGGER PULL, and the surge decides what it means.
+        //
+        // Without a surge this is what it has always been: add `perShot`. With
+        // one, a pull can add nothing (`fill` no longer lists firing), drain
+        // (`drain` lists firing), or both (`refill` on) - and the arithmetic of
+        // the last case is checked at build time, because an add that beats the
+        // drain is a surge that never ends.
+        public void OnShotFired(float perShot)
+        {
+            if (_cfg == null)
+                return;
+
+            if (_surge != null)
+            {
+                if (_surging)
+                {
+                    if (_surge.drainOnFire && _surge.drainPerShot > 0f)
+                        Remove(_surge.drainPerShot);
+
+                    if (_surge.refill && _surge.fillOnFire)
+                        Add(perShot);
+
+                    return;
+                }
+
+                if (!_surge.fillOnFire)
+                    return;
+            }
+
+            Add(perShot);
+        }
 
         public void Add(float amount)
         {
             // The vent shot must not charge heat. We are already at max, so
             // Blow() would re-enter itself from inside itself.
             if (_cfg == null || amount <= 0f || _venting)
+                return;
+
+            // NO REFILL DURING THE WINDOW unless the file asked for one. Note
+            // it returns BEFORE stamping `_lastFiredAt`, which is deliberate:
+            // that stamp is what `coolDelay` reads, and a surge whose drain
+            // paused every time you pulled the trigger would last for as long
+            // as you kept shooting.
+            if (_surging && (_surge == null || !_surge.refill))
                 return;
 
             _lastFiredAt = Time.time;
@@ -139,8 +230,108 @@ namespace WeaponForge
             // that shot just added, rather than the previous frame's.
             Paint();
 
-            if (_heat >= _cfg.max && !_locked)
+            // `!_surging` matters only with `surge.refill` on, and without it
+            // that setting is a bug rather than a feature: the meter is pinned
+            // at `max` for the whole window, so every shot would re-enter
+            // `Blow` - re-firing the vent shot, replaying the overheat sound,
+            // shaking the camera and re-applying `selfDamage` once per pull.
+            // The window is already open; topping the meter up is all a refill
+            // is for.
+            if (_heat >= _cfg.max && !_locked && !_surging)
                 Blow();
+        }
+
+        // TAKE HEAT OFF, from outside. `onKill`'s `coolHeat` and Module Forge's
+        // kill-reward modules both come through here.
+        //
+        // It does NOT unlock by itself, deliberately: `Tick` already decides a
+        // vent is over when the heat is at or below `ventTo`, so dropping the
+        // meter under that line ends the lock on the next frame through the one
+        // path that knows how to recover (sound, repaint, rate restore). A
+        // second unlock route here would be a second owner of that decision.
+        public void Remove(float amount)
+        {
+            if (_cfg == null || amount <= 0f)
+                return;
+
+            _heat = Mathf.Max(0f, _heat - amount);
+            Paint();
+        }
+
+        // Every heat meter on a unit, so a caller does not have to know how
+        // many Shooters a ship has. `weapon` narrows it to the gun that scored
+        // the kill; pass null for "whatever is hot".
+        public static int CoolOn(Unit unit, WeaponBase weapon, float amount)
+        {
+            if (unit == null || amount <= 0f)
+                return 0;
+
+            ForgeHeat[] all = unit.GetComponentsInChildren<ForgeHeat>(true);
+            int cooled = 0;
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                ForgeHeat h = all[i];
+
+                if (h == null || h._cfg == null)
+                    continue;
+
+                if (weapon != null &&
+                    (h._shooter == null ||
+                     !ReferenceEquals(h._shooter.Weapon, weapon)))
+                {
+                    continue;
+                }
+
+                h.Remove(amount);
+                cooled++;
+            }
+
+            return cooled;
+        }
+
+        // THE OTHER DIRECTION: a kill scored by SOMETHING ELSE, cooling every
+        // meter on this unit whose own weapon opted in with
+        // `onKill.coolHeatFrom: "any"`.
+        //
+        // `CoolOn` above cannot express this. It is told an amount and asked
+        // which meter to apply it to; here the amount is a property of each
+        // meter's own weapon, so the walk has to be the other way round - find
+        // the meters, ask each one's weapon what it wanted.
+        //
+        // `credit` is the weapon that actually scored the kill, skipped because
+        // the normal per-weapon payout has already handled it. Without that a
+        // gun with both `coolHeat` and `coolHeatFrom: "any"` would cool twice
+        // for its own kills.
+        public static void CoolFromAnyKill(Unit unit, WeaponBase credit)
+        {
+            if (unit == null || !ForgeOnKill.Any)
+                return;
+
+            ForgeHeat[] all = unit.GetComponentsInChildren<ForgeHeat>(true);
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                ForgeHeat h = all[i];
+
+                if (h == null || h._cfg == null || h._shooter == null)
+                    continue;
+
+                WeaponBase mine = h._shooter.Weapon;
+
+                if (mine == null || ReferenceEquals(mine, credit))
+                    continue;
+
+                ForgeOnKill.Config cfg;
+
+                if (!ForgeOnKill.TryGet(mine.TemplateData, out cfg))
+                    continue;
+
+                if (cfg == null || !cfg.coolFromAnyWeapon || cfg.coolHeat <= 0f)
+                    continue;
+
+                h.Remove(cfg.coolHeat);
+            }
         }
 
         private void Update()
@@ -183,16 +374,60 @@ namespace WeaponForge
             //
             // Painting is a pure read of `_heat`, so it is safe anywhere and
             // belongs where nothing can skip it.
+
+            // Which gun are we looking at? A cluster refresh builds a new
+            // `WeaponBase` and a weapon swap is a different gun entirely, so
+            // this re-resolves the surge config and hands back anything
+            // published to the old one. It is above the guards for the same
+            // reason the feedback is - and it has to be above `Paint`, which
+            // asks whether a surge is running.
+            ResolveWeapon();
+
             Paint();
 
+            // THE FIRE-RATE PENALTY BELONGS UP HERE TOO, and it did not used to
+            // be - it sat at the very bottom, below the cool-delay return.
+            //
+            // That return is taken on every frame you are firing, because
+            // `_lastFiredAt` was just stamped. So `response: "slow"` only ever
+            // recomputed its penalty once you STOPPED shooting, which is the
+            // one moment sustained fire is not happening. On a held beam with
+            // `perSecond` it could never run at all: `Add` stamps the clock
+            // every frame the trigger is down.
+            //
+            // The same shape as `Paint` two lines above, found the same way,
+            // and it is the house rule verbatim - **a pure read of state
+            // belongs above every guard.** `Degrade` reads `Fraction()` and
+            // publishes a multiplier; it has nothing to do with cooling and was
+            // only ever there because `Cool()` is.
+            Degrade();
+
             // Held weapons: charge by the second as well as by the shot, so a
-            // beam or a hold-to-fire ring can overheat at all.
-            if (_cfg.perSecond > 0f && !_locked && _shooter.IsShooting)
+            // beam or a hold-to-fire ring can overheat at all. `surge.fill` can
+            // take firing out of the set, in which case this is not a source
+            // either - it is the same "you pulled the trigger" question.
+            if (_cfg.perSecond > 0f && !_locked && _shooter.IsShooting &&
+                (_surge == null || _surge.fillOnFire))
+            {
                 Add(_cfg.perSecond * Time.deltaTime);
+            }
 
             if (_locked)
             {
-                Cool();
+                // A SURGE RUNS THROUGH A JAM rather than starting after it.
+                // That is his design and it is the interesting one: *"a fixed
+                // lockout at the blow, then the surge for the rest of the
+                // drain"* - a beat of vulnerability bought by a payoff. The
+                // build log prints how much of the window the jam eats, because
+                // nobody works that out from `jamSeconds` and `coolPerSecond`.
+                if (_surging)
+                {
+                    SurgeTick();
+                }
+                else
+                {
+                    Cool();
+                }
 
                 bool done =
                     _cfg.response == ForgeOverheat.Jam
@@ -205,6 +440,15 @@ namespace WeaponForge
                 return;
             }
 
+            if (_surging)
+            {
+                // The window owns its own draining, and it ignores `coolDelay`
+                // outright - a payout you could pause by holding the trigger
+                // would be a permanent buff on any weapon with a refill.
+                SurgeTick();
+                return;
+            }
+
             // The delay is what makes trigger discipline worth anything. With
             // cooling starting the instant you release, tapping is free and the
             // whole mechanic barely registers.
@@ -212,7 +456,35 @@ namespace WeaponForge
                 return;
 
             Cool();
-            Degrade();
+        }
+
+        // Which weapon are we publishing to? Same check `ForgeSpin.Tick` makes,
+        // and for the same reason: a `WeaponBase` is rebuilt whenever its module
+        // cluster changes, so "the weapon" is an instance rather than a slot.
+        private void ResolveWeapon()
+        {
+            WeaponBase weapon = _shooter.Weapon;
+
+            if (ReferenceEquals(weapon, _surgeWeapon))
+                return;
+
+            // Hand the old one back before forgetting it.
+            WithdrawSurge();
+
+            _surgeWeapon = weapon;
+            _surging = false;
+            _surge = null;
+
+            if (weapon == null || weapon.TemplateData == null)
+                return;
+
+            ForgeSurge.Config found;
+
+            if (ForgeSurge.TryGet(weapon.TemplateData, out found) &&
+                found != null && found.enabled)
+            {
+                _surge = found;
+            }
         }
 
         private void Cool()
@@ -224,9 +496,241 @@ namespace WeaponForge
             Paint();
         }
 
-        private float Fraction()
+        public float Fraction()
         {
             return _cfg.max > 0f ? Mathf.Clamp01(_heat / _cfg.max) : 0f;
+        }
+
+        // ---- the surge ----------------------------------------------------
+
+        // Is the overload window open right now? Public for the `gauge` and
+        // `bubble` readouts, and for the build-time diagnostics.
+        public bool Surging { get { return _surging; } }
+
+        // HOW MUCH OF THE WINDOW IS LEFT, 0..1, **after the ramp shape is
+        // applied** - so a caller (the bar, the tint, the rewards) never has to
+        // know which ramp this weapon uses.
+        //
+        //   fade  the remaining meter between `max` and `endAt`. Full at the
+        //         instant it blows, nothing at the moment it closes. The
+        //         literal inverse of spinUp, and his default.
+        //   flat  1 for the whole window. The reward does not taper; it stops.
+        public float SurgeAmount()
+        {
+            if (!_surging || _surge == null || _cfg == null)
+                return 0f;
+
+            if (_surge.ramp == ForgeSurge.Flat)
+                return 1f;
+
+            float end = Mathf.Clamp(_surge.endAt, 0f, _cfg.max);
+            float span = Mathf.Max(0.01f, _cfg.max - end);
+
+            return Mathf.Clamp01((_heat - end) / span);
+        }
+
+        private void StartSurge()
+        {
+            if (_surge == null || !_surge.enabled)
+                return;
+
+            // Re-blowing during a window (only possible with `refill` on) tops
+            // the meter up rather than announcing a second surge - the sound
+            // and the log line belong to the phase, not to the threshold.
+            bool fresh = !_surging;
+
+            _surging = true;
+
+            if (fresh && !string.IsNullOrEmpty(_surge.startSfx))
+                Sound(_surge.startSfx);
+        }
+
+        private void SurgeTick()
+        {
+            if (_surge == null)
+            {
+                _surging = false;
+                return;
+            }
+
+            // The drain. `coolDelay` is deliberately not consulted - see Tick.
+            if (_surge.drainOnCool && _heat > 0f)
+            {
+                _heat = Mathf.Max(
+                    0f, _heat - _cfg.coolPerSecond * Time.deltaTime);
+            }
+
+            float end = Mathf.Clamp(_surge.endAt, 0f, _cfg.max);
+
+            if (_heat <= end + 0.0001f)
+            {
+                EndSurge();
+                return;
+            }
+
+            ApplySurge();
+            Say();
+        }
+
+        private void EndSurge()
+        {
+            if (!_surging)
+                return;
+
+            _surging = false;
+
+            WithdrawSurge();
+
+            // TAKE THE READOUT DOWN. `Say` is driven per frame while the window
+            // is open, so without this the status line would keep whatever
+            // percentage it was last given for the rest of the run - a readout
+            // frozen on a number is worse than no readout, because it reads as
+            // a window that never closed.
+            if (_surge != null && _surge.showSurge)
+                ForgeBuffHud.Clear(this);
+
+            if (_surge != null && !string.IsNullOrEmpty(_surge.endSfx))
+                Sound(_surge.endSfx);
+
+            // Repaint immediately: the colour is a phase indicator, and leaving
+            // the surge colour up for a frame after the window shut would be
+            // the readout lying about the one thing it exists to say.
+            Paint();
+        }
+
+        // EVERY REWARD IS A PUBLISHED MULTIPLIER, never a write onto the weapon.
+        // Same rule `spinUp` follows and the same reason: overheat's own `slow`
+        // penalty, the onKill buff and Module Forge all write these fields, and
+        // two features capturing one field cannot be ordered. A `response:
+        // "slow"` weapon therefore surges and degrades at the same time and the
+        // result is the PRODUCT, which is a real weapon rather than a bug - the
+        // build log prints that number.
+        private void ApplySurge()
+        {
+            WeaponBase weapon = _surgeWeapon;
+
+            if (weapon == null)
+                return;
+
+            float f = SurgeAmount();
+
+            if (f <= 0.0001f)
+            {
+                WithdrawSurge();
+                return;
+            }
+
+            if (_surge.rewards.Publish(weapon, SurgeKey, f))
+                Redress(weapon);
+        }
+
+        // CHANGING `ProjectileCount` AT RUNTIME IS COSMETIC ON A BULLET AND A
+        // CRASH ON A BEAM: `HitscanWeapon.OnBarrelMoved` indexes
+        // `visualsInstances[num]` with no bounds guard, every frame the barrel
+        // moves. `InitializeVisuals` is public and resizes exactly that list.
+        // Called on every change of the ROUNDED count in BOTH directions -
+        // orphaned visuals left above the count keep their last state, which is
+        // a beam frozen in mid-air with `Firing` stuck true. Lifted from
+        // ForgeSpin.Redress, which is where this was learned.
+        private void Redress(WeaponBase weapon)
+        {
+            if (weapon == null)
+                return;
+
+            int now = Mathf.RoundToInt(weapon.ProjectileCount);
+
+            if (now == _surgePellets)
+                return;
+
+            _surgePellets = now;
+
+            try
+            {
+                weapon.InitializeVisuals();
+            }
+            catch (Exception e)
+            {
+                Log.LogError("Rebuilding the weapon visuals failed: " + e);
+            }
+        }
+
+        private void WithdrawSurge()
+        {
+            if (_surgeWeapon == null)
+                return;
+
+            ForgeWeaponStats.Clear(_surgeWeapon, SurgeKey);
+
+            if (_surge != null && _surge.rewards.pellets && _surgePellets >= 0)
+            {
+                _surgePellets = -1;
+                Redress(_surgeWeapon);
+            }
+
+            _surgePellets = -1;
+        }
+
+        // Every shot in the window is a charged shot. Asked by the surge patch
+        // from the `Shooter.Shoot` prefix, because arming has to happen before
+        // `DoShoot` reads it.
+        public bool WantsChargedShot(out float level)
+        {
+            level = 1f;
+
+            if (!_surging || _surge == null || !_surge.chargedShots)
+                return false;
+
+            level = Mathf.Clamp01(_surge.chargeLevel);
+            return true;
+        }
+
+        // The surge fill hooks (`fill: "hits"` / `"damage"`) come in here.
+        public void AddFromHit(float amount)
+        {
+            if (_cfg == null || amount <= 0f)
+                return;
+
+            Add(amount);
+        }
+
+        // Locked out - venting or jammed. Public for the `gauge` and `bubble`
+        // readouts, which treat a lockout as the one state that overrides
+        // every other rule about when to show themselves.
+        public bool Locked { get { return _locked; } }
+
+        // WHAT THE BAR SHOWS. Normally the heat. During a LOCKOUT it becomes a
+        // countdown to getting the gun back, and **the two lockout responses
+        // need genuinely different numbers** - which is the trap here, because
+        // one implementation reading `Fraction()` looks correct, tests fine on
+        // a vent weapon, and is quietly wrong on every jam one.
+        //
+        //   vent  unlocks when the heat falls to `ventTo`. Cool() runs during
+        //         the lockout, so the meter really is draining toward the
+        //         unlock - but it unlocks at `ventTo`, not at zero, so a raw
+        //         fraction would leave the bar sitting ~20% full at the exact
+        //         moment you regain the gun. Remapped so EMPTY MEANS FIRE NOW.
+        //   jam   unlocks on a fixed TIMER while the gun cools on its own
+        //         unrelated schedule. Heat is simply the wrong number; this
+        //         reads the timer.
+        public float Recovery()
+        {
+            if (_cfg == null)
+                return 0f;
+
+            if (!_locked)
+                return Fraction();
+
+            if (_cfg.response == ForgeOverheat.Jam)
+            {
+                return Mathf.Clamp01(
+                    (_unlockAt - Time.time) /
+                    Mathf.Max(0.01f, _cfg.jamSeconds));
+            }
+
+            float vent = Mathf.Max(0f, _cfg.ventTo);
+
+            return Mathf.Clamp01(
+                (_heat - vent) / Mathf.Max(0.01f, _cfg.max - vent));
         }
 
         // ---- the blowout --------------------------------------------------
@@ -256,6 +760,11 @@ namespace WeaponForge
             if (_cfg.ventShot)
                 Vent();
 
+            // THE WINDOW OPENS HERE - at the threshold, before the lockout,
+            // because with `response: "jam"` the two overlap on purpose and the
+            // surge has to be running for the jam to eat into it.
+            StartSurge();
+
             _locked = _cfg.response != ForgeOverheat.Slow &&
                       _cfg.response != ForgeOverheat.None;
 
@@ -266,14 +775,14 @@ namespace WeaponForge
                 _shooter.Block(this);
 
                 // MANDATORY, and easy to miss. Shooter.Update returns as soon
-                // as anything is blocking, and StopContinousSound lives after
-                // that return - so a weapon mid-loop would keep looping its
-                // firing sound for the rest of the run.
-                _shooter.StopContinousSound();
-                _shooter.StopWarmupSound();
-
-                if (_shooter.Weapon != null)
-                    _shooter.Weapon.IsTriggerPulled = false;
+                // as anything is blocking, and everything that tells a weapon
+                // it has stopped firing lives after that return - the sound
+                // loop, the trigger flag, and (R15 test 188) the
+                // `OnBarrelMoved` call that is the only thing in the game that
+                // ever clears a BEAM's visual. Clearing the flag here without
+                // that call left a vented beam drawing and sparking at the spot
+                // it cut out, while the ship flew away from it.
+                ForgeShooterQuiet.Silence(_shooter);
             }
 
             if (!string.IsNullOrEmpty(_cfg.overheatSfx))
@@ -403,7 +912,10 @@ namespace WeaponForge
         // compute, which is why existing weapons look unchanged.
         private void Paint()
         {
-            if (!_cfg.tintMuzzle)
+            bool surgeTint =
+                _surging && _surge != null && _surge.tintMuzzle;
+
+            if (!_cfg.tintMuzzle && !surgeTint)
                 return;
 
             WeaponBase weapon = _shooter.Weapon;
@@ -417,9 +929,40 @@ namespace WeaponForge
             if (weapon == null)
                 return;
 
+            float amount = Fraction() * _cfg.tintStrength;
+            Color colour = _cfg.hotColor;
+
+            // ★ DURING THE WINDOW THE COLOUR IS SWAPPED, NOT LAYERED ON TOP.
+            //
+            // The readout problem this solves is specific: a heat bar filling
+            // and a heat bar draining look **identical**, so the one thing the
+            // player cannot see is which phase they are in - and that is the
+            // only thing that matters once a surge exists. A second tint layer
+            // would blend with the orange into something that says neither.
+            // Publishing the surge colour on the SAME layer makes the phase
+            // unmistakable at a glance, and it costs nothing: one key, one
+            // captured base, and `ForgeMuzzleTint`'s weighted mix still gets to
+            // compose this with `spinUp`.
+            //
+            // The strength follows the ramp, so a `fade` surge visibly bleeds
+            // out with the reward while a `flat` one holds and then snaps off.
+            if (surgeTint)
+            {
+                colour = _surge.color;
+                amount = SurgeAmount() * _surge.tintStrength;
+            }
+
             ForgeMuzzleTint.Set(
-                weapon, ForgeMuzzleTint.Heat, _cfg.hotColor,
-                Fraction() * _cfg.tintStrength);
+                weapon, ForgeMuzzleTint.Heat, colour, amount);
+
+            // AND THE BEAM ITSELF, on a hitscan weapon. R15 test 188: *"the
+            // muzzleflare changes to red not the beam or the beam effects
+            // hitting the target"* - true, and on a beam the muzzle is a small
+            // puff at the barrel with the whole weapon coming out of it. Set is
+            // a no-op on anything that is not a HitscanWeapon, so this needs no
+            // branch here.
+            ForgeBeamTint.Set(
+                weapon, ForgeBeamTint.Heat, _cfg.hotColor, amount);
         }
 
         // Put the muzzle back exactly as it was found.
@@ -433,10 +976,27 @@ namespace WeaponForge
                 return;
 
             ForgeMuzzleTint.Clear(_tintWeapon, ForgeMuzzleTint.Heat);
+            ForgeBeamTint.Clear(_tintWeapon, ForgeBeamTint.Heat);
         }
 
         private void Say()
         {
+            // THE SURGE GETS ITS OWN SWITCH, and it is asked FIRST. A surging
+            // weapon reporting "HEAT 84%" would be telling the truth about the
+            // meter and the wrong thing about the gun - the number is falling
+            // and the gun is at its best, which reads as the exact opposite of
+            // what is happening.
+            if (_surging && _surge != null && _surge.showSurge)
+            {
+                ForgeBuffHud.ShowState(
+                    this,
+                    _surge.color,
+                    "SURGE " + Mathf.RoundToInt(SurgeAmount() * 100f) + "%",
+                    ForgeBuffHud.Kind.Buff);
+
+                return;
+            }
+
             if (!_cfg.showHeat)
                 return;
 
@@ -556,23 +1116,32 @@ namespace WeaponForge
 
         private void OnDisable()
         {
+            _all.Remove(this);
             Clear();
         }
 
         private void OnDestroy()
         {
+            _all.Remove(this);
             Clear();
         }
 
-        // Never leave a weapon blocked. A ship that dies mid-jam, or a Shooter
-        // disabled by a screen change, would otherwise come back unable to fire
-        // with nothing in the log to explain it.
+        // Never leave a weapon blocked, and never leave it carrying a bonus it
+        // has not earned. A ship that dies mid-jam, or a Shooter disabled by a
+        // screen change, would otherwise come back unable to fire - or
+        // permanently surging - with nothing in the log to explain it.
         private void Clear()
         {
             try
             {
                 RestoreRate();
                 RestoreMuzzle();
+
+                if (_surging && _surge != null && _surge.showSurge)
+                    ForgeBuffHud.Clear(this);
+
+                _surging = false;
+                WithdrawSurge();
 
                 if (_locked && _shooter != null)
                     _shooter.Unblock(this);

@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeMinionRestore
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         [HarmonyPatch(typeof(SavableEntity), "Bind")]
         public class OnBind

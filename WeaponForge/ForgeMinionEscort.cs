@@ -44,7 +44,7 @@ namespace WeaponForge
     public class ForgeMinionEscort : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         private Unit _owner;
         private Rigidbody2D _body;

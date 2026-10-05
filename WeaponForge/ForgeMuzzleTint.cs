@@ -27,16 +27,21 @@ namespace WeaponForge
     // one's output, and it is why the layer table had to exist before spin-up
     // could tint anything.
     //
-    // WHY LERP RATHER THAN THE UNIT TINT'S MULTIPLY. `ForgeUnitTint` multiplies
-    // its layers because multiplication is commutative and so cannot be
-    // ordered wrongly. A flash colour is a REPLACEMENT though - overheat's
-    // orange is meant to take over a white puff, not darken it - and switching
-    // to multiply would visibly change every overheat weapon already written.
-    // So layers stay lerps and are applied in a **stable order sorted by key**,
-    // which gets the property that actually matters: the result does not depend
-    // on which feature published first, and with a single layer it is
-    // byte-identical to what overheat did before. What is fixed is the bake-in,
-    // which is the part that was broken.
+    // WHY NOT THE UNIT TINT'S MULTIPLY. `ForgeUnitTint` multiplies its layers
+    // because multiplication is commutative and so cannot be ordered wrongly. A
+    // flash colour is a REPLACEMENT though - overheat's orange is meant to take
+    // over a white puff, not darken it - and switching to multiply would
+    // visibly change every overheat weapon already written.
+    //
+    // The first version therefore kept lerps, applied in a stable order sorted
+    // by key, on the reasoning that order-independence was the property that
+    // mattered. **It is not sufficient, and R14 test 176 is the proof.** A
+    // chain of lerps is order-independent and still wrong with two layers,
+    // because `Lerp(x, c, 1)` discards `x` - so the last key alphabetically
+    // wins outright. "heat" sorts before "spin", so a fully wound gun showed
+    // no heat whatever, and the log line claiming the two compose was false.
+    // See the note in `Write` for the weighted mix that replaced it, which is
+    // term-for-term identical with a single layer.
     //
     // THE INSTANCE LIST IS NOT STABLE. `WeaponBase.InitializeVisuals` destroys
     // and rebuilds `muzzleParticleSystemInstances` to match `ProjectileCount` -
@@ -47,7 +52,7 @@ namespace WeaponForge
     public static class ForgeMuzzleTint
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Tint");
+            ForgeLog.Source("WeaponForge.Tint");
 
         public const string Heat = "heat";
         public const string Spin = "spin";
@@ -290,8 +295,37 @@ namespace WeaponForge
                     continue;
                 }
 
-                Color c = e.bases[i].color;
-                bool any = false;
+                // A WEIGHTED MIX, NOT A CHAIN OF LERPS - and this is a bug fix,
+                // not a tidy-up.
+                //
+                // R14 test 176 put `spinUp` and `overheat` on one gun, and the
+                // build log promised in as many words that the two "COMPOSE
+                // rather than fight". The muzzle colour did not: successive
+                // lerps mean the LAST layer at full strength erases every one
+                // before it, because `Lerp(x, c, 1)` is just `c`. Keys sort
+                // "heat" before "spin", so a fully wound gun showed no heat at
+                // all - and it stops showing it exactly as the heat starts to
+                // matter. He reported a white flash and no orange, which is
+                // precisely that.
+                //
+                // Each layer instead contributes its own weight:
+                //
+                //     total <= 1 :  base*(1 - total) + SUM(colour_i * a_i)
+                //     total >  1 :  SUM(colour_i * a_i) / total
+                //
+                // With ONE layer that is `base*(1-a) + c*a`, which is
+                // `Lerp(base, c, a)` term for term - so every overheat weapon
+                // already written renders byte-identically, including its
+                // alpha. With two full layers it is the midpoint: winding up
+                // AND hot looks like neither state alone, which is the honest
+                // reading of "compose".
+                //
+                // It also makes the sort below redundant rather than
+                // load-bearing: addition commutes, so there is no order left to
+                // get wrong. Kept anyway, because a stable list is easier to
+                // read in a debugger than a shuffled one.
+                float total = 0f;
+                float r = 0f, g = 0f, b = 0f, a = 0f;
 
                 for (int j = 0; j < e.layers.Count; j++)
                 {
@@ -300,13 +334,40 @@ namespace WeaponForge
                     if (l.amount <= 0.001f)
                         continue;
 
-                    c = Color.Lerp(c, l.color, l.amount);
-                    any = true;
+                    total += l.amount;
+                    r += l.color.r * l.amount;
+                    g += l.color.g * l.amount;
+                    b += l.color.b * l.amount;
+                    a += l.color.a * l.amount;
                 }
 
-                main.startColor = any
-                    ? new ParticleSystem.MinMaxGradient(c)
-                    : e.bases[i];
+                if (total <= 0.001f)
+                {
+                    main.startColor = e.bases[i];
+                    continue;
+                }
+
+                Color baseColor = e.bases[i].color;
+
+                if (total > 1f)
+                {
+                    r /= total;
+                    g /= total;
+                    b /= total;
+                    a /= total;
+                }
+                else
+                {
+                    float keep = 1f - total;
+
+                    r += baseColor.r * keep;
+                    g += baseColor.g * keep;
+                    b += baseColor.b * keep;
+                    a += baseColor.a * keep;
+                }
+
+                main.startColor =
+                    new ParticleSystem.MinMaxGradient(new Color(r, g, b, a));
             }
         }
     }

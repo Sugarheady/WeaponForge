@@ -37,7 +37,7 @@ namespace WeaponForge
     public static class ForgeLeech
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Leech");
+            ForgeLog.Source("WeaponForge.Leech");
 
         // When the health actually arrives.
         public enum HealOn
@@ -458,8 +458,15 @@ namespace WeaponForge
             float longestDelay = 0f;
             bool hasBonus = false;
 
-            foreach (Contribution c in _global.Values)
+            // ★ ONLY THE WEAPON'S OWN SHIP'S MODULES - before R19 a Module
+            // Forge leech module on the ship grid let ENEMY guns heal off you.
+            // See ForgeModuleScope.
+            foreach (var pair in _global)
             {
+                if (!ForgeModuleScope.Applies(pair.Key, weapon))
+                    continue;
+
+                Contribution c = pair.Value;
                 bonusFraction += c.fraction;
                 bonusFlat += c.flat;
                 tightestCap = Tighter(tightestCap, c.maxPerSecond);

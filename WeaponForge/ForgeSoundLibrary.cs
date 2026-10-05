@@ -32,7 +32,7 @@ namespace WeaponForge
     public static class ForgeSoundLibrary
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sounds");
+            ForgeLog.Source("WeaponForge.Sounds");
 
         // Per-sound settings from an optional "<name>.json" beside the audio
         // file. Nullable where "inherit from the sound being replaced" is a

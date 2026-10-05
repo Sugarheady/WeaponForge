@@ -16,7 +16,7 @@ namespace WeaponForge
     public static class ForgeSplitPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Split");
+            ForgeLog.Source("WeaponForge.Split");
 
         // Projectile.TryHit is the right hook for "hit an enemy": it is called
         // once per LISTENER rather than once per frame of an overlap, and the

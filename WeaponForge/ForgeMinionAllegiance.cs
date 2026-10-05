@@ -59,7 +59,7 @@ namespace WeaponForge
     public static class ForgeMinionAllegiance
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // ------------------------------------------------------------------
         // ITS EYES - per spawn.
@@ -224,58 +224,121 @@ namespace WeaponForge
         private static readonly HashSet<string> _saidRam =
             new HashSet<string>();
 
+        // WIDEN ONE UNIT'S RAM CAST, optionally recording what it was.
+        //
+        // Split out of `Ram` because CHARM needs the identical change and had
+        // never had it - see the note there. `heads`/`was` are the undo record:
+        // pass them for a change that has to be reversible (a charm expires),
+        // pass null for a spawned minion, whose ChargerHead is a fresh clone
+        // that dies with it.
+        //
+        // Returns how many components were changed, and reports `was`/`now` for
+        // the caller's log line.
+        public static int WidenRam(
+            Unit unit,
+            List<Component> heads, List<int> wasList,
+            out int was, out int now)
+        {
+            was = 0;
+            now = 0;
+
+            FieldInfo f = RamMask;
+
+            if (unit == null || f == null)
+                return 0;
+
+            int player = LayerMask.NameToLayer("Player");
+            int entities = LayerMask.NameToLayer("Entities");
+
+            if (player < 0 || entities < 0)
+                return 0;
+
+            int changed = 0;
+
+            // Not GetComponentsInChildren<ChargerHead> - the type is the
+            // game's and only resolves by name here, so walk Components.
+            foreach (Component c in
+                     unit.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null || c.GetType() != f.DeclaringType)
+                    continue;
+
+                var had = (LayerMask)f.GetValue(c);
+
+                // ADD Entities, and DROP Player. Dropping matters as much
+                // as adding: a friendly minion that can still ram you is
+                // the other half of what he reported.
+                int want = (had.value | (1 << entities)) & ~(1 << player);
+
+                if (want == had.value)
+                    continue;
+
+                // Recorded BEFORE the write and only for a component that is
+                // actually about to change, so an undo can never invent a mask
+                // - the same rule charm already follows for grudges.
+                if (heads != null && wasList != null)
+                {
+                    heads.Add(c);
+                    wasList.Add(had.value);
+                }
+
+                was = had.value;
+                now = want;
+                f.SetValue(c, (LayerMask)want);
+                changed++;
+            }
+
+            // WIDENING THE MASK IS ONLY HALF THE JOB. Adding Entities points
+            // the ram at every unit in the game, and ChargerHead has no
+            // faction test - so without this the swarm eats itself. Mark it
+            // so the guard's prefix knows this one is ours.
+            if (changed > 0)
+                ForgeMinionRamGuard.Mark(unit);
+
+            return changed;
+        }
+
+        // Put back exactly what WidenRam recorded, for a change that was only
+        // meant to last as long as a charm.
+        public static void RestoreRam(List<Component> heads, List<int> wasList)
+        {
+            FieldInfo f = RamMask;
+
+            if (f == null || heads == null || wasList == null)
+                return;
+
+            for (int i = 0; i < heads.Count && i < wasList.Count; i++)
+            {
+                Component c = heads[i];
+
+                if (c == null)
+                    continue;
+
+                try
+                {
+                    f.SetValue(c, (LayerMask)wasList[i]);
+                }
+                catch (Exception)
+                {
+                    // One unrestored head is not worth taking the release
+                    // down for; the faction and the eyes still go back.
+                }
+            }
+
+            heads.Clear();
+            wasList.Clear();
+        }
+
         public static void Ram(Unit minion, ForgeMinion.Config cfg)
         {
             if (minion == null || cfg == null || !cfg.friendlyShots)
                 return;
 
-            FieldInfo f = RamMask;
-
-            if (f == null)
-                return;
-
             try
             {
-                int player = LayerMask.NameToLayer("Player");
-                int entities = LayerMask.NameToLayer("Entities");
-
-                if (player < 0 || entities < 0)
-                    return;
-
-                int changed = 0;
-                int was = 0;
-                int now = 0;
-
-                // Not GetComponentsInChildren<ChargerHead> - the type is the
-                // game's and only resolves by name here, so walk Components.
-                foreach (Component c in
-                         minion.GetComponentsInChildren<Component>(true))
-                {
-                    if (c == null || c.GetType() != f.DeclaringType)
-                        continue;
-
-                    var had = (LayerMask)f.GetValue(c);
-
-                    // ADD Entities, and DROP Player. Dropping matters as much
-                    // as adding: a friendly minion that can still ram you is
-                    // the other half of what he reported.
-                    int want = (had.value | (1 << entities)) & ~(1 << player);
-
-                    if (want == had.value)
-                        continue;
-
-                    was = had.value;
-                    now = want;
-                    f.SetValue(c, (LayerMask)want);
-                    changed++;
-                }
-
-                // WIDENING THE MASK IS ONLY HALF THE JOB. Adding Entities points
-                // the ram at every unit in the game, and ChargerHead has no
-                // faction test - so without this the swarm eats itself. Mark it
-                // so the guard's prefix knows this one is ours.
-                if (changed > 0)
-                    ForgeMinionRamGuard.Mark(minion);
+                int was;
+                int now;
+                int changed = WidenRam(minion, null, null, out was, out now);
 
                 if (changed == 0 || _saidRam.Contains(minion.name))
                     return;

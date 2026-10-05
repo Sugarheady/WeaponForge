@@ -16,7 +16,7 @@ namespace WeaponForge
     public class ForgePhasingPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static AccessTools.FieldRef<Projectile, LayerMask> _maskRef;
         private static bool _ready;

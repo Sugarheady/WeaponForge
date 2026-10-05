@@ -45,7 +45,7 @@ namespace WeaponForge
     public static class ForgeSpeedRampPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot

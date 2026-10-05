@@ -30,7 +30,7 @@ namespace WeaponForge
     public static class ForgeRicochetPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Ricochet");
+            ForgeLog.Source("WeaponForge.Ricochet");
 
         // idealDirection is what movementNoiseData and the wave patch measure
         // from, so scatter/seek have to move it in step with Velocity or a

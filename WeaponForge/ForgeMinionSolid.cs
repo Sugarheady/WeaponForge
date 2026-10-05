@@ -37,7 +37,7 @@ namespace WeaponForge
     public static class ForgeMinionSolid
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Minion");
+            ForgeLog.Source("WeaponForge.Minion");
 
         // One line per weapon rather than per minion - a cap of 12 would
         // otherwise print this twelve times a trigger pull.

@@ -36,7 +36,7 @@ namespace WeaponForge
     public static class ForgeKillBuff
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.KillBuff");
+            ForgeLog.Source("WeaponForge.KillBuff");
 
         public const string Key = "onKill";
 

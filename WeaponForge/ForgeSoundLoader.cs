@@ -20,7 +20,7 @@ namespace WeaponForge
     public class ForgeSoundLoader : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sounds");
+            ForgeLog.Source("WeaponForge.Sounds");
 
         private static ForgeSoundLoader _instance;
 

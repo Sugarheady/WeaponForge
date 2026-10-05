@@ -56,7 +56,7 @@ namespace WeaponForge
     public class ForgeSpriteSpec
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Sprites");
+            ForgeLog.Source("WeaponForge.Sprites");
 
         // Frame indices in the order they should play. Null = every frame, in
         // order.

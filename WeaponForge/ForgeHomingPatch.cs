@@ -21,7 +21,7 @@ namespace WeaponForge
     public static class ForgeHomingPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Homing");
+            ForgeLog.Source("WeaponForge.Homing");
 
         // Reused for every acquisition scan so a 20-shots-per-second stream
         // does not allocate a fresh list 20 times a second. Physics2D fills it
