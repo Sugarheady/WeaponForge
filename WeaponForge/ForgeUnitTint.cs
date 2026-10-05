@@ -29,6 +29,12 @@ namespace WeaponForge
     // never disagree about who ran last - there is no ordering to get wrong,
     // and no restore path that can bake somebody else's colour in.
     //
+    // THERE ARE TWO OPERATORS NOW, `multiply` (the default) and `replace`, and
+    // the reason is that no amount of strength could make a multiply brighter -
+    // see the note on the constants. Each group composes with itself
+    // commutatively; multiply resolves first and replace paints over the
+    // result, which is the only ordering that means anything.
+    //
     // ALPHA IS NEVER TOUCHED. A renderer's alpha is a visibility decision, not
     // a colour: every Larva and Maggot carries a full-body `HighlightSprite`
     // held at alpha 0 that the damage flash drives, and painting that opaque is
@@ -39,7 +45,7 @@ namespace WeaponForge
     public class ForgeUnitTint : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Tint");
+            ForgeLog.Source("WeaponForge.Tint");
 
         // Keys used by the mod's own features. Strings rather than an enum so a
         // new feature needs no change here.
@@ -47,12 +53,70 @@ namespace WeaponForge
         public const string Slam = "slam";
         public const string Contact = "contact";
 
+        // HOW A LAYER MEETS THE SPRITE UNDERNEATH IT.
+        //
+        // R14 tests 166 and 167, and he asked twice in the same round: *"I was
+        // hoping to make the color STRONGER and more prominent... some of the
+        // enemies look like they're being tinted and others not so much."*
+        //
+        // Both halves of that are one fact about multiplication: **it can only
+        // ever darken.** `base * colour` with any channel at or below the
+        // base's own value moves toward black, never toward the colour, so a
+        // pale blue over a dark grey Cross is nearly invisible while the same
+        // blue over a white Fly reads clearly. There is no strength value that
+        // fixes it - at strength 1 a multiply is already as strong as a multiply
+        // gets, and turning it up is what he had already tried.
+        //
+        // So Replace is a genuinely different operator rather than more of the
+        // same one: it moves the sprite TOWARD the colour, which brightens as
+        // readily as it darkens and hits a flat, unmissable colour at strength
+        // 1. Multiply stays the default because every weapon already written
+        // was tuned against it.
+        public const int Multiply = 0;
+        public const int Replace = 1;
+
+        // Returns -1 for a word it does not know, so the caller can warn
+        // rather than silently handing back the default - which is the whole
+        // silent-fallback family this project keeps paying for.
+        //
+        // "tint" IS ACCEPTED FOR MULTIPLY because `minion.colorMode` got here
+        // first and already spells the same distinction `replace` / `tint`
+        // ("tint - multiply, keeps shading"). Two vocabularies for one idea in
+        // one mod is a bug report waiting to be filed, and the cost of
+        // accepting both is this line.
+        public static int ParseMode(string s)
+        {
+            switch ((s ?? "").Trim().ToLowerInvariant())
+            {
+                case "replace":
+                case "blend":
+                case "over":
+                case "solid":
+                case "strong":
+                    return Replace;
+
+                case "multiply":
+                case "tint":
+                case "shade":
+                    return Multiply;
+
+                default:
+                    return -1;
+            }
+        }
+
+        public static string ModeWord(int mode)
+        {
+            return (mode == Replace) ? "replace" : "multiply";
+        }
+
         private class Layer
         {
             public string key;
             public Color color;
             public float endsAt;      // 0 = until explicitly cleared
             public float pulseHz;     // 0 = steady
+            public int mode = Multiply;
 
             // HOW HARD THE COLOUR COMES THROUGH, 0..1.
             //
@@ -105,6 +169,13 @@ namespace WeaponForge
             Unit unit, string key, Color color, float seconds, float pulseHz,
             float strength)
         {
+            Set(unit, key, color, seconds, pulseHz, strength, Multiply);
+        }
+
+        public static void Set(
+            Unit unit, string key, Color color, float seconds, float pulseHz,
+            float strength, int mode)
+        {
             if (unit == null || string.IsNullOrEmpty(key))
                 return;
 
@@ -129,6 +200,7 @@ namespace WeaponForge
                 layer.pulseHz = Mathf.Max(0f, pulseHz);
                 layer.endsAt = (seconds > 0f) ? Time.time + seconds : 0f;
                 layer.strength = Mathf.Clamp01(strength);
+                layer.mode = mode;
 
                 t.Write();
             }
@@ -273,6 +345,43 @@ namespace WeaponForge
         {
             Color product = Product();
 
+            // The replace layers, gathered once for the whole unit rather than
+            // per renderer - they do not depend on the base colour.
+            float over = 0f;
+            float or_ = 0f, og = 0f, ob = 0f;
+
+            for (int i = 0; i < _layers.Count; i++)
+            {
+                Layer l = _layers[i];
+
+                if (l.mode != Replace)
+                    continue;
+
+                float s = Live(l);
+
+                if (s <= 0.001f)
+                    continue;
+
+                over += s;
+                or_ += l.color.r * s;
+                og += l.color.g * s;
+                ob += l.color.b * s;
+            }
+
+            // TWO REPLACE LAYERS ARE A WEIGHTED MIX, not a chain of lerps.
+            // Chaining would let the last one written win outright at strength
+            // 1, and which one is "last" is list order - i.e. whoever
+            // published first. Weights commute, so a slammed AND stunned unit
+            // reads as the average of the two rather than as whichever feature
+            // happened to fire second. Same arithmetic as ForgeMuzzleTint,
+            // arrived at there for the same reason.
+            if (over > 1f)
+            {
+                or_ /= over;
+                og /= over;
+                ob /= over;
+            }
+
             for (int i = 0; i < _renderers.Count; i++)
             {
                 SpriteRenderer sr = _renderers[i];
@@ -282,19 +391,33 @@ namespace WeaponForge
 
                 Color b = _base[i];
 
+                // Multiply first, then replace over the result. That order is
+                // the only one that means anything: a replace layer is "paint
+                // this colour on top", so it has to see the finished
+                // multiplied colour, and a multiply applied afterwards would
+                // darken the paint the author asked to be unmissable.
+                float r = b.r * product.r;
+                float g = b.g * product.g;
+                float bl = b.b * product.b;
+
+                if (over > 0.001f)
+                {
+                    float keep = (over > 1f) ? 0f : 1f - over;
+
+                    r = r * keep + or_;
+                    g = g * keep + og;
+                    bl = bl * keep + ob;
+                }
+
                 // The renderer's CURRENT alpha, not the captured one - so a
                 // fade running at the same time is preserved rather than
                 // reverted every frame.
-                sr.color = new Color(
-                    b.r * product.r,
-                    b.g * product.g,
-                    b.b * product.b,
-                    sr.color.a);
+                sr.color = new Color(r, g, bl, sr.color.a);
             }
         }
 
-        // Every live layer multiplied together. Commutative, so no ordering
-        // and no priorities - two features cannot fight over who wins.
+        // Every live MULTIPLY layer multiplied together. Commutative, so no
+        // ordering and no priorities - two features cannot fight over who wins.
         //
         // Note two strong tints DO compound (0.5 x 0.5 = 0.25), so a unit that
         // is both slowed and slammable reads as doubly odd. That is the honest
@@ -307,23 +430,10 @@ namespace WeaponForge
             {
                 Layer l = _layers[i];
 
-                float strength = l.strength;
+                if (l.mode != Multiply)
+                    continue;
 
-                if (l.pulseHz > 0f)
-                {
-                    // 0..1, so the pulse runs between "no tint at all" and the
-                    // full colour rather than between two tints. A slammable
-                    // enemy is a TEMPORARY state, and a throb reads as a timer
-                    // running out in a way a steady colour cannot.
-                    //
-                    // The layer's own strength MULTIPLIES the throb rather than
-                    // replacing it, so a half-strength pulsing tint still
-                    // pulses - between "nothing" and "half" instead of between
-                    // "nothing" and "full". Setting one should never silently
-                    // switch the other off.
-                    strength *=
-                        0.5f + 0.5f * Mathf.Sin(Time.time * l.pulseHz * Mathf.PI * 2f);
-                }
+                float strength = Live(l);
 
                 r *= Mathf.Lerp(1f, l.color.r, strength);
                 g *= Mathf.Lerp(1f, l.color.g, strength);
@@ -331,6 +441,31 @@ namespace WeaponForge
             }
 
             return new Color(r, g, b, 1f);
+        }
+
+        // This layer's strength right now, pulse included. Shared by both
+        // operators so a throb behaves identically in either mode.
+        private static float Live(Layer l)
+        {
+            float strength = l.strength;
+
+            if (l.pulseHz > 0f)
+            {
+                // 0..1, so the pulse runs between "no tint at all" and the
+                // full colour rather than between two tints. A slammable
+                // enemy is a TEMPORARY state, and a throb reads as a timer
+                // running out in a way a steady colour cannot.
+                //
+                // The layer's own strength MULTIPLIES the throb rather than
+                // replacing it, so a half-strength pulsing tint still
+                // pulses - between "nothing" and "half" instead of between
+                // "nothing" and "full". Setting one should never silently
+                // switch the other off.
+                strength *=
+                    0.5f + 0.5f * Mathf.Sin(Time.time * l.pulseHz * Mathf.PI * 2f);
+            }
+
+            return Mathf.Clamp01(strength);
         }
     }
 }

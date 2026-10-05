@@ -24,7 +24,7 @@ namespace WeaponForge
     public static class ForgeWavePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // Alternates 0 / 180 across successive shots so "helix" weaves.
         private static int _counter;

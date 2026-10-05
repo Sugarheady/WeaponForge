@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeSwipePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Swipe");
+            ForgeLog.Source("WeaponForge.Swipe");
 
         [HarmonyPatch(typeof(WeaponBase), "DoShoot")]
         public class OnDoShoot

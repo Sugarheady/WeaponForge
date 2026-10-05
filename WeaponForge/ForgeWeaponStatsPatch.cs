@@ -17,7 +17,7 @@ namespace WeaponForge
     public class ForgeWeaponStatsPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         static void Postfix(WeaponBase __instance, List<DisplayableProperty> results)
         {
@@ -29,6 +29,8 @@ namespace WeaponForge
                 WeaponData td = __instance.TemplateData;
                 if (td == null)
                     return;
+
+                Relabel(td, results);
 
                 // When ModuleForge is installed it shows a single COMBINED
                 // phasing/pierce line (weapon-baked + modules), reading our
@@ -65,6 +67,53 @@ namespace WeaponForge
             {
                 Log.LogError("Weapon phasing/pierce stat failed: " + e);
             }
+        }
+
+        // "Contact Damage" reads "Damage" on a FORGE weapon's card.
+        //
+        // His call, R19 252: "Right now it says contact damage, when it should
+        // just say damage... Can you see why its confusing? Contact damage is
+        // the player ship diving into the enemy." "Contact Damage" is the GAME'S
+        // label for a gun's hit damage, on every gun (`WeaponBase
+        // .GetPropertyList`) - and this mod has a `contactDamage` block that
+        // means exactly the other thing, which is the confusion. Stock cards
+        // keep the game's own word: also his call, so a stock gun reads as the
+        // game wrote it.
+        //
+        // A card line is a single `text`, "label value", so the relabel is a
+        // prefix swap that leaves the number - and the upgrade-preview form
+        // "label +delta  old > new" - exactly as the game formatted it.
+        private const string GameDamageLabel = "Contact Damage";
+        private const string ForgeDamageLabel = "Damage";
+
+        private static void Relabel(
+            WeaponData td, List<DisplayableProperty> results)
+        {
+            if (!IsForgeMade(td))
+                return;
+
+            for (int i = 0; i < results.Count; i++)
+            {
+                string text = results[i].text;
+
+                if (text != null &&
+                    text.StartsWith(GameDamageLabel, StringComparison.Ordinal))
+                {
+                    results[i] = new DisplayableProperty(
+                        ForgeDamageLabel + text.Substring(GameDamageLabel.Length));
+                }
+            }
+        }
+
+        // Every weapon asset this mod makes is named "Forge ..." - a file's
+        // weapon is "Forge Weapon <name>", and the runtime copies (wingman,
+        // rank, minion guns) are "Forge <kind> ...". A card label is the one
+        // place a name test is the right tool: getting it wrong costs a word,
+        // and it must also cover copies made after the registry was built.
+        private static bool IsForgeMade(WeaponData td)
+        {
+            return td != null && td.name != null &&
+                   td.name.StartsWith("Forge ", StringComparison.Ordinal);
         }
 
         // What a swarm gun's minions actually are, on the gun's own card.

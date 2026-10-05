@@ -14,7 +14,7 @@ namespace WeaponForge
     public static class ForgeStunPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Stun");
+            ForgeLog.Source("WeaponForge.Stun");
 
         [HarmonyPatch(typeof(DamagableResource), "ProjectileCollided")]
         public class OnProjectile

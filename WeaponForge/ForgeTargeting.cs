@@ -49,7 +49,7 @@ namespace WeaponForge
     public static class ForgeTargeting
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Targeting");
+            ForgeLog.Source("WeaponForge.Targeting");
 
         // ------------------------------------------------------------------
         public const int Default = 0;      // whatever the finder already did

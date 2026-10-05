@@ -25,7 +25,7 @@ namespace WeaponForge
     public class ForgeSwipeController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Swipe");
+            ForgeLog.Source("WeaponForge.Swipe");
 
         private Unit unit;
         private ForgeSwipe.Config cfg;

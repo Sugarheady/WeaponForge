@@ -15,7 +15,7 @@ namespace WeaponForge
     public static class ForgeTetherPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Tether");
+            ForgeLog.Source("WeaponForge.Tether");
 
         [HarmonyPatch(typeof(Projectile), "OnObjectHit")]
         public class OnPlainHit

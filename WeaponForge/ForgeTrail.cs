@@ -34,7 +34,7 @@ namespace WeaponForge
     public static class ForgeTrail
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Trail");
+            ForgeLog.Source("WeaponForge.Trail");
 
         // The prefab we lift a trail off when the template has none.
         public const string DefaultTemplate = "ammo_Popper";

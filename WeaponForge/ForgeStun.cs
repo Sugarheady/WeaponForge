@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -64,7 +64,7 @@ namespace WeaponForge
     public static class ForgeStun
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Stun");
+            ForgeLog.Source("WeaponForge.Stun");
 
         public class Config
         {
@@ -111,6 +111,11 @@ namespace WeaponForge
             // either "tintStrength" or "colorStrength" so the two naming
             // styles in this mod's blocks both work. See ForgeUnitTint.
             public float tintStrength = 1f;
+
+            // multiply (the default, and what every existing file was tuned
+            // against) or replace, which moves the sprite TOWARD the colour so
+            // it can brighten a dark enemy. See ForgeUnitTint.
+            public int tintMode = ForgeUnitTint.Multiply;
         }
 
         private static readonly Dictionary<WeaponData, Config> _weapons =
@@ -246,7 +251,7 @@ namespace WeaponForge
     public class ForgeStunned : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Stun");
+            ForgeLog.Source("WeaponForge.Stun");
 
         private ForgeStun.Config _cfg;
         private float _endsAt;
@@ -300,7 +305,7 @@ namespace WeaponForge
                 ForgeUnitTint.Set(
                     victim, "stun", cfg.tint,
                     Mathf.Max(0.05f, cfg.duration), cfg.tintPulse,
-                    cfg.tintStrength);
+                    cfg.tintStrength, cfg.tintMode);
             }
 
             if (!string.IsNullOrEmpty(cfg.sfxGuid))
@@ -347,7 +352,7 @@ namespace WeaponForge
                     ForgeUnitTint.Set(
                         u, "stun", cfg.tint,
                         Mathf.Max(0.05f, cfg.duration), cfg.tintPulse,
-                        cfg.tintStrength);
+                        cfg.tintStrength, cfg.tintMode);
                 }
             }
         }
@@ -381,18 +386,17 @@ namespace WeaponForge
 
                     // THE EARLY RETURN IN Shooter.Update SKIPS ITS OWN SOUND
                     // CLEANUP, so a unit blocked mid-burst would keep its loop
-                    // running for the whole stun. Both stops are public.
-                    s.StopContinousSound();
-                    s.StopWarmupSound();
-
-                    // And clear the held-trigger flag, which Update would
-                    // normally maintain and now never reaches. Left true, a
-                    // beam's renderer can keep drawing its last frame.
-                    if (s.Weapon != null)
-                    {
-                        s.Weapon.IsTriggerPulled = false;
-                        s.Weapon.CoolDown();
-                    }
+                    // running for the whole stun.
+                    //
+                    // This used to do the sound and the trigger flag here, with
+                    // a comment predicting the beam case ("left true, a beam's
+                    // renderer can keep drawing its last frame") - and clearing
+                    // the flag does not fix that, because the only thing that
+                    // reads it is `OnBarrelMoved`, which is ALSO above the
+                    // return. A stunned enemy beam froze on exactly the way
+                    // overheat's did in R15 test 188. One owner for all of it
+                    // now, so the two cannot drift apart again.
+                    ForgeShooterQuiet.Silence(s);
                 }
             }
         }

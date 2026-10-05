@@ -36,7 +36,7 @@ namespace WeaponForge
         private const string Prefix = "Forge Weapon ";
 
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         // Cached per name, including failures (null), so a per-shot resolve
         // never rescans every loaded object.

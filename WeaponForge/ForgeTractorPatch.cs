@@ -17,7 +17,7 @@ namespace WeaponForge
     public static class ForgeTractorPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Tractor");
+            ForgeLog.Source("WeaponForge.Tractor");
 
         private static readonly List<Collider2D> _hits = new List<Collider2D>(48);
         private static readonly List<Unit> _caught = new List<Unit>(16);

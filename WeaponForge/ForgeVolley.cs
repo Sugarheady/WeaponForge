@@ -28,7 +28,7 @@ namespace WeaponForge
     public static class ForgeVolley
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Volley");
+            ForgeLog.Source("WeaponForge.Volley");
 
         // Where the barrel was, and where it pointed, for the volley in
         // progress. Both are only meaningful while Active.
@@ -45,6 +45,14 @@ namespace WeaponForge
         // their slot so far.
         public static int Count;
         public static int Index;
+
+        // The weapon DoShoot is running for. One field rather than a growing
+        // list of copied stats: a feature that needs Spread, AngleVariance or
+        // AngleOffset can read the LIVE property - which carries whatever
+        // modules have done to it - instead of a snapshot that would have to be
+        // extended every time somebody wants another number. Only valid while
+        // Active is true.
+        public static WeaponBase Weapon;
 
         private static int _frame = -1;
         private static bool _open;
@@ -265,6 +273,7 @@ namespace WeaponForge
 
                     Origin = barrel.Position;
                     Axis = aim.normalized;
+                    Weapon = __instance;
                     Count = Mathf.Max(
                         1, Mathf.RoundToInt(__instance.ProjectileCount));
                     Index = 0;
@@ -290,6 +299,7 @@ namespace WeaponForge
             static void Postfix()
             {
                 _open = false;
+                Weapon = null;
             }
         }
     }

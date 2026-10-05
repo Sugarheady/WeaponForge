@@ -18,7 +18,49 @@ namespace WeaponForge
     public static class JsonFieldMapper
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
+
+        // A key that exists one level DOWN, inside a nested block, is the
+        // likeliest thing an unmatched name was meant to be - and saying where
+        // it lives turns "skipped" into a fix. Written for `range`: on a
+        // hitscan weapon it is a real top-level field, on a projectile weapon
+        // it is `rangeData.range`, and four of my own bloom presets put it at
+        // the top level of a Popper clone. Every one of them silently kept
+        // the Popper's reach of 15 while the file said 11, 18, 20 or 22.
+        private static string NestedHint(Type type, string name)
+        {
+            try
+            {
+                var found = new List<string>();
+
+                foreach (FieldInfo f in type.GetFields(
+                             BindingFlags.Public | BindingFlags.Instance))
+                {
+                    Type ft = f.FieldType;
+
+                    if (ft.IsPrimitive || ft.IsEnum || ft == typeof(string) ||
+                        typeof(UnityEngine.Object).IsAssignableFrom(ft))
+                    {
+                        continue;
+                    }
+
+                    if (FindField(ft, name) != null)
+                        found.Add(f.Name + "." + name);
+                }
+
+                if (found.Count == 0)
+                    return "";
+
+                return " (did you mean " +
+                       string.Join(" or ", found.Select(s => "\"" + s + "\"").ToArray()) +
+                       "? On this weapon type it lives inside that block)";
+            }
+            catch (Exception)
+            {
+                // A hint must never cost the warning it is attached to.
+                return "";
+            }
+        }
 
         // Applies every property in json onto target. Returns the
         // (possibly re-boxed) target so struct targets keep changes.
@@ -42,7 +84,8 @@ namespace WeaponForge
                     Log.LogWarning(
                         path + "." + property.Name +
                         " does not match any field on " +
-                        type.Name + " - skipped");
+                        type.Name + " - skipped" +
+                        NestedHint(type, property.Name));
                     continue;
                 }
 
@@ -151,7 +194,8 @@ namespace WeaponForge
                     Log.LogWarning(
                         path + ": no " + fieldType.Name +
                         " asset named '" + assetName +
-                        "' was found");
+                        "' was found" +
+                        (fieldType == typeof(ColorAsset) ? ColorNames() : ""));
                     return false;
                 }
 
@@ -351,10 +395,77 @@ namespace WeaponForge
                 return true;
             }
 
+            // A BARE NUMBER FOR A FIELD THAT IS AN "AMOUNT PLUS A KIND" - the
+            // game's `Damage` is `{ amount, damageType }`, and "damage": 14 is
+            // what everybody types. My own R19_Tollgate.json did, and the weapon
+            // shipped at the Popper's damage with "unsupported field type
+            // Damage" in the log as the only sign. So a number fills `amount`
+            // and the template keeps its type - which is the only thing the
+            // number could have meant.
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                FieldInfo amount = fieldType.GetField(
+                    "amount", BindingFlags.Public | BindingFlags.Instance);
+
+                if (amount != null && amount.FieldType == typeof(float))
+                {
+                    object value = currentValue;
+
+                    if (value == null && !fieldType.IsValueType)
+                        value = Activator.CreateInstance(fieldType);
+
+                    if (value != null)
+                    {
+                        amount.SetValue(value, (float)token);
+                        result = value;
+                        return true;
+                    }
+                }
+            }
+
             Log.LogWarning(
-                path + ": unsupported field type " +
-                fieldType.Name);
+                path + ": unsupported field type " + fieldType.Name +
+                (token.Type == JTokenType.Object || token.Type == JTokenType.Array
+                    ? ""
+                    : " - this field is an OBJECT with fields of its own, so a " +
+                      "single value cannot fill it (write it as { \"field\": " +
+                      "value } - see the how-to for its fields)"));
             return false;
+        }
+
+        // ★ R20's log: "no ColorAsset asset named 'ColorGreen' was found" - a
+        // name that looks right and does not exist (the game's green is
+        // `ColorLevelUp`). A miss that names only the input sends the reader to
+        // check their spelling; naming what DOES exist ends the search. The
+        // game ships nine, so the whole list fits on the line.
+        private static string ColorNames()
+        {
+            try
+            {
+                var names = new List<string>();
+
+                foreach (ColorAsset c in Resources.FindObjectsOfTypeAll<ColorAsset>())
+                {
+                    if (c != null && !string.IsNullOrEmpty(c.name) &&
+                        !c.name.StartsWith("Forge Color ") && !names.Contains(c.name))
+                    {
+                        names.Add(c.name);
+                    }
+                }
+
+                if (names.Count == 0)
+                    return ". Write a #hex colour instead, e.g. \"#6cff7a\".";
+
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+
+                return ". The game's colours are " + string.Join(", ", names.ToArray()) +
+                       " (its green is ColorLevelUp) - or write a #hex colour, " +
+                       "e.g. \"#6cff7a\".";
+            }
+            catch (Exception)
+            {
+                return "";
+            }
         }
 
         public static UnityEngine.Object FindAsset(

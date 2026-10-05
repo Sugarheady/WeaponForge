@@ -14,7 +14,7 @@ namespace WeaponForge
     public class ForgeTetherController : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Tether");
+            ForgeLog.Source("WeaponForge.Tether");
 
         private ForgeTether t;
         private LineRenderer rope;

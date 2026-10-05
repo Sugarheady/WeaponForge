@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeSwarm
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Swarm");
+            ForgeLog.Source("WeaponForge.Swarm");
 
         // What happens at the cap. He asked for all four, defaulting to killing
         // the oldest.
@@ -273,11 +273,10 @@ namespace WeaponForge
         private static bool _lookedForClock;
         private static bool _warnedNoClock;
 
-        public static void ConsumePull(Shooter shooter)
-        {
-            if (shooter == null)
-                return;
+        private static bool _warnedClockWrite;
 
+        private static FieldInfo Clock()
+        {
             if (!_lookedForClock)
             {
                 _lookedForClock = true;
@@ -285,28 +284,75 @@ namespace WeaponForge
                     typeof(Shooter), "lastShootTime");
             }
 
-            if (_lastShootTime == null)
+            if (_lastShootTime == null && !_warnedNoClock)
             {
-                if (!_warnedNoClock)
-                {
-                    _warnedNoClock = true;
-                    Log.LogWarning(
-                        "Shooter.lastShootTime was not found, so a swarm " +
-                        "held at its cap will retry every frame and can " +
-                        "spawn faster than its \"fireRate\" the moment a " +
-                        "slot frees up. Harmless but not what the build log " +
-                        "promises.");
-                }
-
-                return;
+                _warnedNoClock = true;
+                Log.LogWarning(
+                    "Shooter.lastShootTime was not found, so a swarm held at " +
+                    "its cap will retry every frame and can spawn faster " +
+                    "than its \"fireRate\" the moment a slot frees up. " +
+                    "Harmless but not what the build log promises.");
             }
+
+            return _lastShootTime;
+        }
+
+        // What the fire-rate clock reads right now, or null if unreadable.
+        //
+        // Needed as well as the write, because "did the shot actually consume
+        // its interval?" is the only question that separates a spawner firing
+        // too fast from a spawner being ASKED to fire too fast, and every
+        // instrument before this one measured the second and reported the
+        // first.
+        public static float? ReadClock(Shooter shooter)
+        {
+            FieldInfo f = Clock();
+
+            if (shooter == null || f == null)
+                return null;
 
             try
             {
-                _lastShootTime.SetValue(shooter, Time.time);
+                return (float)f.GetValue(shooter);
             }
             catch (Exception)
             {
+                return null;
+            }
+        }
+
+        public static void ConsumePull(Shooter shooter)
+        {
+            FieldInfo f = Clock();
+
+            if (shooter == null || f == null)
+                return;
+
+            try
+            {
+                f.SetValue(shooter, Time.time);
+            }
+            catch (Exception e)
+            {
+                // NOT A SILENT CATCH ANY MORE, and the irony was sitting four
+                // lines above it: the comment on this method already said "a
+                // silent fallback on a timing path is exactly the shape that
+                // costs a test round", and then swallowed one.
+                //
+                // If this ever throws, the swarm silently reverts to the
+                // per-frame retry this whole method exists to prevent - which
+                // is R14 test 170's symptom exactly, and was one of the two
+                // candidates I could not rule out by reading the code.
+                if (!_warnedClockWrite)
+                {
+                    _warnedClockWrite = true;
+                    Log.LogWarning(
+                        "Could not write Shooter.lastShootTime (" + e.Message +
+                        "), so a spawner weapon will be asked to fire again " +
+                        "on the very next frame instead of after its fire " +
+                        "interval. THIS IS THE CAUSE if minions come out in " +
+                        "a clump - quote this line.");
+                }
             }
         }
 
@@ -381,8 +427,19 @@ namespace WeaponForge
         public static void InheritGrid(
             WeaponBase weapon, Unit minion, bool recalculate)
         {
-            IModuleCluster cluster = ClusterFor(weapon);
+            InheritGrid(ClusterFor(weapon), minion, recalculate);
+        }
 
+        // THE CLUSTER-TAKING OVERLOAD EXISTS FOR THE WINGMAN DRONE BODY, which
+        // has no WeaponBase to derive one from - a wingman gadget's companions
+        // are placed by a controller that already holds the cluster the gadget
+        // sits in. Splitting it here rather than copying twenty lines keeps one
+        // owner of "install this grid's augmentations into that unit", which is
+        // the rule `SpawnMinionModule.Activate` sets and both minion paths
+        // already follow.
+        public static void InheritGrid(
+            IModuleCluster cluster, Unit minion, bool recalculate)
+        {
             if (cluster == null || minion == null)
                 return;
 
@@ -426,6 +483,123 @@ namespace WeaponForge
 
             minion.ComponentData.RecalculateStats(gridOwner.ModuleGrid);
             minion.ComponentData.RefillResources();
+        }
+
+        // ------------------------------------------------------------------
+        // Keeping an ALREADY-SPAWNED body's grid in step with the gadget's
+        // ------------------------------------------------------------------
+
+        // ★ INHERIT IS A BIRTH EVENT; SYNC IS A STANDING PROMISE, and the two
+        // need different code because installing twice STACKS.
+        //
+        // `InheritGrid` is right exactly once per body. A wingman drone body
+        // outlives the grid it was born from - you pick up a BoosterCore, you
+        // slot armour beside the gadget - and re-running Inherit would hand the
+        // body a second copy of everything, then a third. So the companions
+        // kept whatever they were born with, which is the same shape as R16's
+        // *"I have to unequip and re-equip to get the stat upgrade"* one object
+        // along: the weapon copies rebuild on a generation counter and the
+        // BODIES had no equivalent.
+        //
+        // A SYNC is idempotent by construction: strip every augmentation we put
+        // there and install the current set. That is also why it can be used on
+        // a body handed back by a LOAD, where a plain Inherit could not - the
+        // game restores the grid from a memento, so the modules are already
+        // there and the only safe operation is one that does not care whether
+        // they are.
+        //
+        // ⚠ THE REMOVAL HAS TO CALL `OnUninstalled` BY HAND. `SimpleModuleGrid`
+        // has `InstallAugmentation` and NO uninstall counterpart - the only
+        // thing that fires its `ModuleUninstalled` event is
+        // `UninstallMainModule` - while `SimpleModuleCluster.RemoveModule` is
+        // public and fires nothing. So a raw remove drops the module out of the
+        // grid with its `OnInstalled` registrations still live, which for a
+        // Module Forge card is a real leak. `ModuleGridOwner.Data
+        // .OnModuleUninstalled` is one line (`module.OnUninstalled(unit)`) and
+        // this does the same thing, so install and removal stay symmetrical.
+        //
+        // > **A missing API is not a missing capability.** The uninstall path
+        // > exists one class down; what is missing is the grid-level wrapper
+        // > that would have fired the event, and that is ours to supply.
+        public static void SyncGrid(
+            IModuleCluster cluster, Unit minion, bool recalculate)
+        {
+            if (cluster == null || minion == null)
+                return;
+
+            SimpleModuleGrid simple = GridOf(minion);
+
+            if (simple == null)
+                return;
+
+            Strip(simple, minion);
+            InheritGrid(cluster, minion, recalculate);
+        }
+
+        // Every augmentation, in every cluster - never a MainModule.
+        //
+        // Sweeping ALL clusters rather than the two `InheritGrid` writes into
+        // is deliberate: a body restored from a memento had its grid rebuilt by
+        // `SimpleModuleGrid.RestoreFromMemento`, which is the game's code and
+        // not ours, so "where would we have put it" is the wrong question to
+        // ask of a grid we did not fill in. The MainModule check is what keeps
+        // the body's OWN module - the one carrying every stat edit
+        // `ForgeMinionStats` made - and it is exact rather than positional:
+        // `SimpleModuleCluster`'s MainModule setter inserts it at index 0 of
+        // the same list `ConnectedAndPoweredModules` returns, so it is in
+        // there, and identity is the only honest way to tell it apart.
+        private static void Strip(SimpleModuleGrid grid, Unit minion)
+        {
+            Unit.Data data = minion.ComponentData;
+
+            foreach (IModuleCluster c in grid.GetAllClusters())
+            {
+                var simple = c as SimpleModuleCluster;
+
+                if (simple == null)
+                    continue;
+
+                Module main = simple.HasMainModule ? simple.MainModule : null;
+
+                // Copied out first: RemoveModule mutates the list this is
+                // walking.
+                var doomed = new List<Module>();
+
+                foreach (Module m in simple.ConnectedAndPoweredModules)
+                    if (m != null && !ReferenceEquals(m, main))
+                        doomed.Add(m);
+
+                for (int i = 0; i < doomed.Count; i++)
+                {
+                    // What the grid would have done, had it had a door for it.
+                    try
+                    {
+                        if (data != null)
+                            doomed[i].OnUninstalled(data);
+                    }
+                    catch (Exception e)
+                    {
+                        Log.LogWarning(
+                            "minion grid: a module objected to being removed " +
+                            "from a companion (" + e.Message + "). Removing " +
+                            "it anyway - leaving it installed would be worse.");
+                    }
+
+                    simple.RemoveModule(doomed[i]);
+                }
+            }
+        }
+
+        private static SimpleModuleGrid GridOf(Unit minion)
+        {
+            var gridOwner = minion.GetComponent<ModuleGridOwner>();
+
+            if (gridOwner == null)
+                gridOwner = minion.GetComponentInChildren<ModuleGridOwner>();
+
+            return (gridOwner != null)
+                ? gridOwner.ModuleGrid as SimpleModuleGrid
+                : null;
         }
 
         private static bool BelongsToWeapon(Module module)

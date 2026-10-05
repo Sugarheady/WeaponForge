@@ -35,7 +35,7 @@ namespace WeaponForge
     public static class ForgeTerraformPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private static bool _said;
 

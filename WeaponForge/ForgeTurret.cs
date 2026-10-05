@@ -66,7 +66,7 @@ namespace WeaponForge
             new Dictionary<string, WeaponBase>();
 
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge");
+            ForgeLog.Source("WeaponForge");
 
         private ContactFilter2D enemyFilter;
         private bool filtersReady;

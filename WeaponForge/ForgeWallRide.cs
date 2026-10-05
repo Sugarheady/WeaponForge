@@ -32,7 +32,7 @@ namespace WeaponForge
     public class ForgeWallRide : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.WallRide");
+            ForgeLog.Source("WeaponForge.WallRide");
 
         // ---- tuning, all serialize-safe ---------------------------------
         public float grabRange = 1.6f;   // how near a wall must be to catch

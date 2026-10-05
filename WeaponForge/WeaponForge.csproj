@@ -130,6 +130,17 @@
     <Reference Include="UnityEngine.Physics2DModule">
       <HintPath>$(PunkManaged)\UnityEngine.Physics2DModule.dll</HintPath>
     </Reference>
+    <!-- Animator, for the `bubble` readout. The game's fuel-warning widget is
+         driven entirely by two Animator bools, so cloning it means touching
+         the type. -->
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>$(PunkManaged)\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <!-- The game's own Input System: the rank choices' put-away key
+         (ForgeRankKeys) reads it directly. -->
+    <Reference Include="Unity.InputSystem">
+      <HintPath>$(PunkManaged)\Unity.InputSystem.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="WeaponForgePlugin.cs" />
@@ -160,8 +171,13 @@
     <Compile Include="ForgeOverheatPatch.cs" />
     <Compile Include="ForgeSpinUp.cs" />
     <Compile Include="ForgeSpinUpPatch.cs" />
+    <Compile Include="ForgeRewards.cs" />
+    <Compile Include="ForgeSurge.cs" />
+    <Compile Include="ForgeSurgePatch.cs" />
     <Compile Include="ForgeWeaponStats.cs" />
     <Compile Include="ForgeMuzzleTint.cs" />
+    <Compile Include="ForgeBeamTint.cs" />
+    <Compile Include="ForgeShooterQuiet.cs" />
     <Compile Include="ForgeSlowPatch.cs" />
     <Compile Include="ForgeMinionStats.cs" />
     <Compile Include="ForgeMinionArms.cs" />
@@ -169,6 +185,7 @@
     <Compile Include="ForgeMinionShield.cs" />
     <Compile Include="ForgeMinionSolid.cs" />
     <Compile Include="ForgeMinionShieldPatch.cs" />
+    <Compile Include="ForgeMinionTrimPatch.cs" />
     <Compile Include="ForgeMinionBlast.cs" />
     <Compile Include="ForgeMinionGrudge.cs" />
     <Compile Include="ForgeGrudge.cs" />
@@ -203,7 +220,10 @@
     <Compile Include="ForgeBuffHudPatch.cs" />
     <Compile Include="ForgeStartupPatch.cs" />
     <Compile Include="ForgeLoadoutPatch.cs" />
+    <Compile Include="ForgeLoadoutFiles.cs" />
+    <Compile Include="ForgeLog.cs" />
     <Compile Include="ForgeLootPatch.cs" />
+    <Compile Include="ForgeShopCost.cs" />
     <Compile Include="ForgeShopPatch.cs" />
     <Compile Include="ForgeRegistry.cs" />
     <Compile Include="WeaponBuilder.cs" />
@@ -232,6 +252,20 @@
     <Compile Include="ForgePierceCap.cs" />
     <Compile Include="ForgePiercePatch.cs" />
     <Compile Include="ForgeWeaponInfo.cs" />
+    <Compile Include="ForgeWeaponAlias.cs" />
+    <Compile Include="ForgeWingman.cs" />
+    <Compile Include="ForgeWingmanWeapon.cs" />
+    <Compile Include="ForgeWingmanArt.cs" />
+    <Compile Include="ForgeWingmanBar.cs" />
+    <Compile Include="ForgeWingmanBody.cs" />
+    <Compile Include="ForgeWingmanController.cs" />
+    <Compile Include="ForgeWingmanPatch.cs" />
+    <Compile Include="ForgeWingmanShotPatch.cs" />
+    <Compile Include="ForgeWingmanSave.cs" />
+    <Compile Include="ForgeGauge.cs" />
+    <Compile Include="ForgeGaugeSource.cs" />
+    <Compile Include="ForgeGaugeWidget.cs" />
+    <Compile Include="ForgeGaugePatch.cs" />
     <Compile Include="ForgeWeaponStatsPatch.cs" />
     <Compile Include="ForgePierceCompat.cs" />
     <Compile Include="ForgeWaveMotion.cs" />
@@ -252,6 +286,7 @@
     <Compile Include="ForgeCritPatch.cs" />
     <Compile Include="ForgeSpriteSpec.cs" />
     <Compile Include="ForgeLeech.cs" />
+    <Compile Include="ForgeModuleScope.cs" />
     <Compile Include="ForgeLeechOrb.cs" />
     <Compile Include="ForgeLeechPatch.cs" />
     <Compile Include="ForgeContactController.cs" />
@@ -276,6 +311,28 @@
     <Compile Include="ForgeGravity.cs" />
     <Compile Include="ForgeGravityController.cs" />
     <Compile Include="ForgeGravityPatch.cs" />
+    <Compile Include="ForgeDamageDealt.cs" />
+    <Compile Include="ForgeRank.cs" />
+    <Compile Include="ForgeRankCopies.cs" />
+    <Compile Include="ForgeRankDraw.cs" />
+    <Compile Include="ForgeRankKeys.cs" />
+    <Compile Include="ForgeKeyBinding.cs" />
+    <Compile Include="ForgeDroneModeRules.cs" />
+    <Compile Include="ForgeDroneModes.cs" />
+    <Compile Include="ForgeDroneBrain.cs" />
+    <Compile Include="ForgeDroneModesPatch.cs" />
+    <Compile Include="ForgeDroneModeSave.cs" />
+    <Compile Include="ForgeRankPatch.cs" />
+    <Compile Include="ForgeRankSave.cs" />
+    <Compile Include="ForgeRankCarry.cs" />
+    <Compile Include="ForgeRankStation.cs" />
+    <Compile Include="ForgeBloom.cs" />
+    <Compile Include="ForgeBloomBullet.cs" />
+    <Compile Include="ForgeBloomHooks.cs" />
+    <Compile Include="ForgeBloomPatch.cs" />
+    <Compile Include="ForgeBloomPath.cs" />
+    <Compile Include="ForgeBloomRing.cs" />
+    <Compile Include="ForgeBloomShot.cs" />
     <Compile Include="ForgeGrowth.cs" />
     <Compile Include="ForgeDamageRampPatch.cs" />
     <Compile Include="ForgeDamageRamp.cs" />

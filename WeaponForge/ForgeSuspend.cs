@@ -36,7 +36,7 @@ namespace WeaponForge
     public static class ForgeSuspend
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("WeaponForge.Suspend");
+            ForgeLog.Source("WeaponForge.Suspend");
 
         // includeInactive is MANDATORY, not defensive: `StateMachine.Awake`
         // deactivates every state child, and a unit carries one mover and one

@@ -252,8 +252,9 @@ namespace WeaponForge
 =========================================
 
 Every *.json file in this folder becomes a starting loadout in PUNK.
-Copy ExamplePopper.json, rename it, and edit away. Errors are logged
-to BepInEx/LogOutput.log with the file name.
+Copy ExamplePopper.json, rename it, and edit away. Problems are logged
+to BepInEx/WeaponForge.log with the file name (the launch before is
+WeaponForge.prev.log).
 
 Weapons are built and registered at game startup, so saving mid-run
 and using Continue works. Edits are read at startup / when the ship-
@@ -319,6 +320,23 @@ shop         (optional, default false) if true, the weapon can be
              bought in the in-run shop. Independent of ""source"" - a
              weapon can be starter and/or loot and/or shop.
 shopPrice    (shop only) cost in money/yellow (default 100).
+shopPriceIncrement  (shop only) money ADDED to the price every time it
+             is bought (default 0 = a flat price). The game's own
+             escalation model: flat, not a percentage, never compounds.
+shopCost     (shop only) currencies BEYOND money, as a name-to-amount
+             object: ""shopCost"": { ""Chip"": 1, ""Fiber"": 2 }. They stack
+             ON TOP of shopPrice, which is what every stock shop entry
+             does - write ""shopPrice"": 0 for an ingredient-only cost.
+             The five the game trades in are Chip, Fiber, Gland,
+             Powerstar and Generator (Fiber and Generator are stored as
+             ""Coral"" and ""Shell""; both spellings work). Any ship
+             resource name works too. Whole units only.
+shopCostIncrement  (shop only) the same escalation per currency:
+             ""shopCostIncrement"": { ""Powerstar"": 1 }.
+shopUnlock   (shop only) an ingredient name, or a list of them, that
+             must have been PICKED UP at least once this run before the
+             item appears in the shop at all. Independent of the price,
+             so you can gate on one thing and charge another.
 shopUnlockLevel  (shop only) how many STATIONS the player must unlock
              before it can appear in the shop (default 1). PUNK gates
              the shop by station count: 0 = available from the very
