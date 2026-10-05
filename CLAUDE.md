@@ -15,6 +15,95 @@ concept of (orbit, wave, boomerang, ricochet, growth, deflect, homing for plain 
 **Design rule that matters:** a bad JSON file must never crash the game. It is skipped, the reason is
 logged, and the run continues. Preserve that when adding anything.
 
+## Harness — the checks that run without the game
+
+`Harness/` holds every non-game check for this repo. `python Harness/run.py` runs them all and prints
+one total; `npm install` once, inside that folder, because several load `Weapon Builder.html` in jsdom
+(the page is far too big for a browser preview tool).
+
+**They live here as of 2026-09-19, and the move is the lesson.** They used to live in a temporary
+session scratchpad. Rebuilding `gadgettest.py` found that the file was **gone** and that the set it
+existed to pin had drifted by two in the meantime. Harvesting the rest found the same thing at scale:
+`steertest.py`, `teardowntest.py`, `navtest.js` and `carryaudit.py` were all gone, while this file
+went on describing each of them in the present tense as pinning something. `applyordertest.py`
+survived and had drifted by **four** entries.
+
+> **A pin that does not run is a comment.**
+
+**All four were rebuilt the same day** — from what this file says they guarded, then checked against
+the code rather than against the prose. What that turned up is worth keeping, because in three cases
+out of four the HARNESS was wrong and the code was right:
+
+- **`steertest.py`** — the `Velocity` census is 26 writes in six kinds (FREEZE / SPEED / BIRTH /
+  STEER / OWNER / OTHER; 26th: `ForgeSteer.Drive`, 2026-10-02), because **only DIRECTION is
+  contested**. A first version reported a latch
+  bug in `ForgeSteer.Ensure` by searching the whole file for `AccessTools` and finding the header
+  comment. **An assertion that reads prose is not reading the code** — it is scoped to the method now.
+- **`teardowntest.py`** — the "every teardown is actually CALLED" sweep initially reported *fifteen*
+  false failures, because it attributed each method to the nearest class declared above it, which is
+  the nested `Config` rather than the outer static class. It walks brace depth now. The two genuinely
+  uncalled ones are both excluded with a reason: `ForgeSlow.ClearTime` is deliberately unwired, and
+  **`ForgeMinionSolid.Reset` is redundant rather than missing** — its gate is a `HashSet` named
+  `_said`, which `ForgeDiagnosticGates` already sweeps by convention.
+- **`navtest.js`** — the load-bearing assertion is that the emitted JSON is byte-identical before,
+  during and after filtering. **The search is debounced by 120 ms and the test has to respect that**:
+  typing and asserting in the same tick made a correct jump look broken.
+- **`carryaudit.py`** — matches carried titles by WORD OVERLAP, because a rewording is not a drop.
+  The `RETIRED THIS ROUND` entry is excluded by name: its text is *supposed* to differ every round,
+  so comparing it reports a drop on a round that did nothing wrong.
+
+> **A harness written from a description is a hypothesis.** Every one of these had to be run against
+> the real source before it was worth anything, and three of the four failed first against code that
+> was correct.
+
+### The three that had gone stale, and what a stale one actually costs
+
+Three harnesses were carrying expectations from before features that had since shipped. Fixed
+2026-09-19, and none of the three was the simple bump it looked like:
+
+- **`barricadetest.js` → RETIRED to `closed/`.** Its subject was not broken, it was *replaced*:
+  Barricade was retuned into **Excavator** on his R17 test 228 report, and every axis inverted
+  (lobbed→straight, secondary→primary, `"soft"`→`"all"`, Obsidian→Tuff). Six of eleven assertions
+  failed correctly. But two still PASSED and were worth keeping — the `"soft"` keyword case and
+  `CellsSoft` holding the three Fogs — and they were only ever reachable because one shipped preset
+  happened to use that word. **A harness failing for six unrelated reasons reads as "that old test is
+  stale", so nobody reads the assertions that still pass.** They now live in `cellwordstest.js`,
+  which asserts the page↔C#↔how-to *vocabulary* directly, so no preset has to use a word for that
+  word to stay guarded.
+- **`seealsotest.js`** — asserted `callouts.length === 3` and "each feature has exactly ONE". Both
+  were facts about the page on the day it was written, not promises: `surge` and `rank` shipped with
+  callouts, and `spinUp` legitimately carries **two** doing different jobs. It asserts by NAME now,
+  the total may only grow, and the durable form of his original ask is read from the C#: **every
+  `ForgeGauge.Source` must point at the readout section**, so a fifth source fails until it is
+  signposted. It also clicked `bubble` links by index `[2]` under the comment *"the one in `charge`"* —
+  two callouts later that index is spinUp's, so **the assertion passed while testing something other
+  than what its name said**, and would have kept passing with charge's link deleted.
+- **`gaugetest.py`** — three of its four failures were an exact-match regex reporting an addition as a
+  violation. The fourth was not a failure at all, which is the point:
+
+> **★ A green assertion was protecting a bug.** `gaugetest` asserted the builder page contained
+> `"heat,charge,spinUp"` and the words `"recommended order"`. Both stayed true while the sentence
+> around them rotted. `Source.Surge` was added at the **front** of `DefaultSources`, the how-to was
+> rewritten to match, and the page went on recommending *"heat → charge → spin-up"* — omitting the
+> source that now leads the list — while the dropdown **directly above that sentence** had already
+> been updated to offer surge. The control and its own explanation disagreed on one screen, and the
+> harness held the stale half true. Same family as `r19live.js` asserting `source == "shop"`, a value
+> that was never valid. **Pin the thing that is TRUE, not the substring that happens to survive.**
+
+Three rules the layout enforces rather than states:
+
+- **Everything directly in `Harness/` only asserts. Mutators go in `Harness/edits/`**, which `run.py`
+  never walks — because a filename cannot tell you whether a script asserts or mutates, and running
+  every `*.py` in a folder once silently duplicated four methods in `WeaponBuilder.cs`, four
+  builder-page sections and five how-to blocks.
+- **`STALE` is a distinct result from `FAIL`.** A harness whose subject was archived (an old round's
+  checklist) is not a code failure, and collapsing the two makes a red total meaningless.
+- **`closed/` takes two kinds of retirement** — a round that is over, *and* a subject that was
+  deliberately replaced. Before parking one, check what else it was holding: see its README.
+
+Nothing here contains an absolute path — each harness resolves the repo from its own location, since
+this repo is public and an absolute path in one names its author.
+
 ## Build & test loop
 
 See **BUILDING.md** — you point one property at your PUNK install; you never edit a `.csproj`.
@@ -26,7 +115,34 @@ msbuild WeaponForge.sln -p:Configuration=Debug
 **There is no hot reload.** Files are read at startup, so every test is a full game restart. Budget
 for that: prefer one restart that tests five things over five restarts.
 
-Logs are verbose on purpose. `BepInEx\LogOutput.log`, search `WeaponForge`.
+Logs are verbose on purpose. **`BepInEx\WeaponForge.log`** (the launch before: `WeaponForge.prev.log`).
+Since 2026-09-25 `LogOutput.log` and the console keep only the plugin's own load lines plus a copy of
+every error. See "The log file" below.
+
+### The log file — `ForgeLog`
+
+- **Every log source is `ForgeLog.Source("WeaponForge.X")`, never `Logger.CreateLogSource`.** In
+  BepInEx 6.0.0-be.785 `CreateLogSource` is `new ManualLogSource` + `Logger.Sources.Add`, and that
+  Add is the only wire to the shared listeners. An unregistered source reaches only `ForgeLog`, which
+  writes the file and forwards Error/Fatal. `logfiletest.py` fails on a stray `CreateLogSource`.
+- **The plugin's own `Logger` is the one registered source** — its lines (loaded + where the file
+  is, BUILD, switched off, patches applied) are what LogOutput.log keeps. Anything else in `Awake`
+  goes through `ForgeLog.Source`. `ForgeLog.Start` is the FIRST line of `Awake` so those lines are
+  copied into the file as well.
+- **It catches the game's own errors that name us.** `WriteUnityLog` defaults false, so BepInEx
+  blacklists "Unity Log" from LogOutput.log — an exception thrown out of one of our patches used to
+  be in no file at all. `GameErrorCatcher` copies any whose stack trace has a `WeaponForge.` frame
+  (3 per error, 50 per launch). The match is a frame START, not a Contains, because the three mods'
+  names overlap as text.
+- **Every failure falls back to LogOutput.log and says so.** No folder, no file, a full disk, after
+  `Close`: the line is forwarded, never dropped.
+- **A relaunch overlaps**: the restart row starts the new game before this one quits, so `TryOpen`
+  waits up to 2s for the file before deciding the game is running twice (then `WeaponForge.2.log`).
+- `logfileprobe.py` compiles the shipped `ForgeLog.cs` against the real `BepInEx.Core.dll` and runs
+  seven launch scenarios, one process each. Mutation-tested: eight defects, each caught by its own
+  assertion.
+- `[Logging] OwnLogFile = false` restores the old behaviour. Module Forge and Game Mode Forge carry
+  their own copies (`ModuleForgeLog`, `GameModeForge.ForgeLog`) — duplicated on purpose.
 
 ## Do not commit game code
 
@@ -127,6 +243,37 @@ Also public and writable: `Radius` (so writing it grows the real hitbox — art 
   from *either* direction, so a fast launch decelerates. A build warning claiming "thrusts up to 100
   units/second" was out by 17x, and a preset shipping `thrust: 18` was a cruise of 1.5 u/s — a rocket
   that visibly stops in mid-air. Take the SPEED from the author and compensate.
+- **ON A SHOT WITH GRAVITY, `cruise` HAS TO BEAT THE WEIGHT - and the cruise line says nothing
+  about that.** The thrust-is-a-force note above solves `force / (mass * damping)`, which is the
+  **level-flight** speed: derived, correct, and measured in a world with no gravity. R14 test 163
+  was a Derbis grenade with `cruise: 10` that *"mostly shoots up briefly and then falls"*, while the
+  build log stated with total confidence that it "SETTLES AT 10 units/second". The hover point is
+  where thrust acceleration equals gravity acceleration, and it reduces to one clean number:
+  ```
+  hoverCruise = gravityScale * 9.81 / damping        // the MASS CANCELS
+  ```
+  Ammo Derbis (1.8 / 0.4) needs **44**, so his file had 23% of the thrust required to hold itself
+  up - it could only ever fall more slowly. It is also numerically the shot's terminal fall speed,
+  which is the same statement read the other way round. Warned now, with the number printed and both
+  honest answers offered (raise it, or keep it as a mortar you can nudge).
+  > **A derived number is only true in the conditions it was derived for**, and a log line stating
+  > it without the conditions reads as a measurement. Print the comparison, not the number. Same
+  > family as `acceleration` being a force one field along, which is the trap this one hid behind.
+- **`homingData.maxSpeed` OF ZERO MEANS "NEVER THRUST", NOT "NO LIMIT" - and zero is the stock
+  value on every weapon that is not already a homing weapon.** The engine's whole thrust is
+  `if (rigidbody.linearVelocity.magnitude < HomingData.maxSpeed) AddForce(transform.right *
+  HomingData.acceleration)`. A magnitude is never negative, so at 0 that test can never pass and the
+  `AddForce` never runs, **whatever `acceleration` says**. `Weapon White Derbis` ships `homingData`
+  all-zeroes; `Ammo Rocket Fire` ships `maxSpeed 100`. That is the entire reason `guided` worked on a
+  rocket and did nothing at all on a grenade - R15 test 187, *"even bumping up to cruise:60 I
+  couldn't get it to fly"*: he got a nose that turned to the cursor and no engine behind it.
+  The check that should have caught it was already there and its own comment stated the failure
+  ("the cap has to be above the cruise or it becomes the real limit and cruise silently means
+  nothing"), then guarded on `h.maxSpeed > 0f` - excluding zero, which is the strongest case of a cap
+  being too low and the only one where the feature does nothing whatsoever.
+  > **A guard written for "this value is too small" must say what it does at zero.** Treating zero as
+  > "unset, leave it alone" is right for a field that means a limit and wrong for one the engine
+  > reads as a gate, and which of those it is cannot be guessed from the name.
 - **`arrive`-style "stop steering when close" cannot stop a rigidbody circling a fixed point.** It
   works on a plain `Projectile`, whose velocity is rewritten directly and which will therefore sit
   on a point spinning. A physics shot has momentum and a minimum turn radius, so it flies through and
@@ -237,8 +384,9 @@ Also public and writable: `Radius` (so writing it grows the real hitbox — art 
 - **Gadget weapons bypass `Shooter` entirely.** Anything hooked onto Shooter (e.g. orbit) needs the
   gadget path handled separately.
   **AUDITED 2026-09-03, and the result is worth keeping because two thirds of it was already right.**
-  Nine files patch `Shooter` (two more mention `typeof(Shooter)` for reflection only, which is what
-  makes a raw grep overstate this). Six already accounted for gadgets: `overheat`, `spinUp` and
+  Nine files patched `Shooter` at the time — **eleven as of 2026-09-19**, see the bump note below —
+  and two more mention `typeof(Shooter)` for reflection only, which is what
+  makes a raw grep overstate this. Six already accounted for gadgets: `overheat`, `spinUp` and
   `charge` refuse outright; `shield` warns for its held arc and points at `ram`, which is dash-driven
   and works either way; `orbit` has a dedicated `ForgeOrbitGadgetPatch` hooking the module's own
   `Activate`; and the minion cap is enforced a **second** time in the `MinionSpawnerWeapon.FireSingle`
@@ -262,6 +410,18 @@ Also public and writable: `Radius` (so writing it grows the real hitbox — art 
     and now warned with "the spiral itself still steps" said out loud.
   **`gadgettest.py` pins the SET of Shooter-patching files**, so a new feature that patches Shooter
   and neither warns nor handles gadgets fails a check rather than shipping quietly.
+  **BUMPED TO ELEVEN 2026-09-19, and the drift is the finding.** The set had grown by *two* since
+  the audit and the pin had caught neither, because the harness itself had been lost with its
+  session scratchpad — **a pin that does not run is a comment.** `surge` (2026-09-15) and `bloom`'s
+  reach ring (2026-09-19) are both handled, and each by a route a warning-grep would have called a
+  failure: `ApplySurge` takes no slot at all and asks `ForgeOverheat.TryGet` — the **registration**,
+  not the JSON — so overheat's own gadget refusal already covers all three ways there might be no
+  meter; and `bloom` warns only for the *ring*, because the bloom itself rides `Projectile.Shoot`
+  and works in a gadget perfectly. So the check is that each file is **classified**, not that it
+  warns: three of the eleven are correct with no warning of their own, and a harness demanding one
+  from each would report three false failures and be deleted. One thing it pins that the original
+  did not: **no patch may be declared by type NAME** (`[HarmonyPatch("Shooter", …)]`), which would
+  slip past a `typeof` census silently.
 - **A sub-emitter is unupgradeable, ownerless and fires straight up — all three by design, none
   fixable in place.** `WeaponFactory.Create` applies every module's `IWeaponModifier` to the weapon
   and *then* builds the sub with `Create(weaponData.subEmitter, **null**)` — the empty module cluster
@@ -304,6 +464,16 @@ Also public and writable: `Radius` (so writing it grows the real hitbox — art 
   muzzle-flash instances both fire from it. The loop is synchronous (`FireSingle` instantiates *and*
   calls `Shoot()` before returning), so a plain static holds good for the whole volley —
   `ForgeVolley`, stamped with `Time.frameCount` so a later sub-emitter can't read a stale axis.
+- **★ BY THE TIME `Shoot` RUNS, A SHOT'S `Velocity` ALREADY CARRIES THE SHIP'S VELOCITY.**
+  `ProjectileVelocityInfluencer` hooks `OnPrepareProjectile` — the last thing `FireSingle` does
+  before `Shoot()` — and adds the firer's motion (per `velocityInfluenceData`). So
+  `Velocity.magnitude` in a `Shoot` hook is `projectileSpeed` **plus how fast you were flying along
+  the aim line**, and its direction is skewed by any strafe. `bloom` read its swell rate from that
+  and shipped with pop timing that followed the ship: faster flying toward the crosshair, slower
+  flying away, and a launch speed exactly cancelled gave a rate of ~0 — a bubble that never finished
+  swelling and never popped (R19 247-249). Anything that treats the launch speed as the GUN's number
+  must read `IHasSpeedProperty.Speed` off the weapon instead; that is the live `projectileSpeed`,
+  modules included, motion not.
 - **`WeaponBase.Fire` is `for (burst = 0; burst < BurstSize; burst++) { DoShoot(barrel); await
   UniTask.Delay(BurstDelay * 1000); }`** — verified against the IL of the `<Fire>d__147` state
   machine, which dnSpy doesn't emit. Three consequences: `DoShoot` runs **exactly `BurstSize`**
@@ -343,6 +513,40 @@ directly**, so nothing Shooter-shaped reaches them. Things worth knowing before 
   **A refusal should consume the pull**: `ForgeSwarm.ConsumePull` stamps `lastShootTime` by reflection
   so the cap becomes a clock rather than a gate. Worth checking for any other skipping prefix on
   `Shoot`.
+- **A PULL THAT REACHED THE WEAPON HAS SPENT ITS INTERVAL, WHATEVER BECAME OF THE SHOT.** The
+  note above says a *skipping prefix* never stamps the clock, and `ForgeSwarm.ConsumePull` fixed
+  that for a refused pull. R14 test 170 came back with the PULLS instrument reporting pulls **0.017s
+  apart** - one frame - against a 1.25s interval, on pulls that were *allowed* and did spawn. That
+  cannot be sourced by reading the code: `Shoot` stamps `lastShootTime` as its last statement,
+  `Update` calls it once a frame, and every path is once per interval. But the shape of the evidence
+  narrows it to one half - **every allowed pull produced a minion, and firing is the first statement
+  while the stamp is the last** - so the shot happened and the clock did not move.
+  So the rule is applied to *every* pull rather than only the refused one, via a `Shooter.Shoot`
+  **finalizer** that compares the clock across the call, repairs it, and logs the cause with
+  Harmony's `__exception` attached. A finalizer returning `void` leaves the exception exactly as it
+  was, so it observes without changing what the game does with it.
+  > **A guard written for the exceptional path is not a guard for the ordinary one.** Twin of the
+  > gadget-audit lesson that a guard against one instance of a mechanism is not a guard against the
+  > mechanism.
+  > And the clock write had a bare `catch (Exception) {}` four lines below a comment of mine saying
+  > that a silent fallback on a timing path is exactly what costs a test round. **Grep your own
+  > standing rules against the code they were written about.**
+- **BLOCKING A SHOOTER FREEZES A BEAM ON SCREEN, AND CLEARING `IsTriggerPulled` DOES NOT FIX IT.**
+  R15 test 188: *"after overheating the beam stays in place firing from the original place that it
+  died out at. I move away and the beam is still firing from that spot."* `HitscanWeaponVisual.Firing`
+  is written from exactly one place - the `else` branch of `if (IsTriggerPulled)` inside
+  `HitscanWeapon.OnBarrelMoved` - and `Shooter.Update` returns on `blockers.Count > 0` **before** it
+  calls `OnBarrelMoved`. So the flag we set is read by nobody, and the visual keeps its sprite, its
+  `Light2D` and its impact particle at the position and rotation of the last frame the gun could fire.
+  > **Clearing a flag is not the same as applying it.** A flag is applied by whatever reads it, and
+  > if that reader is above the guard you just added yourself to, nothing has happened at all.
+  **`ForgeShooterQuiet.Silence(shooter)` is the one owner** of everything a block has to do by hand -
+  both sounds, the trigger flag, `CoolDown()`, and one more `OnBarrelMoved` with the flag already
+  false. Overheat and stun both call it; stun had predicted this case in a comment ("left true, a
+  beam's renderer can keep drawing its last frame") and half-fixed it the same way.
+  (The damage really does stop: the cast is in `FireSingle`, which needs `Shoot()`, which returns on
+  the same blocker list. What looks like continuing damage is the impact-spark particle still
+  playing on whatever the beam was last pointed at.)
 - **`Shooter.FireRatePassed` RE-READS `FireRate` EVERY FRAME** — it is
   `Time.time > lastShootTime + 1f / weapon.FireRate`, computed fresh, never cached. So raising the
   rate mid-hold shortens the gap you are *already waiting through* rather than the next one, and
@@ -361,6 +565,22 @@ directly**, so nothing Shooter-shaped reaches them. Things worth knowing before 
 - **`AimAction.RotationSpeed` clamps turning to `MaxRotationSpeedWhileShooting` while shooting** —
   but that's the *enemy* aimer. The player aims through `Aimer`, which has no such clamp, so a
   held-trigger player weapon doesn't slow the crosshair.
+
+### A LOG LINE THAT BORROWS ANOTHER FEATURE'S WORD SENDS PEOPLE LOOKING FOR A FEATURE THAT IS NOT THERE
+
+`onKill`'s `clearBurn` removes the ship's **burn level** - being on fire - and the build log printed
+it as **"cools 3"**, in a mod where "cool" means the `overheat` meter everywhere else, on a weapon
+that can carry both blocks. R15 comments: *"just noticed in onkill options for weaponforge that its
+missing a reduce heat option here too. Could you add that (unless i missed all that)?"* He had read
+his own log saying "cools 3", gone looking for the heat option, and found none - because there was
+none. It says "puts out N of your own burning" now.
+
+`onKill.coolHeat` is the real thing, and it needed no new mechanism: `ForgeHeat.Remove` takes heat
+off, and a kill that drops the meter below `ventTo` **ends a vent lockout on the next frame** through
+the path that already knows how to recover (sound, repaint, rate restore) - so a second unlock route
+was deliberately not written. Scoped to the weapon that scored the kill (`_credit`), so a secondary's
+kill never cools your primary. `ForgeHeat.CoolOn(unit, weapon, amount)` is also the entry point
+Module Forge's `KillRewardEffect.coolHeat` reaches by reflection.
 
 ### ARMING A SHOT IS NOT FIRING ONE, and a lockout can make the difference invisible
 
@@ -517,6 +737,40 @@ unit. Anything else that wants the crosshair should go through it rather than re
 > module augmentation between engagements) is picked up instead of being pinned by a stale number;
 > publishing a multiplier of 1 is *not* the same as withdrawing.
 
+> **If your feature needs to know HOW MUCH DAMAGE LANDED, read `ForgeDamageDealt` — don't measure
+> it again.** `DamagableResource.Damage(float)` refuses damage three silent ways before it touches a
+> tank (a damage blocker, no tank of that resource type, i-frames), so the honest measurement is to
+> snapshot `Tank.Value` in a prefix and diff it in a postfix. `leech` worked that out; `surge`
+> copied it **verbatim, comments included**; and by the time `rank` wanted the same number there
+> were about to be **three byte-identical copies on the method every point of damage in the game
+> passes through** — which already carried seven of this mod's patches.
+>
+> One owner since 2026-09-19. Readers subscribe with a cheap gate and a callback.
+>
+> - **The point is not the patch count.** Three copies of one measurement can drift apart and
+>   nothing would report it: leech could start counting overkill while surge did not, and the two
+>   would disagree about what the same hit was worth on the same weapon.
+> - **The carrier must be `__state`, never a static.** `Damage` NESTS — it can call `Die()`, whose
+>   spawn-on-death explosion reaches `OnExplosion` and back into `Damage` before the outer call
+>   returns, so a static snapshot is overwritten by the inner hit.
+> - **Overkill is removed once, centrally.** `ResourceTank.Value` has no floor, so a 200-damage
+>   rocket into a 5-health fly leaves the tank at −195 and the raw delta reads 200.
+> - **★ A REFACTOR THAT MAKES NEW INFORMATION AVAILABLE IS A BEHAVIOUR CHANGE unless each reader is
+>   asked whether it wants it.** The shared version can attribute a **burn tick** (see below), which
+>   neither old copy could. Handing those hits to `leech` would have silently started healing every
+>   burn weapon already written, and to `surge` would have started filling meters from gas clouds.
+>   Both explicitly decline them, and `ranktest.js` asserts that they still do.
+
+> **A BURN TICK CARRIES NO WEAPON, and `ForgeIgnition` is how one is attributed.**
+> `DamagableResource.Update` ticks `this.Damage(burnProperties.fireDmgPerTick)` with nothing on the
+> stack saying where the fire came from — so "damage over time earns XP" would have been a setting
+> that read as working and paid nothing. Two facts make the fix exact rather than a guess:
+> **`ApplyBurn` is private and called from exactly three places, all inside the methods that set
+> `ForgeKillsPatch.Source`** (so the weapon IS knowable at ignition), and **the burn tick is the only
+> `Damage` call inside `Update`** (so "we are inside Update" identifies one precisely — inferring it
+> from "the victim is on fire" would also have claimed lava and hazard cells). The stamp expires, and
+> the whole thing is gated on a static nothing sets unless a feature asks for it.
+
 > **If your feature changes damage in flight, publish a multiplier to `ForgeDamageStack` — don't
 > write `Damage` directly.** Exactly the same problem as `idealDirection`, one field along: two
 > features assigning `Damage.amount` from their own captured bases means whichever FixedUpdate prefix
@@ -546,8 +800,8 @@ unit. Anything else that wants the crosshair should go through it rather than re
 > postfix, so it is one per object and GC takes it), no clone accumulation (`BuildAll` is idempotent
 > via `_builtNames`). The finding was somewhere else entirely:
 > - **A once-only log gate is per SESSION, but what it describes is per RUN.** 26 of them across 19
->   files (`_said*` / `_warned*`), and **three** had a working reset. So the second run of a session
->   reported nothing — and the run where you go looking for a warning is exactly the run that cannot
+>   files (`_said*` / `_warned*`) - **20 one-shot bools and 6 keyed `HashSet<string>`s** - and
+>   **three** had a working reset. So the second run of a session reported nothing — and the run where you go looking for a warning is exactly the run that cannot
 >   produce it. Every doc line saying "check the log if X does nothing" was true only on run 1.
 >   `ForgeDiagnosticGates` now sweeps them **by naming convention** rather than by a list: the
 >   hand-written version is what drifted, and a list nobody rereads is not a mechanism. It
@@ -560,6 +814,23 @@ unit. Anything else that wants the crosshair should go through it rather than re
 > - **The reset list existed twice, byte for byte**, once per entry point. Anything added to a
 >   duplicated list is one paste from being half-wired, and a half-wired reset fails only on the
 >   path you did not test. One `ResetAll()` now.
+>
+> **AND THE SWEEP ITSELF WAS 20 OF 26 CORRECT, reported as done, with the missing six named in the
+> log I read.** Found 2026-09-08 from his round-14 log: *"Once-only log gates found: 20"*, against a
+> grep of 26 written down in the same session. **`HashSet<T>` does not implement the non-generic
+> `System.Collections.ICollection`**, which is what `IsGate` tested for - and `List<T>` and
+> `Dictionary<K,V>` both do, so the test reads as safely conservative while excluding the single
+> container actually in use. All six keyed gates are `HashSet<string>`, all six in the minion
+> features he tests most. Two rules out of it:
+> - **Test the capability you are about to use, not an interface that implies it.** `IsGate` asked
+>   "is this an `ICollection`" while `Clear` went looking for a `Clear()` method - two different
+>   questions about the same field, so acceptance and action could disagree. Both ask for `Clear()`
+>   now, so they cannot.
+> - **A COUNT IS ONLY EVIDENCE WHEN IT CAN BE CHECKED AGAINST A COUNT DERIVED ANOTHER WAY.** One
+>   total told me nothing and I read it as confirmation. The line prints the split now - "20
+>   one-shot, 6 keyed" - which a grep of the declarations can contradict. The same shape as the
+>   RATE CHECK reading the template's fireRate: an instrument whose number looks like evidence is
+>   worse than no instrument.
 
 ### Sprites
 
@@ -590,6 +861,45 @@ unit. Anything else that wants the crosshair should go through it rather than re
   slow ends     writes back ORIGINAL           ← the red is gone
   slam ends     writes back ORIGINAL×blue      ← THE BLUE IS NOW PERMANENT
   ```
+  > **A MULTIPLY CANNOT BRIGHTEN, so "make the tint stronger" is not a range problem.** He asked
+  > twice in one round (R14 tests 166 and 167), having already turned `tintStrength` up: *"I was
+  > hoping to make the color STRONGER and more prominent... some of the enemies look like they're
+  > being tinted and others not so much."* Both halves of that are the operator: `base * colour`
+  > moves a pixel toward black and never toward the colour, so a pale tint over a dark grey Cross
+  > barely registers while the same tint over a pale Fly reads clearly - and **at strength 1 a
+  > multiply is already as strong as a multiply gets.** So the answer was a second operator, not a
+  > wider range on the first: `"tintMode": "replace"` lerps the sprite toward the colour.
+  > `multiply` stays the default because every file already written was tuned against it.
+  >
+  > **AND "REPLACE BRIGHTENS AS READILY AS IT DARKENS" WAS WRONG, one layer further down.** R15 test
+  > 185: *"their prefab models dont appear to change color very much except for their mouths."*
+  > `SpriteRenderer.color` is itself a **vertex multiply in the shader** - the pixel is always
+  > `texture x colour` - so the very most any tint can do is `texel x yours`, in either mode.
+  > Measured off the atlas, **`Unit Fly Regular`'s body art averages 40/255 luminance (16% grey)
+  > against 76 for its beak**, both on the same shared `SpriteLitAA` material, which is exactly why
+  > the mouth changed and the body did not. It was being written correctly the whole time.
+  > What `replace` really buys is the **layer arithmetic** - the tint factor is set rather than
+  > compounded, so it cannot get weaker as layers pile on - not a higher ceiling. Three honest
+  > answers now in the docs: pick a colour that survives a multiply (saturated, not pastel), use
+  > `colorPulse` because motion is visible at any brightness, or accept a dark version of the colour.
+  > A coloured `Light2D` on the unit is the only thing that would genuinely brighten it (the
+  > material is Lit) - **offered and not built**, since it is a new mechanism rather than a setting.
+  >
+  > **Four hypotheses were killed by measurement before the right one**, and each was cheap to test
+  > and would have been expensive to ship: an Animator overwriting `m_Color` (only the *Dead* clip
+  > animates colour), a different material on the body (it is the same asset as the beak), the
+  > `Visual`-subtree scoping missing it (`Visual/Body/BodySprite` is inside it), and `stun` not
+  > passing `tintMode` through (it does). *Decoding the texture was the only step that answered it.*
+  >
+  > Three details worth keeping. **Multiply resolves first and replace paints over the result** -
+  > the only ordering that means anything, since a replace layer is "paint this on top" and a
+  > multiply applied afterwards would darken the paint. **Two replace layers are a weighted mix**,
+  > not a chain of lerps, for the reason `ForgeMuzzleTint` learned the hard way. And **`tint` is
+  > accepted as a spelling of multiply**, because `minion.colorMode` got there first and already
+  > calls the same two things `replace` and `tint`: two vocabularies for one idea in one mod is a
+  > bug report waiting to be filed. Read in one place, `WeaponBuilder.TintMode`, beside the
+  > strength - so it reached eight features with no lines added to any of them.
+
   `ForgeUnitTint` keeps one captured base per renderer — captured once, never from a tinted state —
   and multiplies every live layer over it. Multiplication is commutative, so there is no ordering to
   get wrong and no restore path that can bake somebody else's colour in. It also owns the two scoping
@@ -610,6 +920,20 @@ unit. Anything else that wants the crosshair should go through it rather than re
   before. The capture is also **re-taken when the instance list changes shape**, because
   `InitializeVisuals` destroys and rebuilds those systems and `spinUp`'s `pellets` reward triggers
   exactly that.
+  > **ORDER-INDEPENDENCE IS NOT THE SAME THING AS COMPOSING, and I wrote the weaker property down
+  > as though it were the goal.** The first version applied the layers as a **chain of lerps** in
+  > key-sorted order, and the note above argued for exactly that: the result does not depend on
+  > which feature published first. True, and insufficient - `Lerp(x, c, 1)` *is* `c`, so the last
+  > key alphabetically discards every layer before it. "heat" sorts before "spin", so a fully wound
+  > gun showed **no heat at all**, and it stopped showing heat exactly as the heat began to matter.
+  > R14 test 176 reported a white flash with no orange, and the build log claimed in as many words
+  > that the two blocks "COMPOSE rather than fight".
+  > Fixed 2026-09-08 with a **weighted mix**: `total <= 1` gives `base*(1-total) + SUM(c_i * a_i)`,
+  > `total > 1` normalises by the total. With ONE layer that is `Lerp(base, c, a)` term for term, so
+  > every overheat weapon already written renders byte-identically including its alpha - which is
+  > what made the change safe to make. **The same arithmetic is now in `ForgeUnitTint` for its
+  > `replace` layers, for the same reason.**
+
   > **A SHARED TABLE REPLACING A CAPTURE-ONCE-AND-LATCH MUST KEEP A NO-ALLOCATION FAST PATH, or the
   > refactor is a regression in the feature it absorbed.** Caught auditing this one after it had
   > already built clean and passed 88 assertions: the first version re-walked
@@ -700,7 +1024,7 @@ unit. Anything else that wants the crosshair should go through it rather than re
   a live object every swing.
 - **The icon paths bypassed the suffix entirely, and the failure was loud, which is why it survived.**
   Both `ApplyModuleIcon` and the catalyst indicator handed the whole string to
-  `JsonFieldMapper.FindAsset`, so `"HUD_GridTiles_04:2"` matched no asset and fell through to
+  `JsonFieldMapper.FindAsset`, so `"HUD_GridTiles_4:2"` matched no asset and fell through to
   "no sprite named ..." — naming the exact string, so not a silent fallback, but with the suffix as an
   unstated reason. `ResolveStockIcon` (and Module Forge's own `StockIcon`) fix it, and
   `ResolveIconSprite` now splits too and caches under the **raw** name so `sheet:2` and `sheet:5` are
@@ -940,6 +1264,62 @@ target). Terrain has no `Unit`, so it falls through and rammers still stop at wa
 `[HarmonyPatch]` attribute and `PatchAll` cannot find it — patched by hand from the plugin, with
 `object __instance` and positional `__0`.
 
+**AND THE SAME MASK MAKES A CHARMED RAMMER HARMLESS TO EVERYTHING, which is a wider bug than the
+one that got reported.** `ForgeMinionAllegiance.Ram` widened the mask for *summoned* minions in R10
+and nothing carried it to `charm`, which set the faction, widened the eyes, dropped the grudge and
+left the headbutt as the prefab shipped it - `Player | Ground`. So a charmed Larva could not touch
+another convert (R14 test 158, the reported half) **and could not touch an enemy either**: its only
+reachable target was the player, which the ram guard correctly refuses. Charm on a rammer produced a
+pacifist. `WidenRam` / `RestoreRam` are the reusable pair now, and charm records what it changed
+because unlike a summoned minion this is a stock enemy that goes back to being one - restored
+*before* the `Widened` marker is dropped, or there is a frame in which a released enemy rams
+everything on Entities.
+
+> **A hit that arrives by a different route is not covered by a rule written at a chokepoint it does
+> not pass through.** Charm's `harmless` guard hangs off `ForgeKillsPatch.Source` - the WEAPON that
+> dealt the damage - and a headbutt has no weapon. So a ram was never subject to that guard, never
+> appeared when the two `infighting` exemptions were being reasoned about, and needed a third
+> exemption in `ForgeMinionRamGuard`. Contact damage, burn ticks and cell collisions have the same
+> property: they report no weapon.
+
+**AND THE WIDENED CAST STARTS INSIDE THE RAMMER'S OWN BODY, which is a second bug from the same
+line and the one that actually killed things.** R15 test 184: *"with the larva and maggots they take
+ticking damage and pretty much die from being charmed"*, plus the older never-explained *"the
+swarmgun minions hurt themselves"*. One cause for both.
+
+`ChargerHead.FixedUpdate` casts a circle of `radius` **from the beak** along the body's velocity.
+Measured off all four prefabs that carry one, the beak circle and the body collider overlap each
+other *before the sweep starts*:
+
+| prefab | cast r | beak offset | body r | overlap |
+|---|---|---|---|---|
+| `Enemy_Larva` | 0.39 | 0.61 | 0.39 | 0.17 |
+| `Enemy_Maggot` | 0.51 | 0.671 | 0.51 | 0.35 |
+| `Enemy_Child` | 0.39 | 0.61 | 0.53 | 0.31 |
+| `Unit Swimmer Maggot` | 0.51 | 0.671 | 0.51 | 0.35 |
+
+Every one of those bodies is on **Entities (layer 7)** - the bit we add - and `Physics2DSettings`
+ships **`m_QueriesStartInColliders: 1`**, so Unity returns a collider the shape is already inside at
+**fraction 0**. The `CircleCollider2D` and the `HealthBase` are both on the unit root, and
+`OnObjectHit` hands the damage to `hit.collider.GetComponents<IHazardSensor>()` with no self test.
+So a widened rammer headbutts **itself** every `minDamageDelay` - 0.5s on a Larva, 0.3s on a Maggot.
+
+**And `ForgeMinionRamGuard` was letting it through on purpose**: the self case was folded in with
+terrain as `hurt == null || ReferenceEquals(hurt, rammer) -> return true`. Right for terrain, exactly
+wrong for self.
+
+**The second half, which the damage fix alone does not give back:** a fraction-0 hit is the nearest
+hit there can be and `CircleCast` returns only the nearest, so the self overlap was also *eating the
+cast* - the ram reached an enemy only on a frame where the enemy happened to be returned instead.
+`SweepWithoutSelf` (a `ChargerHead.FixedUpdate` prefix, widened prefabs only) redoes the cast with
+the rammer's own rigidbody filtered out and hands the nearest remaining hit to the original. It
+re-checks `minDamageDelay` first, because the original's first statement is that same test - so a
+reflected `Invoke` costs the two or three a second a ram can land rather than fifty.
+
+> **A fix that widens what a query can SEE has to be checked against what the query STARTS INSIDE.**
+> The R10 note above reasoned carefully about the other units the new bit exposed and never once
+> about the unit doing the casting.
+
 **Diagnosis note worth keeping:** the first suspect was `ImpactDamage` (self-damage on crashing),
 which fit the symptom perfectly and **the Larva prefab does not have**. Checking the prefab for the
 component's field shape (`minVelocity`) took one grep and saved building the wrong fix.
@@ -1001,10 +1381,32 @@ damage absorbed per point of resource** — and `effectiveness: 0` only earns a 
   `TryGetComponent<Shield>` and impacts on the surface at `ColliderRadius`. Plain `Projectile` has no
   such branch; it just hits the trigger collider like any other and resolves the unit through
   `GetComponentInParent<IProjectileListener>()`.
-- **The shield prefab sits on layer `Default` (0)**, and the layer matrix explains everything:
-  `PlayerProjectiles` collides with `Default`, **`EnemyProjectiles` does not**. So an enemy shield
-  stops your bullets, and no shield anywhere stops an enemy bullet geometrically — enemy fire is only
-  ever absorbed through the damage pipeline after it reaches the hull.
+- **The shield prefab sits on layer `Default` (0)**, and `PlayerProjectiles` collides with
+  `Default`, so an enemy shield stops your bullets. ⚠ **Corrected 2026-10-01:** this line used to
+  say `EnemyProjectiles` does NOT collide with `Default`. The decoded matrix (below) says it does.
+  The conclusion survives for other reasons: the player's shields have no collider
+  (`shieldHasCollider: 0` on all four ships and all five drones), and an enemy's own shield is
+  skipped by the friend check. Enemy fire still only ever reaches the player through the damage
+  pipeline.
+- **★ THE LAYER COLLISION MATRIX, DECODED 2026-10-01** (`ProjectSettings/Physics2DSettings.asset`,
+  32 rows of 4 little-endian bytes; the exporter prints the top byte oddly as `/f`, but that byte
+  is layers 24–31, all unused). It matches both beam masks bit for bit (player 9344, enemy 9280),
+  and a plain bullet's mask IS its layer's row (`Physics2D.GetLayerCollisionMask` in
+  `Projectile.Shoot`):
+
+  | row | collides with |
+  |---|---|
+  | 6 Player | Default, 3, Entities, EnemyProjectiles, Ground |
+  | 7 Entities | Default, 3, Player, Entities, PlayerProjectiles, Ground |
+  | 8 PlayerProjectiles | Default, 3, Entities, Ground, Fruits — **not Player, not itself** |
+  | 9 EnemyProjectiles | Default, 3, Player, Ground, Fruits |
+
+  **So nothing of yours, bullet or rocket, can touch your ship or anything on the Player layer**:
+  the drones, wingman drone bodies and drone-gadget minions are all on layer 6. Your rockets DO
+  stop on swarm-gun minions, which are enemy prefabs on Entities. The suicide drone's root is on
+  layer 8, so it cannot touch you and enemy fire cannot touch it. No game code changes the matrix
+  (no `IgnoreLayerCollision` / `SetLayerCollisionMask`), and `m_Include/ExcludeLayers` are 0 on
+  the rocket, drone and ship prefabs.
 
 **The PLAYER'S SHIP does no contact damage — but plenty of enemies do.** (This entry used to say
 "nothing in this game does contact damage to anything else", which was wrong and was repeated into
@@ -1123,6 +1525,15 @@ So any text that changes often (a stack count, a seconds countdown) stacks rows 
 fading out. That is exactly how the buff indicator came to cover the left of the screen and chirp
 continuously in a group fight.
 
+**And `endsAt` expires nothing.** It feeds the "seconds left" label; the feature that showed a line
+is the only thing that clears it. For a line with no state behind it (a rank up) use
+`ForgeBuffHud.Notice(key, colour, text, stacks, seconds)`, which is swept by a clock object that
+exists only while a notice is up. R19 252's permanent "RANK n" line was a `Show` with an `endsAt`.
+
+**The "unchanged text" short-circuit has to know the style.** `Show` skipped a repaint when the
+text matched *and the icon widget existed* — which the `feed` style never builds, so under it every
+call re-fed an unchanged line. `Painted(e)` asks the right question per style now (both mods).
+
 **Rewrite the live row's text in place instead.** `ShipHud.logDisplay` is public; only
 `ShipLogDisplay.logEntries` (`Dictionary<ShipLogEntry, LogEntry>`) is private. `ShipLogEntry` is a
 **class**, so it keys by reference — and `Log` does not hand it back, so subscribe to
@@ -1139,6 +1550,20 @@ true *and* add a `LayoutElement`.
 
 - **There is no `TrailRenderer` anywhere in PUNK**, and no prefab enables Unity's Trails module. Every
   trail is a child **ParticleSystem** in **World** simulation space emitting by `rateOverDistance`.
+- **WHICH IS WHY `fade`'s "trail and glow included" WAS A LIE FOR MONTHS.** `ForgeFade.Collect`
+  walked `GetComponentsInChildren<SpriteRenderer>` when `everything` was on - and `ammo_Popper`, the
+  most-cloned template in the mod, carries **one** SpriteRenderer (the bullet) and **three**
+  ParticleSystems (`particle`, `particle_glow`, `trail`). So the flag walked a set of one while the
+  build log said the trail and glow were included. That is his *"I want EVERYTHING regarding the
+  projectile to fade, not some alpha."*
+  > **"Include the children" is only a coverage claim if the children are the same KIND of thing.**
+  The fade now scales each system's `main.startColor` alpha from a captured base. Two details:
+  **both ends of a TwoColors range are scaled** (assigning one colour would flatten the range, the
+  same trap as writing a particle's `startSpeed` instead of its multiplier - `particle_glow` is
+  TwoColors, `trail` is Color), and **gradient-mode systems are skipped and SAID** rather than
+  skipped quietly, because scaling a `Gradient` means rebuilding one per system per frame per shot.
+  Particles already emitted keep the alpha they were born with, which is right - a streak behind the
+  shot is in the world and should not retroactively change.
 - Only four ammo prefabs ship one, so `trail` clones the Popper's onto whatever you asked for.
 - **A fresh `AddComponent<ParticleSystem>()` gets the wrong default material** — always clone a stock
   donor instead.
@@ -1152,7 +1577,7 @@ true *and* add a `LayoutElement`.
   mixer and voice pooling for free.
 - **THE GAME HAS 259 SOUNDS AND UNTIL 2026-09-02 ALL OF THEM WERE UNREACHABLE BY NAME.**
   `Sfx` has both a `guid` and a readable hierarchical `name` (`Cells/Fuel`,
-  `Weapons/Popper/Shoot`, `UI/Click`), and `ForgeSfxRegistry.Find` matched **`s.guid` only** — so a
+  `Weapons/Popper/Shoot`, `UI/OK`), and `ForgeSfxRegistry.Find` matched **`s.guid` only** — so a
   stock sound could be asked for solely by typing a 36-character guid, and nothing in either repo
   mapped a name to one. The builder page and the how-to both documented this as a limitation
   (*"the lookup compares GUIDs only, so typing Weapons/Bolt/Shoot is silence"*), which is why it
@@ -1212,10 +1637,528 @@ are inert** — check it before believing a table matters. The **Tech** pool hol
 White's ~18, so that's where a custom weapon has the best odds. Green crates always drop one
 `Module BoosterCore` as a *fixed* item, not a roll.
 
+**A CONFIRMATION PRINTED AFTER A REFUSAL READS AS THE REFUSAL BEING OVERRULED.** Found in his R15
+log, in Module Forge and then in the identical code here:
+
+```
+[Warning] PiercingTest1.json: "lootFrom" was set but this module is not loot-enabled, so it can
+          never drop.
+[Info   ] PiercingTest1.json: drops only from DropGroup Modules Crate Caps
+```
+
+The second line is the more confident of the two and it is the one a reader believes - so he came
+back asking whether crate targeting had ever been built, having tested it against a file the mod had
+already refused. The summary line now says which of the two states the file is in. (Worth recording
+too: **the captured entry asking to "re-verify loot and target a specific crate" was stale** -
+`lootFrom` is fully built in *both* mods, across C#, page and txt, and he had tested it. He said so
+and he was right.)
+
 Module Forge does the same grafting, so the two mods coordinate through **one shared string**: the
 created Money pool is named `Forge Modules Crate Money` in *both*, and both check `TableAlreadyRolls`
 before appending. Rename it in one mod only and a player with both gets two module rolls per Money
 crate.
+
+### `wingman` — the only weapon this mod builds at RUNTIME
+
+Everything else here is built once at startup from a named template. A wingman gadget's companions
+fire a **clone of whatever weapon you are carrying**, so its weapon does not exist until you pick one
+up, and is rebuilt when you pick up another. Four things about that are load-bearing.
+
+- **The game does a third of it for free.** `WeaponBasedActiveModule.OnContainingClusterRefreshed`
+  already does `WeaponFactory.Create(this.WeaponData, cluster.ConnectedAndPoweredModules)`. Hand it
+  our clone and "weapon modules slotted around the gadget upgrade the copies and not your gun" needs
+  **no code at all**.
+- **`ApplyBehaviourFeatures` exists so the chain can be re-run.** The ~50 `Apply<Feature>` calls were
+  inline in `BuildModule`; they are a method now with exactly **two** legal callers — the startup
+  pass and `ApplyFeaturesTo`, the public door for this feature. `applyordertest.py` pins the call
+  list, the order, and the fact that there are two call sites, because **nothing about that order is
+  arbitrary and none of it is enforced by the compiler** (homing must follow wave, split must follow
+  every prefab-cloner, lunge must follow charge…).
+- **Inherit BEFORE applying.** `ForgeWeaponAlias.Inherit` copies the source weapon's registrations
+  onto the clone, then the gadget's own blocks run over the top — so "the gadget wins on conflicts"
+  is one line of ordering rather than a resolution pass.
+- **A clone is a real asset, a real prefab, and ~26 registry entries**, and those registries are
+  deliberately never cleared at run entry. Without `ForgeWingmanWeapon.Release` / `Reset` this
+  feature leaks one of everything per weapon swap for the whole session.
+
+**THE RECURSION ARRIVED THROUGH THE GENERIC DOOR.** `ForgeWeaponAlias` finds registries by their
+SHAPE — a static `Dictionary<WeaponData, T>` — rather than from a hand-written list, for the same
+reason `ForgeDiagnosticGates` sweeps by naming convention. But `ForgeWingman`'s own registry *is*
+that shape, so the sweep found it, and inheriting it would have made every clone a wingman weapon
+whose wingmen build wingmen. It is in a `NeverInherit` list now.
+
+> **A feature that makes a weapon SPAWN A COPY of a weapon must not be inherited by the copy** — and
+> a shape-based sweep will find such a feature without being told, which is the point and the danger
+> in one. Two other registries are `CopyNotShare` rather than shared, both measured:
+> `ForgeLeech`'s Config holds the per-second healing budget, and `ForgeCatalystNode.Cull` counts its
+> node cap by **config reference identity**. `wingmanaliastest.py` asserts every registry in the
+> assembly is classified as swept, copied or excluded, so number 27 cannot land in none of them.
+
+**Beams turned out cheap, and the reason is one word:**
+`HitscanWeapon.visualsInstances` is an **instance** field, not static. So one `WeaponBase` per
+wingman — all built from one shared cloned `WeaponData` — gives each its own beam quads, and the
+feared "N companions fighting over one beam" cannot happen. What remains is that
+`HitscanWeaponVisual` is driven only from `OnBarrelMoved`, which only `Shooter.Update` calls, so the
+controller calls it per wingman in `LateUpdate` (after motion, or the beam draws from last frame's
+position). Same by-hand work as `ForgeShooterQuiet`.
+
+**A wingman file still needs a `template`** — `WeaponBuilder` refuses outright without one — it is
+simply never fired; it supplies the gadget shell. I wrote "the only weapon file with no template"
+into the how-to and the builder page before checking, and caught it only when writing the test file.
+
+Both of the things this section used to list as unbuilt have since shipped: **save/load persistence**
+(2026-09-13, R17 tests 220–222, below) and **damageable drone bodies** (2026-09-20, R19 tests
+258–268, below). `body: "drone"` is real and no longer falls back to an orb.
+
+#### What R16 actually found — the core was fine and everything around it was not
+
+Nine defects in one evening of play, and **not one of them was in the four load-bearing things
+above.** The clone, the inheritance sweep, the re-runnable feature chain and the per-wingman beams
+all worked on the first try. Test 204 was written as a ladder gate that would stop the round if the
+clone was broken; it passed. The bugs were all in the ordinary code around it, and the pattern is
+worth keeping.
+
+- **Three of five `key` modes could not put a companion on screen.** `burst` fired a volley over an
+  empty list, `recall` returned "nothing to do" on an empty list, `toggle`'s first press stowed a
+  complement that had never been spawned. **Every handler was written for a state only one other
+  handler could produce**, and each one reads as correct in isolation. A switch whose cases share an
+  unstated precondition needs that precondition to be one function (`Config.AutoDeploys`), not five
+  assumptions.
+- **A deny-list on borrowed game prefabs is a promise you cannot keep.** `Disarm` named seven
+  component types to strip — Projectile, Pickup, Shooter, AIAgent… — and covered everything anybody
+  had thought of. `FuelPickup` also carries `ParticleLifetime`, which shrinks the sprite over three
+  seconds and then **destroys the GameObject** at a 5–7s lifetime. It is now an ALLOW-list: every
+  MonoBehaviour goes except two that provably only set a sprite. *Losing a flourish is visible;
+  keeping a self-destruct is not.*
+- **The cache never missed, so it never rebuilt.** The built copy was keyed on the *clone*, and
+  installing a module does not change which clone you are copying — so "modules on the gadget
+  upgrade the copies" only took effect on re-equip, and the stale result looked like an inconsistent
+  one. Any `ModuleCluster.RefreshPoweredModules` now bumps a generation counter the controller
+  compares. It has to be **any** cluster: a module beside your PRIMARY must rebuild what a GADGET's
+  companions fire, and those two clusters have no relationship the game exposes.
+- **A module's effect writes to the built `WeaponBase`, never back to the `WeaponData`.** So a clone
+  of the asset is your gun *with none of your grid on it*. Passing the source weapon's cluster
+  modules to our own `Create` is what makes "+1 projectile on your own gun reaches the copies" true.
+- **`mirror: "both"` answered "which gun?" from the CONFIG when it is a property of the SHOT.** It
+  returned `primary ?? secondary`, so right-clicking fired copies of the left-click weapon. The
+  fired `WeaponBase` is carried down from the hook now, and each wing caches one built weapon per
+  source.
+- **Two arithmetic bugs, both invisible from the symptom.** The orbit ring was spaced by the CAP
+  rather than by how many were deployed *and* never re-spread after a change; and `atRest: relax`
+  had each bead round to its own nearest even slot, which is right for one bead and wrong for a set —
+  `drag` bunches them inside `spread` degrees **by design**, so three beads inside 55° all round to
+  the same slot and stack. **That bug could only appear in the state the feature exists to
+  produce.** Both are re-implemented and proved in `wingmanfixtest.py` rather than eyeballed.
+- **`OnUninstalled` is handed a `Unit.Data`, not a `Unit`**, so it could release the weapon clones
+  and not reach the bodies — pulling the gadget left the companions flying and firing. The
+  controller keeps a static list of itself and is found by config.
+
+#### Save/load persistence — built 2026-09-13, R17 tests 220-222
+
+A plain-text sidecar in the save folder, written from a postfix on `GameSaver.Save(string)` and read
+from a postfix on `GameSaver.Load`, keyed `(EntityData.instanceId, weapon file name)`. Only the
+deployed **count** and a stowed flag are stored; the bodies are rebuilt from the JSON, which sidesteps
+the "spawn-time state silently reverts" trap. Four things worth carrying:
+
+- **`ModuleGridOwner.Update` is the only per-frame seam that hands you a LIVE `Unit`.** Every module
+  lifecycle callback — `OnInstalled`, `OnUninstalled`, `Module.OnUpdate` — takes a `Unit.Data`, which
+  is save data with no transform and no components. Without this seam the restore would have ridden
+  the `DoShoot` mirror, i.e. *"your companions come back when you shoot"*. (`EntityGameObjectManager
+  .TryGetSavableEntity(instanceId, …)` is the route back the other way, and is how
+  `SpawnMinionModule` kills a minion from `OnUninstalled`.)
+- **Reading the record has to be a POSTFIX**, because `ForgeBurnResetPatch` is a *prefix* on the same
+  method that clears per-run state. Prefix → original → postfix is the only ordering that survives
+  its own reset.
+- **A save with nothing deployed must DELETE the record, not skip the write.** "Write a line for each
+  gadget that has companions out" leaves yesterday's file intact to hand them back tonight.
+- **The bug the randomised test found and reading did not.** The fallback for a missed key was "a file
+  name appearing exactly once". In coop a player carrying the gadget with *none* deployed writes no
+  line at all — so the other player's entry is the only one with that name, and one ship is handed the
+  other's companions. **Absence of a record is not absence of a claimant.** Fallback is now
+  single-player only.
+
+**R17 part 2 found three more, and two of them are rules rather than bugs.**
+
+- **A LIMIT READ ONLY WHERE THINGS ARE CREATED IS A GATE, NOT A CAP.** `ForgeWingmanController.Cap`
+  is derived live from `Module.Level`, and it was read in exactly two places — `Deploy` and
+  `DeployAll` — both of which only ADD. So pulling a BoosterCore lowered the cap and nothing acted
+  on it: the extra companions stayed out until a key press happened to re-test the condition, which
+  reads as a delay rather than as a gap. **The game's own code has both halves**:
+  `SpawnMinionModule.Activate` refuses at `count >= Level` *and* `OnUpdate` enforces the same number
+  downward by destroying the excess, every frame. `TickCap()` is ours. The general shape: a cap
+  derived from live state (a level, a stat, a module) can move without anything passing through the
+  gate, so the gate cannot be the only reader.
+- **A REFUSAL HAS TO CONSUME THE THING IT REFUSES, OR IT IS A DEFERRAL.** `ForgeWingmanSave.Apply`
+  returned on `!cfg.persist` and left the loaded record sitting in `_pending` — which `Write`'s
+  unclaimed-record pass-through then wrote back out, unfiltered, at every save. So a sidecar written
+  while persist was ON became **immortal** the moment persist went off: the restore would not claim
+  it, the write would not drop it, and deleting the file by hand bought you until the next save.
+  Same family as a skipping prefix that never stamps the fire-rate clock — the decision is made and
+  the state that provoked it is left where it was, so it is made again forever. `Forget` drops it by
+  **exact key only**; the single-match fallback is right when a miss costs a key press and wrong
+  when it costs somebody else's record.
+- **`persist: false` IS UNOBSERVABLE UNDER `none` / `burst` / `recall`**, because those auto-deploy
+  the complement on every run entry (`Config.AutoDeploys`) — the restore correctly declines to hand
+  anything back, and the auto-deploy fills the ring anyway. R17 test 222 asked for the setting to be
+  proved on a `recall` file, so it could not have failed or passed. Now a build warning pointing at
+  `deploy` / `toggle`. **A test whose subject is invisible in the configuration it specifies is not
+  a weak test, it is not a test** — and the tell was in his own words: a restore replays a *saved*
+  number, so a count that tracks edits to the JSON is the auto-deploy, not the restore.
+
+**The HUD count is the game's own widget.** `MinionsWidget` already instantiates a
+`MinionCountWidget` for all five connection slots at `Start` and hides the ones whose grid position
+does not hold a `SpawnMinionModule`. A postfix on `UpdateWidget` supplies the case it does not know
+about; `MinionCountWidget.SetIcon` takes a base `Module`, so it needs no coaxing. **The widget keys
+off the module's TYPE, not its template** — so his guess that switching to a drone template would
+bring the count with it would not have worked.
+
+#### Damageable drone bodies — built 2026-09-20, R19 tests 258–268
+
+`body: "drone"` spawns a real `Unit` per companion (`ForgeWingmanBody`) instead of a phantom orb.
+The motion, aim, mirror and beam code is untouched — a drone wingman is the same ring with a
+different kind of body — and `Owner` stays the player, which is what makes kill credit, friendly
+fire, `leech`, `surge` and `rank` need no special case.
+
+**★ THE WHOLE FEATURE IS A QUESTION ABOUT LIFETIMES, and the answers differ per thing.** A body has
+three: the GameObject (dies on load), the `Unit.Data` / `EntityData` (survives a rebind, dies on
+unload — `destroyWhenUnloaded: 1`), and the module grid. Getting the split right is most of the code:
+
+- **The module GRID has a memento, so the game restores it — the STAT EDITS do not.**
+  `Module.Memento.Restore()` `DeepCopy()`s the module data out of the registry, so a restored module
+  carries the *asset's* effects rather than ours. So on a re-dress the augmentations must NOT be
+  installed again (they would stack, and again next load) while the health/resources/shield edits
+  MUST be re-applied. Opposite answers, both falling out of what carries a memento.
+- **`Unit.Data.Memento` stores `resourceValues` for every non-shared tank**, so a companion saved on
+  12 health comes back on 12. That is the entire reason drone bodies persist through the game's save
+  system rather than through the sidecar count — and it is why `ForgeMinionStats.Recalculate` grew a
+  `refill: false` overload. Recalculating with a refill right after a load throws the restored value
+  away and **the feature tests as working**.
+- **The sidecar must not also store a count** for a drone gadget, or you load with double. It stores
+  only the `stowed` flag, which is a fact about the gadget that nothing in the game's save records.
+
+**AND THE TWO THINGS A POST-BUILD AUDIT FOUND, both silent, neither reachable by the round's own
+test files.** Worth keeping because they are the same shape as each other:
+
+- **The auto-deploy destroyed the save it was restoring.** `Ensure` builds the controller and then,
+  for the three `AutoDeploys` key modes (`none` / `burst` / `recall`), calls `OnKeyless` on the same
+  line — so `_wings` was empty, `DeployAll` spawned a fresh complement, and `TickAdopt` then found
+  the ring at its cap and TOOK every body the game had restored. Right count, right ring, saved
+  health silently gone. Both shipped R19 drone files use `key: "deploy"`, so the round as written
+  could not fail on it; `R19_DroneSentry.json` and test 268 exist for that path.
+  > **A number is only a fact once whoever owns it has been asked.** `OnKey`/`OnKeyless` now
+  > `Settle()` (adopt) before reading `_wings.Count`, which also closes the toggle race.
+- **The stock cap-trim fix was only half a fix** — see the `Die()`-is-deferred bullet under *Drone
+  gadgets and minions*, which is the generalisable half.
+
+Smaller things the build settled, each a silent failure if got wrong: a kinematic `Rigidbody2D`
+reports `linearVelocity` of exactly **0**, so `drone.contactDamage` had to be fed a position delta
+(`ForgeContactController.drivenVelocity`) or it would have done nothing while logging perfectly; the
+stock drone's `spawnOnDeath` is a real burn explosion at radius 2 and the ring sits at 2.2, so it is
+stripped unless `deathBlast` asks for it, and it lives on **two** components (`DamagableResource`
+and a private field on `DestroyWhenResourceDrained`); a recall uses `Destroy`, never `Die()`, because
+a recall is not a death; and `PhysicsProjectile` has no friendly-fire skip at all, so a lobbed or
+rocket wingman was believed to detonate on its own squadmates (`ForgeWingmanShotPatch`, scoped to
+your own bodies rather than applied globally so enemy rockets keep their current behaviour).
+⚠ **Corrected 2026-10-01: it could not.** That premise ("`PlayerProjectiles` collides with
+`Player`") was never measured. The decoded matrix (Shields section) says your shots never touch
+layer 6, where the bodies are, and a drone's shield has no collider. So the patch never fires. Its
+once-per-run line is in no saved log, and Sugarheady confirmed from play that your own rockets
+never hit your ship. It is harmless and left in place. Delete it only as its own change, with its
+pins.
+
+**What R19 part 1 found about the bodies (2026-09-25):**
+
+- **A drone's gun is its `Head`, a `BarrelTransform`** with `updateTransformRotation` on — its
+  LateUpdate writes the head's WORLD rotation from `Direction`, which defaults to due east and is
+  only ever set by the AI's aim actions. With the AI off it sat pointing right while the shots went
+  where the ring aimed. The controller sets `Direction` to each companion's next shot every frame.
+- **The health bar is one segment per point of capacity, in one endless row** (`ResourceBar`,
+  `HealthbarOwner.maxUnitsPerRow` 0), so a 120-health companion wore a bar across the ship.
+  `drone.healthBar` (`full` / `hurt` / `hide`) and `drone.healthBarRow` use the game's own two
+  fields. ⚠ Re-registering a bar only after its `Start` has run (a non-empty `Resources`), because
+  `HealthbarManager.Add` before `Start` would create a second widget under the same key.
+- **`drone.trailColor` was a false promise.** It was a dead key whose warning said "use wingman
+  color" — and nothing painted a drone body's trail from anything. It is a real key now (a colour or
+  `"match"`); `wingman.color` was always the body colour.
+- **`"aim": "none"`** — his idea: a ring that never fires, for a pure tackle ring. On an orb it does
+  nothing (no hitbox) and says so.
+- **Test 259 is a TRACE, not a fix.** Hurt bodies came back from an in-session continue and were
+  lost after quitting to the desktop. Every line on that path was once-per-run, so the controller
+  now logs per body (`wingman BODY -`): adopted at what health, removed by which rule, or vanished
+  with its last health and whether its data is still owned. ⚠ `ForgeWingmanBody.Take` destroys the
+  GameObject, and `SavableEntity.OnDestroy` destroys the entity data while the scene is loaded — so
+  any rule that `Take`s a restored body deletes it from the save for good.
+
+**What R19's close found (2026-09-27):**
+
+- **★ A controller was found by CONFIG alone**, so two copies of ONE wingman file in two gadget
+  slots were one gadget — one cap, one ring, `_cluster` flipping to whichever slot asked last, and
+  a HUD row summing both (267). Two different files never showed it. **Per slot now, in five places
+  that all have to agree**: `For` (cfg + ClusterType), `Remove` (by slot, then by module identity,
+  else everything), `AnyFor` before releasing the SHARED weapon clones (released while another copy
+  flies = companions firing a destroyed asset), `EachInSlot` for the HUD row, and the sidecar
+  (**v2 adds the slot; v1 lines match any slot of the file**). `Connection()`'s grid-walk fallback
+  also skips a slot another copy has claimed.
+- **★ …and per-slot rings from one file were drawn ON TOP OF EACH OTHER.** Found writing R20's 267,
+  not in play: same `radius`, same `spinSpeed`, both `_ringPhase` from 0 — drone i of the second
+  ring sat exactly on drone i of the first, so six companions would read as three, **the very
+  shared-cap bug the fix was for**. `PlaceOrbit` now asks `GatherSiblings()` (every live copy of
+  this cfg on this unit with companions out, in SLOT order), follows the first copy's phase, and
+  places each companion by `SharedAngle` — its rank on one shared circle, ordered by s/n then by
+  copy, in integer arithmetic. A per-copy offset (`ordinal·step/copies`) was the first version and
+  fails on 2-out + 1-out (both at 180°); `wingmanfixtest.py` keeps it as the counter-example and
+  sweeps every mix of up to three copies. **Orbit only** — trail/drag copies of one file still
+  stack; nothing has asked for two of those.
+- **268 (always-out ring, duplicates flying on stock AI after a load) was NOT sourced** — no log of
+  that session. Two things instead of a third guess: the auto-deploy **waits** (≤8 s after a load,
+  `ForgeWingmanPatch.LoadSettling`) while any of its slot's restored companions is in the ship's
+  minion list but not yet in the scene, and the trace grew two instruments — a census after the
+  load window (adopted / new / never-appeared, with entity ids) and a subscription to the game's
+  public `EntityManager.EntityDestroyed` that logs **the call stack that destroyed a companion's saved
+  data**. Ruled out on the way: entity-id collisions (a continue re-seeds `RunArguments.seed`
+  randomly, so `CreateInstanceId`'s sequence is new) and the owner restore (robust:
+  `Unit.Data.RestoreFromMemento` → `SetOwner` → `AddMinion`).
+- **`healthBar: "flash"`, `healthBarRows`, `healthBarScale`, `healthBarSeconds`** (`ForgeWingmanBar`).
+  The widget is made late (Start, or first hit) and remade on every stats recalc, so the component
+  looks it up through `HealthbarManager.healthbarWidgets` each frame. The fade is
+  `Graphic.CrossFadeAlpha` — `CanvasGroup` lives in `UnityEngine.UIModule`, which this csproj does
+  not reference, and CrossFadeAlpha's signature needs nothing from it.
+
+### `rank` — the second feature that rebuilds a weapon at runtime
+
+Built 2026-09-19. A gun banks the damage it deals as XP and gets stronger. Three things about it are
+worth knowing before touching anything near it.
+
+- **An unlock is a JSON edit plus a rebuild, not reflection into twelve config classes.**
+  `ApplyBehaviourFeatures` is re-runnable with a public door (`WeaponBuilder.ApplyFeaturesTo`)
+  because `wingman` needed runtime weapons. So a pooled feature is authored normally, switched OFF at
+  build time, and drawn by setting `enabled: true` on a **deep clone of the file** and re-running the
+  chain. `onRepeat` deepens the feature's own numbers in that same clone — which is why it costs
+  nothing per feature and uses key names the author is already typing.
+- **★ `ApplyRank` MUST RUN FIRST in the chain, and that is the whole mechanism.** It switches pooled
+  blocks off, so anything above it reads them live and the reward is granted at rank 0 on every
+  weapon that pools it. `applyordertest.py` pins the position.
+- **Only re-run the chain when the JSON actually moved.** A rank that pays stats alone is a few
+  dictionary writes into `ForgeWeaponStats`. That is what makes `maxRank: 9999` survivable, and it is
+  also why the ONE feature family that cannot be pooled is refused at build time: `minion` / `turret`
+  / `spawner` clone game assets when they build and keep a `_made` list, so each re-run leaks a set.
+- **Repeats are computed from the AUTHORED value, never from the live one.** Percentages must SUM
+  (three 20% draws are +60%, not 1.2 cubed), and a read-modify-write against its own previous output
+  is the trap that made overheat's muzzle tint converge on fully-hot in a second. The authored values
+  are captured at parse time, before anything can edit them.
+- **The payout must be re-applied on `Equip`.** A `WeaponBase` is a fresh instance whenever its
+  cluster is rebuilt, so a rank would otherwise evaporate the first time you slotted a module.
+
+#### R19 closed, 2026-09-27 — rank is PER COPY now, and no unlock had ever worked
+
+- **★ "A constraint rather than a choice" was wrong.** Progress used to be keyed
+  `(ship instanceId, weapon FILE)` because the `WeaponBase` is rebuilt — true, but the **Module** is
+  not, and `WeaponModule.WeaponData` / `WeaponBasedActiveModule.WeaponData` are **settable
+  per-instance properties the game builds the gun from** (`ModuleSlotWeaponHolder.RecreateWeapon`,
+  `WeaponBasedActiveModule.OnContainingClusterRefreshed`). So `ForgeRankCopies` gives each ranked
+  Module its own WeaponData clone (+ forked prefab, + `ForgeWeaponAlias.Inherit`) just before the
+  game builds the gun, and `TemplateData` identifies the copy from then on. R19 252/256: *"Spawning
+  a new prospector ... gives me the old weapon with the old total experience,"* and two copies
+  levelled in lock-step. **The game never duplicates a live Module** (every `DeepCopy` in the
+  decompile starts from an asset), which is what makes the instance a safe identity.
+- **★★ An unlock re-ran the chain and `ApplyRank` — FIRST in it — undid the unlock.** Its build-time
+  job is to switch every pooled block OFF and register a fresh Config, so on an unlock's re-run it
+  turned the drawn block straight back off before any Apply* read it and swapped out the Config.
+  **No pickup or order unlock had ever reached a gun** (*"The orbs vanish but dont upgrade the
+  weapons"*), past 122 shape assertions. `ForgeRank.Rebuilding` makes `ApplyRank` return;
+  `rankcopytest.py` pins it by mutation.
+  > **A step that must run first at build time must be asked whether it should run at all on a
+  > re-run.** "Re-runnable chain" was true of the other fifty calls and false of the first.
+- Unlocks edit **the copy's own JSON** (`Progress.json`), never `cfg.source` — editing the shared
+  clone is how one copy's unlock would reach every copy. Rebuild the live gun afterwards
+  (`ProjectileWeapon` copies its prefab in its constructor) — and **next frame** when it came from
+  damage, because the rank up is inside the game's damage call and disposing a beam from inside
+  its own `FireSingle` throws on the way out.
+- **Stats go on the LIVE gun (`LiveGuns`), not on "the weapon that hit"** — the hit may have been a
+  wingman's copy; `ForgeWingmanWeapon.SourceOf` maps a wingman's weapon back to the gun it mirrors.
+- **Save v2** is one line per copy under *where it is*: `slot:<ClusterType>`, `vault:<index>`,
+  `pickup:<entity id>` — read off the ENTITY data (ship grid, pickup components) and the Vault's list
+  order, which is exactly what the save restores. v1 (per file) still loads onto the first copy
+  of the file found.
+- **The rank line was permanent** because `ForgeBuffHud`'s `endsAt` only ever fed the label; nothing
+  swept it. `ForgeBuffHud.Notice(key, …, seconds)` is a line that ends itself, driven by a clock
+  object that exists only while a notice is up.
+- **Choices are module-style pickups (his pick):** the game's own `ModulePickup` prefab, cloned
+  under an inactive holder and stripped by allow-list in `[RequireComponent]` order (Unity refuses to
+  remove a required component and leaves it), keeping only the prompt UI and the `Interactable`, whose
+  `OnInteracted` is re-pointed (persistent listeners switched off one at a time). Taken with the
+  **use key**, never by touch; a key-press fallback takes the nearest in reach only when the
+  `Interactor` has nothing else in range. Owed choices are saved on the progress.
+
+#### R20 closed, 2026-09-29 — the choices, as a QUEUE
+
+- **★ Two ranked guns put two sets on ONE ring**, drawn exactly on top of each other (same
+  `Ring`, same slot angles), and he took the other gun's choice without knowing: *"i may glitched
+  one instance of the weapon where it got the bonus of the other ranked prospector"*. That was not
+  a leak between copies — it was two identical-looking sets. **One set per ship now**:
+  `ForgeRankDraw.Owe` only counts and `ForgeRankQueue` (a clock object alive while anything is owed
+  or out) decides what comes out — per ship, carried guns only, longest-waiting first, and a taken
+  set sends its gun to the back of the line so two guns take turns. Each choice's last prompt line
+  names the gun and slot (`SlotOf`: PRIMARY / SECONDARY / GADGET n / IN STORAGE).
+- **★ The owed count is the only truth; a set on screen is a view of it.** R20 256: owed choices
+  were gone after save and quit to the desktop, though the count was saved. Not sourced — the
+  Equip-time `Resume` should have spawned them. Rather than guess a third cause, the queue brings a
+  set out whenever one is owed and none is out, so ANY lost set comes back: after a load, after the
+  ship was gone, after something nobody found. Gated on the run being 1.25 s old (stamped at run
+  entry, never a per-scene clock), not paused, and the ship's flying controls being on.
+- **Placement clear of walls and stations** (`Relayout` / `Blocked`): the ring turns in 30° steps
+  and widens until every slot is off solid cells (the cell grid, the way wall riding reads it) and
+  away from any `Station` collider; re-checked every 0.3 s as the set follows you; a jump past 30
+  units (teleport, load) snaps instead of flying across the map.
+- **The put-away key** (`ForgeRankKeys`): `[Rank choices] Key = H`, `PadButton = DpadUp` — both
+  unused by `ShipControl` in the game's `InputActions` asset. Its OWN `InputAction` (reference to
+  the game's `Unity.InputSystem`), never an edit to the game's PlayerInput. One press hides every
+  set (still owed, still "out"), the next brings them back around the ship, re-laid. The card of a
+  pick-your-choice gun names the key.
+- **The start station pays no station XP** (his answer): `Station.PlayStartSequence` is called for
+  it on a NEW run only (`GameController.StartGame`'s else branch), so a prefix names it; its id is
+  a `start` line in the rank sidecar so a continue still knows it.
+
+#### Across a New Game Plus jump, 2026-09-29 — `ForgeRankCarry`
+
+Game Mode Forge's `NewGamePlus.dll` makes a new world and carries your grid and vault into it. A
+jump IS a new run, so `ResetAll` drops every copy's progress — correctly. His ask: *"I definitely
+would love to keep rank weapons level intact if possible."* So:
+
+- **It is found, never referenced.** `ForgeRankCarry.OnRunEntry` (called from `ResetAll`) finds
+  `GameModeForge.NewGamePlus.NgCarry` by type name and subscribes to its `Leaving` / `Arrived`
+  events. With New Game Plus absent nothing happens.
+- **It is the Continue path.** `Leaving` takes the save's own v2 lines
+  (`ForgeRankSave.RecordLines`, now the one builder `Write` also uses); `Arrived` parses them with
+  `ParseV2` and restores with `Attach`. New Game Plus restores each grid slot for slot and the vault
+  in its order, so `slot:` / `vault:` still name the same gun; only ship ids change, and
+  `NgCarry.NewShipId` maps them. `Arrived` fires after the new ships' grids are installed and before
+  any gun is built — the same moment a Continue's Load postfix runs.
+- **Two things do not cross**: a copy lying on the ground (`pickup:`) stays in the old world, and
+  `paidStations` is cleared (those stations are gone; the new world's can pay again).
+- The held lines live outside `ResetAll`'s list, and a normal run start drops any left over from
+  a jump that never arrived. `rankcarrytest.py` pins all of it, and both sides of the contract.
+
+**The game's own `Pickup` class could not be used for the choice orbs, and the design note said it
+could.** Its shape is right — `OnPickedUp(Unit)`, a public `Rigidbody`, no gravity — but its
+`FixedUpdate` **magnets itself to the nearest `LootCollector` and collects on contact.** Correct for
+loot and fatal for a choice: all three rewards fly at you and the nearest takes itself, so there is
+nothing left to choose. `ForgeRankChoice` is an ordinary trigger that trails the ship instead.
+
+> **An abstract base matching your shape is not the same as matching its behaviour.**
+
+**`Interactable.Activate(Interactor)` is the station hook** — public, firing a `UnityEvent` **wired in
+the prefab**, so it appears at no call site in the decompile. Seven prefabs carry it. Same shape as
+the 83 prefabs wiring `HealthBase.onDamage` to `SfxPlayer.Play`: search the prefab YAML too.
+
+**⚠ A percent XP curve stops dead at a high `maxRank`.** `1.25^9999` is past float *and* double, so
+the requirement becomes Infinity and ranking stops with nothing reported. `PercentCeiling` computes
+the rank where that happens and the build log prints it.
+
+**⚠ PICKUPS HAVE SAVED IDENTITIES TOO, so "has a `SavableEntity`" is not "is a place".** The
+station hook sees every `Interactable`, and the first version's only filter was that — on the
+assumption a pickup has no entity. All three do (`IngredientPickup`, `ConsumablePickup`,
+`ModulePickup` persist in the level), so every pickup paid a whole station's XP (R19 251: *"I picked
+up 2 fiber and got my weapon from 5 to 7"*), and because station XP pays every ranked gun that has
+`stations` on, the guns jumped together and looked like one shared pool. It is an allow-list now —
+the interactable must belong to a `Station` (both station prefabs; his ask was "either station").
+
+**⚠ THE CHOICE ORBS WERE SPAWNING EVERY RANK, BEHIND THE TERRAIN.** A fresh `SpriteRenderer` lands
+on sorting layer "Default", which in this game draws behind the level — the leech orb's own comment
+says exactly that, and every other runtime sprite here borrows a donor's layer. The orb set only
+`sortingOrder`, which orders within Default and changed nothing: R19 252 saw no orbs at all. They
+borrow the ship's layer now, are collected by **distance** rather than a trigger (no dependence on
+the physics layer matrix), spawn on their ring slot with a short arming delay (a distance check on a
+body born inside the hull would choose for you), and log each set as it appears.
+
+**⚠ `"source": "shop"` was never a valid value** — found while writing rank's presets. Four shipped
+test files used it and every one quietly became a **starter** pick, under a comment describing the
+unknown-value fallback as a safety net; `r19live.js` was asserting it too. The real values are
+`starter` / `loot` / `starterAndLoot` / `none`, and an unknown one warns now.
+
+### Drone modes — built 2026-10-01, untested in game
+
+A key (Y / D-pad right) that steps every gadget's companions through NORMAL > ORBIT > DRAG >
+PROTECTOR > REAR GUARD > SEEKER > SENTRY; Y + a gadget's own button steps that slot alone; U or a
+one-second hold puts everything back. Design and every decision: `Docs/DRONE MODES - CONCEPT.md`; what
+the build chose is its **section 14**. The facts that will bite:
+
+- **The rules have no Unity in them, on purpose.** `ForgeDroneModeRules.cs` (cycle, steps, the
+  act-on-release key machine, the shapes, INTERCEPTOR's shot-picking) is compiled and run by
+  `Harness/dronemodeprobe.cs`. Keep `UnityEngine` out of it, or the probe cannot build. Change a
+  rule there and nowhere else.
+- **A mode belongs to a gadget SLOT of a ship**, and the slot ACTS on it only while the feature is
+  on, the mode is in `Cycle`, and its companions can do it (`ForgeDroneModes.Effective`). Wingman
+  orbs and bodies do the four formations (bodies also INTERCEPTOR); SEEKER and SENTRY are AI-drone
+  only.
+- **Every companion of a ship in one mode is ONE formation**, wingmen and AI drones together, so
+  two slots on ORBIT make one ring (the R19/R20 test 267 trap). The roster is rebuilt once a frame.
+- **The gadget button is held back by a prefix on `ModuleActivator.Update`**, not by binding
+  anything: `IsActivated` is what every gadget binding sets. A combo is a press that BEGINS while
+  the key is down; the slot stays latched until its button is let go.
+- **AI drones (`ForgeDroneBrain`) are only those from a `SpawnMinionModule` slot.** A wingman body
+  is a minion too (for saving and fast travel) and its slot holds a weapon-based module, so it is
+  never steered twice. A formation suspends every active `MovementAction` each frame (Update AND
+  FixedUpdate) and switches off every `MoveAroundOwnerAction` — **which sits in the Idle state as
+  well as Regroup**. The gun is untouched. HandBack on normal, disable, destroy and the error path.
+- **LOOSE is our push at the drone's own regroup speed, not its own mover**: the stock drone's
+  movers differ ten-fold by AI state (idle 30–60, dodge 100–150, regroup 250–350). LOCKED sets
+  velocity, capped at 45 u/s. Never write a mover's tuning mid-state (the snapshot trap); condition
+  ranges (`OwnerIsWithinRangeCondition.maxDistance`) and `Vision.Range` are safe and are what
+  SEEKER and SENTRY raise, restored on the way out.
+- **Keys are read on ONE player's devices (`ForgeKeyBinding`)**: a ship's paired
+  `PlayerInput.devices` in co-op, every device with one ship, only while that ship's
+  `ShipControlActionMap` is enabled. Nothing is bound into the game's input. The rank key H uses the
+  same reader since this build (per player, and gated on flying, which it claimed and did not do).
+- **The alert is `ForgeBuffHud.Alert`**, which shows under any `[Buff indicator] Style`.
+  `Notice` returns early under `Style = off`, **the default**, which is why rank's "RANK n" line is
+  invisible to anyone who has not switched the indicator on.
+- Saved in `forge-dronemodes.txt` beside the save (deleted when every slot is normal; read in the
+  Load postfix), carried across New Game Plus through the `NgCarry` contract rank uses (SENTRY
+  arrives on normal). "The gadget changed" is read off the module DATA id, which survives a load.
+
+### Bloom spiral, staggered and bullet mode — built 2026-10-02, untested in game
+
+`drift: "spiral"` / `"staggered"`, `pace`, and `"when": "bullet"` (the gun's own shot, a rocket
+included, flies the bloom path). Design and every decision: `Docs/BLOOM SPIRAL - CONCEPT.md`;
+what the build chose is its **section 7**. The facts that will bite:
+
+- **The geometry has no Unity in it, on purpose.** `ForgeBloomPath.cs` is compiled and run by
+  `Harness/bloompathprobe.cs` (via `bloompathtest.py`). Keep `UnityEngine` out of it. Change a
+  shape there and nowhere else.
+- **A path is a position, not a heading.** Re-aiming a tangent every step drifts OUTWARD by about
+  pi x the step length per lap. That is how `spin` has always moved and files depend on it, but on
+  a spiral's inner laps it is wider than the gap between the arms. Spiral (and a spin BULLET) aims
+  at the next point on the path and goes through **`ForgeSteer.Drive`**, which does not cede the
+  direction to a wave. So wave/homing/guided are overruled there, and the log says so.
+- **Bloom's `Projectile.FixedUpdate` prefix is `Priority.Last`.** It is safe only because every
+  other prefix on that method, and on `PhysicsProjectile.FixedUpdate`, returns void.
+  `bloompathtest.py` asserts it. A bool prefix added there later changes what "last" skips.
+- **Bullet mode switches the shot's range OFF and keeps it as placement.** It comes back as a
+  flight budget only where there is no centre to end at. Lifetime is left to the engine.
+- **`safetyDistance` is -1 on a bloom bullet.** Inside its safety distance a plain shot REFLECTS
+  instead of dying (`OnObjectHit`), and the stock Popper re-hits with `damageRepeatDelay` 0. So a
+  shot that appears inside an enemy would hit it every step. Anything that spawns a shot away from
+  a muzzle needs the same thought.
+- **A bullet leaves the path when its `idealDirection` moves** more than 2 degrees from the one
+  bloom set. Homing, guided, chain, ricochet and the engine's `Reflect` all move it; wave does not.
+- **`stagger` defaults DIFFERENTLY per drift**, through `Config.StaggerFor`: 0.5 on `staggered`,
+  and on a `spiral` only when the file named the key (`staggerSet`) - a staggered spiral was added
+  after spirals had shipped, and an unconditional default would have staggered every one of them.
+- **★ A ROCKET'S OWN `FixedUpdate` IS ONLY `Homing()`, and "turn the engine off" has to skip ALL
+  of it.** `maxSpeed 0` stops the thrust and `maxAngularVelocity 0` stops the steering torque, but
+  `turbulenceTorque` is added outside the cap, and the stock rockets ship 15. `fly` skips the
+  method.
+- **★ WRITING A RIGIDBODY'S VELOCITY EVERY STEP: DAMP IT UP.** Box2D applies
+  v x 1/(1 + dt x linearDamping) after the write. A rocket's damping is 3, so a bare write lands 6%
+  short of its target every step. `ForgeBloomBullet.Fly` writes v x (1 + dt x damping). This is
+  only legitimate with no gravity: velocity writes cancel a fall, which is why grenades are refused.
+- **★ AN EXPLOSION FIRED BY HAND DOES NOT NAME THE WEAPON.** `ForgeKillsPatch` attributes an
+  explosion only while a projectile's own private `SpawnExplosion` is running. Calling
+  `ExplosionManager.SpawnExplosion` directly still credits the UNIT (the explosion's `Owner`), but
+  per-weapon onKill rewards and rank XP never pay for those kills. `ForgeBloomHooks.Explode` reaches
+  the private method by reflection. Bloom's own pop had this gap from 2026-09-19 to 2026-10-02.
+  Grep for any other direct `SpawnExplosion(` call before trusting a kill reward on it.
 
 ### Modules & levels
 
@@ -1223,6 +2166,176 @@ crate.
 with `change: 0` can never respond to levelling. Level boosting works by pixel-mask
 `LevelModificationField` grids adding +1 per overlap, gated on `canBeBoosted`. Power-core shapes are
 parsed from **sprite pixels**, and width and height must both be **odd**.
+
+> **THREE FEATURES HAVE NOW SHIPPED BROKEN INTO THE SAME TRAP, so write it down as a rule.** Weapon
+> per-level scaling, then `minion.capPerLevel`, then `wingman.capPerLevel` (R16 test 207:
+> *"failure: it doesn't increase the cap"*). Every time, the code that READ `Module.Level` was
+> correct and the level never moved — because `ModuleGrid` applies a BoosterCore's bonus only where
+> `ModuleData.canBeBoosted` is set, **every stock WEAPON module in the game ships that flag OFF**,
+> and a Forge weapon is a clone of one.
+>
+> The shape to recognise: **a number read off `Level` is only as live as the flag that lets `Level`
+> change, and that flag lives on a different object in a different file.** Nothing connects them, so
+> the feature tests fine in isolation and does nothing in play. Any new per-level field must add
+> itself to `ApplyBoostability`, which turns the flag on and says so in the log — and the giveaway
+> that it has not is a build log cheerfully promising "a BoosterCore raises this" next to a number
+> that never moves.
+
+**THE POWERED-MODULE AUDIT: the twin had the same code SHAPE and not the same bug, and the reason is
+worth keeping.** Module Forge shipped `ModuleForgeLive` on 2026-09-11 because `Module.OnInstalled`
+fires for a card dropped anywhere in the grid while every seam the game *runs* a module through takes
+`cluster.ConnectedAndPoweredModules` — so twelve of its effects kept working while unpowered. The
+"audit one mod, audit its twin" rule sends you straight here: this mod has exactly two
+`ModuleEffect` subclasses, **`ForgeBurnRateEffect` and `ForgeBurnColorEffect`**, and both register in
+`OnInstalled` in the identical shape. **Neither was changed, and gating them would have been a
+regression.** Two measurements:
+
+- **They ride the WEAPON module itself** (`WeaponBuilder` does `module.effects.Add(...)` on the
+  weapon's own `ModuleData`), which is a cluster's **MainModule** — not an augmentation.
+- **The game does not gate the weapon on power.** `ModuleSlotWeaponHolder.RefreshWeapon` reads
+  `cluster.MainModule` with only a `HasMainModule` test (`!grid.IsEmpty(rootPosition)`), no power
+  check at all. So the gun fires regardless, and a burn setting that switched itself off would be
+  **stricter than the gun it belongs to**.
+
+And the edge it would have opened, which is the part that could not be reasoned out: whether a main
+module is in its own powered slots is **order-dependent**. `ModuleCluster.RefreshPoweredSlots` walks
+`ConnectedModules` — a `Dictionary`, so arbitrary order — and gates each module's core on
+`connectedPowerCores < MainModule.PowerLevel`, incrementing only for non-main modules. A weapon's
+`PowerLevel` is 5, so a fully-kitted weapon whose five power-core augmentations happen to be walked
+first leaves the main module's own core ungated and the weapon module reading as unpowered.
+(The centre pixel is not the issue: **all nine `Pattern_PowerCore_*` masks have an opaque centre**,
+decoded from the 15×15 sheet, and mirror/rotation map an odd square's centre to itself — so a module
+with a power core always covers its own position.)
+
+> **"The same code shape" is a lead, not a verdict.** The duplicate-by-design rule is what sends you
+> to look; what you find still has to be measured against the mod you are standing in.
+
+
+### Buying a Forge item with INGREDIENTS, not just money
+
+Built 2026-09-20, both mods, R19 tests 269-270. **The entire mechanism was already in the game,
+including the UI** - this change only stops flattening a list that was always a list.
+
+- **`ShopItemConfig.price` is a `List<Price>`**, and a `Price` is either an `Ingredient` (held in the
+  run's `Vault`) or a `Resource` (a tank on the ship). `Shop` deducts EVERY entry on purchase and
+  `CanAfford` requires all of them.
+- **`priceIncrement` is a second list**, and `ShopItem.IncreasePrice` matches each increment to the
+  price of the **same currency** - so escalation is per-currency for free.
+- **`ShopItemWidget` already does `foreach (Price price in shopItem.price)`** and instantiates one
+  `PriceWidget` each, which picks `ingredient.iconSmall` or `resource.icon` and reddens the number
+  when you cannot afford it. **A multi-currency price renders correctly with no UI work**, which is
+  normally the expensive half.
+- **`unlockRequirements` is a `List<Ingredient>`** that `RunData` reads as an "ever owned" gate -
+  the item is not in the shop at all until you have held those. Seven stock items use it.
+
+Keys: `shopCost` / `shopCostIncrement` (objects keyed by currency name) and `shopUnlock` (a name or
+a list), in both mods. `shopPrice` is unchanged and ingredients stack ON TOP of it, which is the
+stock convention: **all 62 entries in the game's own shop table carry a money price**, and 25 of
+them carry ingredients as well.
+
+> **⚠ AN AMOUNT BELOW 1 IS A CRASH, NOT A NO-OP, AND THE TWO HALVES OF THE GAME DISAGREE ABOUT IT.**
+> `Price.CanAfford` asks `unit.GetResource(r)`, which returns **0** for a resource the ship has no
+> tank for. `Shop`'s purchase line is `this.ship.Unit.GetTank(price.resource).Value -= amount` with
+> **no null check**, and `Unit.Data.GetTank` is `resourceTanks.GetValueOrDefault(resource)`. Those
+> disagree in exactly one place: an amount of 0 makes `0 >= 0` true, the check passes, and the buy
+> dereferences null **inside the game's own Shop**. `Price.AmountFloored` is `FloorToInt`, so 0.5
+> arrives as 0 too. Both mods refuse a floored amount below 1.
+> **A check and its action can disagree, and the gap is where the crash lives** - the same asymmetry
+> as `DamagableResource.Damage` guarding with `HasTank` while the `.Tank` property does not.
+
+> **★ THE ID AND THE NAME ON SCREEN DIFFER FOR TWO OF THE NINE INGREDIENTS**, and they are the two a
+> person is most likely to type: **`Coral` displays as "Fiber"** and **`Shell` as "Generator"**. The
+> lookup takes id, `displayName` and asset name. Same family as the 259 sounds reachable only by
+> GUID: **a lookup that cannot see the name on screen fails for the only spelling anyone will try.**
+
+**Four of the nine are not in circulation.** Measured by reference count across the exported assets:
+the five the stock shop trades in (Chip, Coral, Gland, Powerstar, Shell) are each referenced 3-17
+times, while **Bond, Ex and Face are referenced once - their own registry - and Strange Ball not at
+all.** A price in one can never be paid, so it is **warned about and kept** rather than refused (a
+game update could start dropping them, and this project reports a questionable file rather than
+silently dropping it).
+
+**⚠ AN INCREMENT NEEDS AN ITEM THAT COMES BACK.** `Shop` removes a bought item from the list unless
+`ModuleData.repeatInShop` is set, and `IncreasePrice` runs on what is left - so a rising price on a
+one-shot item is a number nothing ever reads, printed in the build log as though it applied. Both
+mods now turn repeat on when any increment is asked for. **Module Forge had this since it shipped
+and it asked about the MONEY increment only** - correct for the only escalation that existed when it
+was written, and a silent no-op the moment an ingredient could escalate too.
+
+**Weapon Forge gained `shopPriceIncrement` in the same change.** It had been writing a hard-coded
+`amount = 0f`, so a Forge WEAPON could never get more expensive while a Forge MODULE could. Found by
+reading the twin, per duplicate-by-default.
+
+**Two stock-game oddities found in passing and not acted on:** `SimpleModuleGrid.RestoreFromMemento`
+restores `Active3` from `memento.active2`, and `ShopItemsConfig` pulls its CSV from a published
+Google Sheets URL at runtime. (`SimpleModuleGrid` is the ENEMY/minion grid —
+`ModuleGridOwner.Data(useSimpleGrid)` — so the first one does not touch the player's ship.)
+
+**R19's close found both shop halves reading one null (2026-09-27):**
+
+- **★ `config.Get(id)` answers NULL for an item added this pass**, because `ShopItemsConfig`'s
+  dictionary is only rebuilt by `config.Initialize()` after the injection loop. Three symptoms, one
+  read: `Repeatable` returned early, so **TOLLGATE vanished after one purchase and its rising price
+  never showed** (269's second half); every summary line said **"for free"**; and the "hidden until
+  you have found" half never printed — so the log could not say whether 270's gate was applied.
+  `EnsureConfig` hands the config back now, in both mods. **The harness had pinned the bug**:
+  `shopcosttest.js` asserted `ShopItemConfig made = config.Get(` was present. It asserts the
+  opposite now. > **Pin what the code DOES, not the line it happens to contain.**
+- **★ A gated item must get the PRICE and not the POOL.** `RunData.RegisterShopUnlock` (run start +
+  every station) draws from the per-tier groups and never reads `unlockRequirements`; only
+  `Shop` → `RunData.AddShopItemsWhereRequirementsMet`, as a shop opens, honours the gate. So a gated
+  item injected into a pool was on sale at the first station (270). Consequence worth saying in the
+  log, and it is: a gated item is not tied to a station tier at all.
+
+
+### Loadouts — a card with several slots filled
+
+Built 2026-09-25 from his R19 part-1 idea, R19 test 282. `ForgeLoadoutFiles.cs`, called from
+`ForgeLoadoutPatch` before the weapon cards; `Loadout Builder.html`; how-to section **4t**;
+`loadouttest.py` + `loadoutpagetest.js`.
+
+**The game already had the whole shape.** `LoadoutTemplate` carries `embedded` + `primary`,
+`secondary`, `active1-3`; `Apply` installs whichever are set at fixed grid positions, and
+`LoadoutCard.Display` lists all five. **No stock card fills more than one**, and all six share the
+same embedded module (measured from the exported assets), so a loadout borrows the ship from
+`Starter_Popper` and has nothing to choose there. Run start, save and Continue are the game's own
+code — the modules become ordinary grid entries the memento restores.
+
+- **Its own `loadouts` folder beside `weapons`.** The weapons folder is read without recursion and
+  every file in it is a weapon, so `WeaponBuilder`'s no-template branch asks
+  `ForgeLoadoutFiles.LooksLikeLoadout` and names a stray loadout instead of saying "missing
+  template". A weapon names ONE slot as a value (`"slot": "primary"`); a loadout names slots as
+  KEYS — the two never overlap.
+- **★ Names resolve through `ModuleRegistry.AllItems`, never a scene-wide search.** The save restores
+  a module with `registry.Get(id).DeepCopy()` and no null check, so an unregistered module would
+  start a run fine and break Continue. Order: a Forge file's `name` → registry asset name (the
+  `Module Weapon ` / `Module Active ` prefix optional) → the card's `displayName` if unique.
+  **`ForgeMinionArms.Made` is excluded from the display-name step**: each tuned minion gun keeps the
+  stock displayName and IS registered, so "GEL MISSILE" would turn ambiguous the moment a minion
+  carried one.
+- **★ `ModuleGrid.Install` checks nothing**, so the mod checks the game's own rule:
+  `ModuleSlotType.Weapon/Active.compatibleModuleTypes.Contains(module.moduleType)`. Measured: Weapon
+  slots take ModuleType Weapon, Active slots take Active, and all 35 stock `Module Weapon *` /
+  `Module Active *` assets are registered and split cleanly by those two types. A misfit leaves the
+  slot EMPTY with a warning that names the weapon file's own `slot`; nothing resolving at all means
+  no card (a card with nothing on it starts a run with no gun).
+  - **★ AND THAT RULE WAS NOT LOADED WHERE IT WAS ASKED.** `ModuleSlotType.Weapon` / `.Active` are
+    statics filled by `EnumsCollection.Initialize`, a GAME-scene service; ship select is in the main
+    menu. So R19's log said *"the game's slot rules were not loaded yet, so the loadout files' slot
+    choices could NOT be checked"* and a primary weapon went onto key 2 — the check skipped itself
+    in the only place it runs. `Fits` falls back to the slot-type assets
+    (`FindObjectsOfTypeAll<ModuleSlotType>`, the `SetValues` name rule) and then to the module type's
+    asset name (`ModuleType Weapon` / `ModuleType Active`, measured off `Weapon.asset` /
+    `Active.asset`). **A guard that can be skipped by load order is a guard only on the paths that
+    load late.**
+- `unlockingModules` is empty, so `LoadoutSelector.IsLocked` never locks the card. Card asset names
+  are `ForgeLoadout_<name>`, disjoint from weapon cards' `Forge_<name>`.
+
+**Upgrade modules on the rest of the grid are DECLINED, by design** (his call, 2026-09-25): *"That
+wouldn't really work for starting the game with... This template loadout is for starting the game
+with a certain setup... there might be weapons that complement each other."* A loadout is a
+starting WEAPON setup — five slots of weapons and gadgets that work together. Do not add grid
+placement or re-offer it.
 
 ## Platform gotchas (.NET 4.7.2 against a Unity 6 game)
 
@@ -1254,9 +2367,28 @@ method by reflection. Expect the same class of problem from any new Unity API yo
   game's own augmentations layered on top of it.
 - **Stock bug:** the cap trim destroys `unit.Minions.First()` — the first minion in the list, not the
   first of that connection type. Two drone gadgets equipped, and going over the cap on one can kill a
-  drone belonging to the other.
+  drone belonging to the other. Fixed by `ForgeMinionTrimPatch` — see the next bullet for the half of
+  that fix which is not obvious and which shipped wrong first.
 - Killing a minion deliberately should use **`HealthBase.Die()`**, which is what the game's own trim
   does; a raw `Destroy` leaves the owner's minion list holding a dead reference.
+- **⚠ BUT `Die()` DOES NOT LEAVE `unit.Minions` THIS FRAME, so a prefix that trims by killing is
+  invisible to the original it is trying to correct.** `DamagableResource.Die()` ends at
+  `Object.Destroy(gameObject)`, which Unity defers to the end of the frame; the entry is removed by
+  `Unit.Data.OnDestroy`, later still. `ForgeMinionTrimPatch` shipped as a prefix that killed the
+  right minions under a comment asserting *"by the time the original's own loop is reached the count
+  is already within the cap, so its buggy line never executes."* It executes: `OnUpdate` recomputes
+  `num` from a set nothing has changed, still finds it over `Level`, and runs its
+  `DestroyUnit(unit.Minions.First())` on top of the correct kills. `.First()` is stable within a
+  frame, so it usually re-`Die`s a body already destroyed — `TryGetComponent` on a destroyed object,
+  inside the game's own `OnUpdate`. **`Unit.Data.RemoveMinion` is public**, is what the minion's own
+  teardown eventually calls, and a `HashSet.Remove` of something already gone is a no-op — so the
+  prefix unregisters each kill itself.
+  > **"Destroyed" is a decision, not an event.** Unity's `Destroy` marks the object (so
+  > `go == null` is true immediately) and runs nothing until the end of the frame — so anything a
+  > *collection* is asked about this frame still sees the corpse. A prefix's entire job is to be
+  > read by the original, so it has to change what the original reads, not merely what is doomed.
+  > Same family as the fire-rate clock: a refusal that does not consume the state that provoked it
+  > is not a refusal.
 
 ### Minions: eyes, bullets, and following
 
@@ -1527,6 +2659,27 @@ leaving 60 blocks hanging open.
 > `.idx-group` once all its entries go off — a heading over nothing is its own bug). **The index uses
 > `.idx-off`, never `.nomatch`**, for the same reason the filter does not use `.hidden`: one class per
 > concern, so nothing that hides a *link* can ever reach the form fields `isIncluded()` walks.
+
+**The four index classes, and why a fifth needs the same discipline.** `.idx-off` is the SEARCH,
+`.idx-unreachable` is the TEMPLATE, `.idx-on` is the GATE (added 2026-09-14 — *"show a different
+color to features that are enabled on the page. That way I don't need to search the list each time
+for a specific feature im currently working with"*), and `.nomatch` belongs to the form and must
+never appear in the panel. Two rules fall out of `.idx-on`:
+
+- **"Enabled" means the GATE, not "has values typed in it."** `isIncluded()` reads the gate, so a
+  block full of numbers with its gate off emits nothing — colouring that one would be a lie in the
+  expensive direction. `indexontest.js` asserts both halves against the emitted JSON.
+- **It is repainted from `refresh()`, not from a `change` listener.** LOAD .JSON, RESET FORM and
+  every preset assign `.checked` directly, and **assigning a property fires no event at all** — so a
+  listener would track hand-ticks and silently miss every bulk path. `refresh()` is the one function
+  all of them already end in. It is reached across the IIFE boundary as `window.__syncIndexGates`,
+  and it short-circuits on a signature of the 76 gates, because `refresh()` runs on every keystroke
+  in ~930 fields and almost none of them touch a gate.
+
+`#f-search` is `type="search"`, whose native clear X exists in Chrome and not in Firefox; it is
+suppressed and replaced by a real `#f-clear` button. **Clearing must cancel the pending 120 ms
+debounce** — without that, clicking it inside the window lets the stale `applyFilter` fire
+afterwards, and the box reads empty while the form stays filtered.
 >
 > **`#form` must have NO `padding-top`, and the navbar must not try to cancel one with a negative
 > margin.** A sticky offset is measured from the scroll container's **padding box**, so
@@ -1585,6 +2738,15 @@ The two mods cooperate but must stay independently buildable and runnable:
     silently share one allowance. And the cap comes back from `Resolve` as an **out param** rather
     than being written onto the Config, because a Config belongs to a `WeaponData` while
     contributions are keyed to a live `WeaponBase`.
+- **★ THE NULL-WEAPON CHANNEL IS "THE CARRIER'S GUNS", NOT "EVERY GUN" — fixed R19 part 1.**
+  `ForgeCrit` / `ForgeLeech` `_global` summed every ship-grid bonus into EVERY weapon's numbers,
+  enemy guns included — so a Module Forge crit module made enemy shots crit the player and a leech
+  module let enemies heal off him. Module Forge found the same shape in six of its own registries
+  (grow and windup reaching enemy bullets and guns were the visible half). `ForgeModuleScope`
+  (a mirror of Module Forge's `ModuleForgeScope`, deliberately not shared) holds the owner of each
+  contributor; Module Forge's bridges call `ForgeModuleScope.SetOwner(key, Unit.Data)` by type name
+  before a null-weapon push, and both sums skip a global entry unless the weapon's
+  `Owner.ComponentData` is that unit. An unknown owner applies to nobody and is said once.
 - **Kill ATTRIBUTION has to be pushed, not shared.** Both mods keep their own shot→weapon map (each
   must work with the other absent) and both stamp it from their own firing hook, which is
   `DoShoot`-scoped. So a shot *this* mod creates mid-flight — a split fragment, a chain jump, a
@@ -1612,35 +2774,39 @@ The two mods cooperate but must stay independently buildable and runnable:
 - Assume any class you hand a struct/class instance to keeps the reference. `ProjectileBounceData` is
   a **class** — assign a fresh instance or you mutate every stock weapon that shares it.
 
-### Opening a new testing round — the carried list is derived from the OLD CHECKLIST, not the results
+### Testing rounds — the checklist is BUILT from card files (since 2026-09-28)
 
-Each round lives in its own `TESTING CHECKLIST R<N>.html` with its own localStorage key, and the
-previous one is moved into `Testing Checklists/`. The failure mode to guard against is the
-**"captured, not built" section quietly shrinking**, and it has happened twice:
+**Read `Checklist/README.md` before closing or opening a round. It is the whole procedure.**
+`TESTING CHECKLIST R<N>.html` is written only by `Checklist/build.py`, from one file per test card
+(`Checklist/cards/`), one per captured idea (`Checklist/captured/`) and one per round
+(`Checklist/rounds/R<N>.txt`). Never edit the page by hand — the build refuses to overwrite a page
+that changed since it last wrote it, and `Harness/checklisttest.py` fails while the page and the
+cards disagree.
+
+Why it changed: rounds 2-20 were each made by copying the last page and patching it (R20: ~13 KB of
+find-and-replace edits), then writing a new 200+-assertion harness (`r16live.js` … `r20live.js`,
+now in `Harness/closed/`) to prove the patching worked. R19's close ran six hours and overflowed the
+context window. Every check those harnesses re-wrote now lives once in `build.py`; a round's own
+specifics are `quote:` / `pin:` / `keep:` / `lacks:` lines on the cards. `close.py` files the pasted
+results into each card's `== history`, so a card carries what was asked and what the tester said,
+round by round. Conversion was proven by rebuilding R20 from the cards **byte-identical** to the hand-built
+page, and `Harness/edits/checklist_mutants.py` breaks a copy 16 ways, all refused.
+
+**The captured list still must never quietly shrink** — it has twice:
 
 > R12 shipped with **5** captured entries where R11 had **11**. Eight were lost, because the section
 > was rebuilt from the round's **results file** — what was fresh from reading his report — instead of
-> from the previous round's own captured section. The results file holds this round's failures; it does
-> not hold the standing backlog, so everything he had not just mentioned vanished. He caught it.
+> from the previous round's own captured section. He caught it.
 
-**The procedure, which costs about a minute:**
+That is now structural: a captured idea is a file that is edited in place, never recreated, and the
+build checks every file the last round's manifest listed is still there. Leaving the list means a
+`retired: R<N> | why` line, which the round's retired note lists automatically. `carryaudit.py`
+still compares the built pages as a second opinion.
 
-```bash
-# 1. what the last round carried
-grep -o '<details class="cap"><summary>[^<]*' "Testing Checklists/TESTING CHECKLIST R<N-1>.html"
-# 2. what the new one carries
-grep -o '<details class="cap"><summary>[^<]*' "TESTING CHECKLIST R<N>.html"
-```
-
-Everything in (1) must appear in (2) **or be explicitly retired with a reason written in the new
-round**. Then re-verify each carried line — and this is the half that catches the other bug class:
+**Re-verify carried lines when you touch them** — this half no build can do:
 
 - For a line describing a **decision or a question**, check it against its memory file.
 - For a line describing **owed WORK**, check it against the **code**. A "still owed" note survives the
   work that closes it, because the work gets done under a different feature's name and nobody returns
   to the note. `bounce-feature-research-todo` was wrong about its own remaining item **three times**;
   each time one grep for the named symbol would have settled it. Reading the note again never does.
-
-A tolerant diff script lives in the session scratchpad (`carryaudit.py`) — match titles by word
-overlap, not equality, or legitimate rewording ("THE FIVE BEHAVIOURS LEFT" → "THE FIVE **WEAPON**
-BEHAVIOURS LEFT") reports as a drop. Mine did, on its first run.

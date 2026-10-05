@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PUNK Loadout Builder</title>
+<style>
+  :root {
+    --bg: #0d0d11; --panel: #16161d; --panel2: #1d1d27;
+    --line: #2c2c3a; --text: #e8e8f0; --dim: #9a9ab0;
+    --accent: #7fd4ff; --accent2: #ffd27f; --bad: #ff7f7f;
+    --good: #8fe38f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    padding: 14px 24px; border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  header h1 {
+    margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--accent);
+  }
+  header p { margin: 4px 0 0; color: var(--dim); }
+  .layout {
+    display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 16px; padding: 16px 24px 60px; max-width: 1300px;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 40px; }
+  }
+  button {
+    background: var(--accent); color: #04141c; border: 0;
+    padding: 8px 14px; font-weight: 700; cursor: pointer;
+    border-radius: 4px; font-size: 13px; letter-spacing: 1px;
+  }
+  button:hover { filter: brightness(1.15); }
+  button.secondary {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line);
+  }
+  input[type=text], textarea {
+    background: #0b0b0f; color: var(--text); border: 1px solid var(--line);
+    border-radius: 4px; padding: 6px 8px; font: inherit; width: 100%;
+  }
+  textarea { resize: vertical; min-height: 54px; }
+  label.f { display: flex; flex-direction: column; gap: 3px; font-size: 12px;
+    color: var(--dim); margin-bottom: 10px; }
+  label.f span { letter-spacing: .5px; text-transform: uppercase;
+    font-size: 10.5px; }
+  section {
+    background: var(--panel2); border: 1px solid var(--line);
+    border-radius: 6px; margin: 0 0 12px; padding: 12px 14px;
+  }
+  section h2 {
+    margin: 0 0 10px; font-size: 12px; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--accent);
+  }
+  em { color: var(--dim); font-style: normal; font-size: 12px;
+    display: block; margin-top: 4px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .slot { border-top: 1px solid var(--line); padding: 10px 0 6px; }
+  .slot:first-of-type { border-top: 0; padding-top: 0; }
+  .slot .head { display: flex; justify-content: space-between; gap: 8px;
+    font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+  .slot .head b { color: var(--accent2); }
+  .slot .head i { color: var(--dim); font-style: normal; }
+  .slot .said { font-size: 12px; min-height: 18px; margin-top: 3px; }
+  .warn { color: var(--accent2); }
+  .err { color: var(--bad); }
+  .hint { color: var(--accent); }
+  .ok { color: var(--good); }
+  pre#output {
+    margin: 0; padding: 10px; background: #0b0b0f; border: 1px solid var(--line);
+    border-radius: 4px; font: 12px/1.45 Consolas, monospace;
+    color: var(--accent2); max-height: 340px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  code { background: #0b0b0f; padding: 1px 4px; border-radius: 3px;
+    font: 12px Consolas, monospace; color: var(--accent2); }
+  ul#checks { margin: 0; padding-left: 18px; font-size: 13px; }
+  ul#checks li { margin-bottom: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: 10px;
+    border: 1px solid var(--line); background: #0b0b0f; color: var(--text); }
+  .chip.g { border-color: #7fd4ff66; }
+  .presets { display: flex; flex-direction: column; gap: 8px; }
+  .preset { display: flex; gap: 10px; align-items: flex-start; }
+  .preset button { flex: 0 0 auto; min-width: 118px; }
+  .preset div { font-size: 12.5px; color: var(--dim); }
+  input[type=file] { color: var(--dim); font-size: 12px; max-width: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LOADOUT BUILDER</h1>
+  <p>Start a run with up to five things already equipped. This makes one
+  <code>.json</code> for the <b>loadouts</b> folder next to
+  <code>WeaponForge.dll</code> &mdash; the folder beside <b>weapons</b>, not
+  inside it. Each file is one card on the ship-select screen.</p>
+</header>
+
+<div class="layout">
+<div>
+  <section>
+    <h2>The card</h2>
+    <label class="f"><span>name &mdash; required, the loadout's own id</span>
+      <input type="text" id="f-name" placeholder="TwinGuns" spellcheck="false"></label>
+    <label class="f"><span>displayName &mdash; the big title on the card</span>
+      <input type="text" id="f-displayName" placeholder="(empty = the name in capitals)"></label>
+    <label class="f"><span>description &mdash; the small text under it</span>
+      <textarea id="f-description" placeholder="(empty = &quot;Starts with A + B.&quot; listing what it carries)"></textarea></label>
+  </section>
+
+  <section id="slots">
+    <h2>The five slots</h2>
+    <em style="margin:0 0 10px">Fill 1 to 5. Leave the rest empty. Pick from
+    the list or type a name: one of <b>your weapon files' "name"</b>, a stock
+    module like <code>Module Weapon White Shotgun</code>, or the name on its card
+    like <code>SHOTGUN</code>. Weapons go in primary/secondary, gadgets (and
+    drones) go in gadget1&ndash;3 &mdash; the game refuses anything else.</em>
+    <div class="slot" data-slot="primary">
+      <div class="head"><b>primary</b><i>left click &middot; weapons</i></div>
+      <input type="text" data-key="primary" list="dl-weapon" spellcheck="false">
+      <div class="said"></div>
+    </div>
+    <div class="slot" data-slot="secondary">
+      <div class="head"><b>secondary</b><i>right click &middot; weapons</i></div>
+      <input type="text" data-key="secondary" list="dl-weapon" spellcheck="false">
+      <div class="said"></div>
+    </div>
+    <div class="slot" data-slot="gadget1">
+      <div class="head"><b>gadget1</b><i>key 1 (and Ctrl) &middot; gadgets</i></div>
+      <input type="text" data-key="gadget1" list="dl-gadget" spellcheck="false">
+      <div class="said"></div>
+    </div>
+    <div class="slot" data-slot="gadget2">
+      <div class="head"><b>gadget2</b><i>key 2 &middot; gadgets</i></div>
+      <input type="text" data-key="gadget2" list="dl-gadget" spellcheck="false">
+      <div class="said"></div>
+    </div>
+    <div class="slot" data-slot="gadget3">
+      <div class="head"><b>gadget3</b><i>key 3 &middot; gadgets</i></div>
+      <input type="text" data-key="gadget3" list="dl-gadget" spellcheck="false">
+      <div class="said"></div>
+    </div>
+    <datalist id="dl-weapon"></datalist>
+    <datalist id="dl-gadget"></datalist>
+  </section>
+
+  <section>
+    <h2>Your weapons (optional)</h2>
+    <em style="margin:0 0 8px">Pick the <code>.json</code> files from your
+    <b>weapons</b> folder (Ctrl+A in the file dialog selects them all). Nothing
+    is uploaded &mdash; the page just reads each file's <code>name</code> and
+    <code>slot</code> so it can offer them in the lists above and tell you if one
+    is in the wrong kind of slot. You can also just type the names.</em>
+    <div class="row">
+      <input type="file" id="f-weapons" accept=".json,application/json" multiple>
+      <button class="secondary" id="btn-forget">FORGET THEM</button>
+    </div>
+    <div class="chips" id="yours"></div>
+  </section>
+
+  <section>
+    <h2>Presets</h2>
+    <em style="margin:0 0 10px">Stock modules only, so each works on any
+    install. Swap any slot for one of yours.</em>
+    <div class="presets" id="presets"></div>
+  </section>
+</div>
+
+<div>
+  <section>
+    <h2>loadout .json</h2>
+    <pre id="output"></pre>
+    <div class="row" style="margin-top:10px">
+      <button id="btn-save">SAVE .json</button>
+      <button class="secondary" id="btn-copy">COPY JSON</button>
+      <label class="secondary" style="font-size:12px;color:var(--dim)">
+        load a loadout to edit:
+        <input type="file" id="f-load" accept=".json,application/json"></label>
+    </div>
+    <em>Save it into <code>BepInEx\plugins\&hellip;\loadouts\</code>, then restart
+    the game &mdash; files are read once at launch. The card appears straight
+    after the game's own cards.</em>
+  </section>
+
+  <section>
+    <h2>Checks</h2>
+    <ul id="checks"></ul>
+  </section>
+
+  <section>
+    <h2>Good to know</h2>
+    <em style="margin:0">&bull; Any of your weapons can go in a loadout, even
+    one whose file says <code>"source": "loot"</code> or <code>"none"</code> &mdash;
+    a loadout is how you start with a loot-only gun.<br>
+    &bull; The ship itself (the embedded core) is the same on every card, so
+    there is nothing to pick for it.<br>
+    &bull; A loadout only decides what you START with. After that the modules
+    are ordinary equipment: they save, load, and can be swapped like any other.<br>
+    &bull; Only the five weapon/gadget slots, on purpose: a loadout is a starting
+    setup of weapons and gadgets that work well together. Upgrade modules on the
+    rest of the grid are not part of it.<br>
+    &bull; A name that is not found, or is in the wrong kind of slot, leaves that
+    slot empty and says why in <code>BepInEx\WeaponForge.log</code> (search
+    <code>loadouts/</code>). A file where nothing resolves gets no card at all.</em>
+  </section>
+</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // The five slots, in the order the game's card lists them. The C# reads
+  // exactly these keys (ForgeLoadoutFiles.SlotKeys) - a harness pins that.
+  var SLOTS = ["primary", "secondary", "gadget1", "gadget2", "gadget3"];
+
+  function isGadgetSlot(key) { return key.indexOf("gadget") === 0; }
+
+  // Every stock weapon and gadget module the game REGISTERS - measured against
+  // ModuleRegistry, so each one is safe to start with and loads from a save.
+  // [asset name, the name on its card]. "MISILLE DRONE" is the game's own
+  // spelling and is kept, because the card-name lookup must match what is
+  // actually on screen.
+  var STOCK_WEAPONS = [
+    ["Module Weapon White Popper", "POPPER"],
+    ["Module Weapon White Shotgun", "SHOTGUN"],
+    ["Module Weapon White Bolt", "BOLT"],
+    ["Module Weapon White Dart", "DART"],
+    ["Module Weapon White Blades", "BLADES"],
+    ["Module Weapon White Derbis", "DEBRIS"],
+    ["Module Weapon White DiscGun", "DISC GUN"],
+    ["Module Weapon White Worm", "WORM"],
+    ["Module Weapon Caps Flame", "FLAME"],
+    ["Module Weapon Caps Laser", "LASER"],
+    ["Module Weapon Caps Loon", "LOON"],
+    ["Module Weapon Caps Rocket", "FIRE MISSILE"],
+    ["Module Weapon Electron Rocket", "Electron Missile"],
+    ["Module Weapon Electron Toroid", "TOROID"],
+    ["Module Weapon Electron Zapper", "ZAPPER"],
+    ["Module Weapon Purple Can", "CAN"],
+    ["Module Weapon Purple ClusterCube", "CLUSTER CUBE"],
+    ["Module Weapon Purple Flack", "FLACK"],
+    ["Module Weapon Purple Marbles", "MARBLES"],
+    ["Module Weapon Purple Rocket", "GEL MISSILE"],
+    ["Module Weapon Purple Shard", "SHARD"],
+    ["Module Weapon Tech Dandelion", "DANDELION"],
+    ["Module Weapon Fly", "Weapon_Fly"]
+  ];
+
+  var STOCK_GADGETS = [
+    ["Module Active Purple AirMines", "AIR MINE"],
+    ["Module Active Purple Surge", "MISSILE SURGE"],
+    ["Module Active Purple Teardrop", "TEARDROP"],
+    ["Module Active Caps Igniter", "IGNITER"],
+    ["Module Active Caps Vial", "VIAL"],
+    ["Module Active Electron Circuit", "CIRCUIT"],
+    ["Module Active Generator Fuel", "FIELD GENERATOR"],
+    ["Module Active Drone Caps", "COMBAT DRONE"],
+    ["Module Active Drone Electron", "ELECTRIC DRONE"],
+    ["Module Active Drone Phantom", "PHANTOM DRONE"],
+    ["Module Active Drone Purple", "MISILLE DRONE"],
+    ["Module Active Drone Suicide", "SUICIDE DRONE"]
+  ];
+
+  // Stock only, so a preset works on any install and never names anyone's
+  // own weapon.
+  var PRESETS = [
+    {
+      title: "TWIN GUNS",
+      about: "Two guns at once: a popper on left click, a shotgun on right.",
+      data: {
+        name: "TwinGuns", displayName: "TWIN GUNS",
+        primary: "Module Weapon White Popper",
+        secondary: "Module Weapon White Shotgun"
+      }
+    },
+    {
+      title: "FULL KIT",
+      about: "All five slots: two guns and three gadgets, one of them a drone.",
+      data: {
+        name: "FullKit", displayName: "FULL KIT",
+        primary: "Module Weapon White Bolt",
+        secondary: "Module Weapon Caps Flame",
+        gadget1: "Module Active Purple AirMines",
+        gadget2: "Module Active Caps Vial",
+        gadget3: "Module Active Drone Caps"
+      }
+    },
+    {
+      title: "GADGETEER",
+      about: "No gun on the mouse at all - three gadgets on the keys.",
+      data: {
+        name: "Gadgeteer", displayName: "GADGETEER",
+        gadget1: "Module Active Electron Circuit",
+        gadget2: "Module Active Purple Teardrop",
+        gadget3: "Module Active Drone Electron"
+      }
+    }
+  ];
+
+  // Your weapon files, read from disk by the file picker: { name, displayName,
+  // slot }. Remembered in this browser only, as a convenience.
+  var yours = [];
+  var STORE = "loadoutBuilder.yourWeapons";
+
+  try {
+    var saved = JSON.parse(window.localStorage.getItem(STORE) || "[]");
+    if (Array.isArray(saved)) yours = saved;
+  } catch (e) { yours = []; }
+
+  function remember() {
+    try { window.localStorage.setItem(STORE, JSON.stringify(yours)); } catch (e) { }
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var inputs = {};
+  SLOTS.forEach(function (k) {
+    inputs[k] = document.querySelector('input[data-key="' + k + '"]');
+  });
+
+  function same(a, b) {
+    return a != null && b != null &&
+      String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+  }
+
+  function gadgetFileSlot(slot) {
+    var s = String(slot || "primary").trim().toLowerCase();
+    return s === "gadget" || s === "gadget1" || s === "gadget2" || s === "gadget3";
+  }
+
+  // Mirrors the mod's lookup order (ForgeLoadoutFiles.Find):
+  //   1. your weapon file's "name"
+  //   2. a stock asset name, with "Module Weapon " / "Module Active " optional
+  //   3. the name on a card, if exactly one carries it
+  // Returns { kind: "yours"|"stock"|"ambiguous"|"unknown", gadget, label, ... }
+  function resolve(text) {
+    var key = String(text).trim();
+    var i;
+
+    for (i = 0; i < yours.length; i++) {
+      if (same(yours[i].name, key) || same("Forge_" + yours[i].name, key) ||
+          same("Forge Module " + yours[i].name, key)) {
+        return { kind: "yours", gadget: gadgetFileSlot(yours[i].slot),
+                 label: yours[i].displayName || yours[i].name.toUpperCase(),
+                 fileSlot: yours[i].slot || "primary" };
+      }
+    }
+
+    var all = STOCK_WEAPONS.map(function (s) { return { a: s[0], d: s[1], g: false }; })
+      .concat(STOCK_GADGETS.map(function (s) { return { a: s[0], d: s[1], g: true }; }));
+
+    var tries = [key, "Module Weapon " + key, "Module Active " + key];
+    for (i = 0; i < tries.length; i++) {
+      for (var j = 0; j < all.length; j++) {
+        if (same(all[j].a, tries[i])) {
+          return { kind: "stock", gadget: all[j].g, label: all[j].d, asset: all[j].a };
+        }
+      }
+    }
+
+    var shown = all.filter(function (s) { return same(s.d, key); })
+      .map(function (s) { return { gadget: s.g, label: s.d, asset: s.a, kind: "stock" }; })
+      .concat(yours.filter(function (y) {
+        return same(y.displayName || String(y.name).toUpperCase(), key);
+      }).map(function (y) {
+        return { gadget: gadgetFileSlot(y.slot), label: y.displayName || y.name,
+                 kind: "yours", fileSlot: y.slot || "primary", asset: y.name };
+      }));
+
+    if (shown.length === 1) return shown[0];
+    if (shown.length > 1) {
+      return { kind: "ambiguous", names: shown.map(function (s) { return s.asset; }) };
+    }
+
+    return { kind: "unknown" };
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function fillLists() {
+    var w = $("dl-weapon"), g = $("dl-gadget");
+    w.innerHTML = ""; g.innerHTML = "";
+
+    function add(list, value, label) {
+      var o = document.createElement("option");
+      o.value = value; o.label = label; o.textContent = label;
+      list.appendChild(o);
+    }
+
+    yours.forEach(function (y) {
+      var label = (y.displayName || y.name.toUpperCase()) + " (yours)";
+      add(gadgetFileSlot(y.slot) ? g : w, y.name, label);
+    });
+    STOCK_WEAPONS.forEach(function (s) { add(w, s[0], s[1]); });
+    STOCK_GADGETS.forEach(function (s) { add(g, s[0], s[1]); });
+
+    var chips = $("yours");
+    chips.innerHTML = "";
+    if (yours.length === 0) {
+      chips.innerHTML = '<span class="chip" style="color:var(--dim)">none read yet</span>';
+    } else {
+      yours.forEach(function (y) {
+        var c = document.createElement("span");
+        c.className = "chip" + (gadgetFileSlot(y.slot) ? " g" : "");
+        c.textContent = y.name + " → " + (y.slot || "primary");
+        chips.appendChild(c);
+      });
+    }
+  }
+
+  function build() {
+    var o = {};
+    var name = $("f-name").value;
+    var dn = $("f-displayName").value.trim();
+    var desc = $("f-description").value;
+
+    o.name = name.trim() || "MyLoadout";
+    if (dn) o.displayName = dn;
+    if (desc.trim()) o.description = desc.trim();
+
+    SLOTS.forEach(function (k) {
+      var v = inputs[k].value.trim();
+      if (v) o[k] = v;
+    });
+
+    return o;
+  }
+
+  function refresh() {
+    var o = build();
+    $("output").textContent = JSON.stringify(o, null, 2);
+
+    var checks = [];
+    var name = $("f-name").value;
+    var filled = [];
+    var labels = [];
+
+    if (!name.trim()) {
+      checks.push(["err", 'Needs a <code>name</code> &mdash; the file is skipped without one. (The preview shows "MyLoadout" as a stand-in.)']);
+    } else if (name !== name.trim()) {
+      checks.push(["warn", "The name has a space at the start or end. The mod trims it and says so; the page already has."]);
+    }
+
+    SLOTS.forEach(function (k) {
+      var said = inputs[k].parentElement.querySelector(".said");
+      var v = inputs[k].value.trim();
+
+      if (!v) { said.innerHTML = ""; return; }
+
+      filled.push(k);
+      var r = resolve(v);
+      var wantGadget = isGadgetSlot(k);
+
+      if (r.kind === "unknown") {
+        said.innerHTML = '<span class="hint">Not a stock name &mdash; fine if it is one of your weapons. Read your weapon files below to check it.</span>';
+        checks.push(["hint", "<b>" + k + "</b>: '" + esc(v) + "' is not a stock module. If it is one of your weapons, type its file's <code>name</code> exactly; if the mod cannot find it, that slot starts empty and the log lists what it does have."]);
+        return;
+      }
+
+      if (r.kind === "ambiguous") {
+        said.innerHTML = '<span class="err">Ambiguous &mdash; more than one card is called that.</span>';
+        checks.push(["err", "<b>" + k + "</b>: '" + esc(v) + "' is the card name of " + r.names.length + " things (" + r.names.map(esc).join(", ") + "). Use one of those names instead."]);
+        return;
+      }
+
+      if (r.gadget !== wantGadget) {
+        var move = wantGadget ? "primary or secondary" : "gadget1, gadget2 or gadget3";
+        var what = r.kind === "yours"
+          ? "your weapon file builds it for <code>\"slot\": \"" + esc(r.fileSlot) + "\"</code>, which makes it " + (r.gadget ? "a gadget" : "a weapon")
+          : "it is " + (r.gadget ? "a gadget" : "a weapon");
+        said.innerHTML = '<span class="err">' + (r.gadget ? "A gadget" : "A weapon") + " can't go here &mdash; move it to " + move + ".</span>";
+        checks.push(["err", "<b>" + k + "</b>: " + esc(r.label) + " &mdash; " + what + ", and the game only takes " + (wantGadget ? "gadgets" : "weapons") + " in " + k + ". The mod leaves that slot empty. Move it to " + move + "."]);
+        return;
+      }
+
+      // Only what the mod will actually equip goes into the card's
+      // auto-description - a misfit is left out there, so it is left out here.
+      labels.push(r.label);
+
+      said.innerHTML = '<span class="ok">✓ ' + esc(r.label) +
+        (r.kind === "yours" ? " &middot; your weapon" : " &middot; stock &middot; " + esc(r.asset)) + "</span>";
+    });
+
+    if (filled.length === 0) {
+      checks.push(["err", "Nothing to equip &mdash; fill at least one slot. A file with every slot empty is skipped."]);
+    }
+
+    var seen = {};
+    SLOTS.forEach(function (k) {
+      var v = inputs[k].value.trim().toLowerCase();
+      if (!v) return;
+      if (seen[v]) {
+        checks.push(["hint", "<b>" + k + "</b> repeats <b>" + seen[v] + "</b>. That is allowed &mdash; you start with two separate copies."]);
+      } else {
+        seen[v] = k;
+      }
+    });
+
+    if (!$("f-displayName").value.trim() && name.trim()) {
+      checks.push(["hint", "No displayName &mdash; the card will say <b>" + esc(name.trim().toUpperCase()) + "</b>."]);
+    }
+
+    if (!$("f-description").value.trim() && labels.length) {
+      checks.push(["hint", "No description &mdash; the card will say <i>Starts with " + labels.map(esc).join(" + ") + ".</i>"]);
+    }
+
+    var hasError = checks.some(function (c) { return c[0] === "err"; });
+    if (!hasError && filled.length) {
+      checks.unshift(["ok", "Ready: " + filled.length + " of 5 slots filled."]);
+    }
+
+    $("checks").innerHTML = checks.map(function (c) {
+      return '<li class="' + c[0] + '">' + c[1] + "</li>";
+    }).join("");
+  }
+
+  function loadObject(o) {
+    if (!o || typeof o !== "object") return;
+    $("f-name").value = o.name || "";
+    $("f-displayName").value = o.displayName || "";
+    $("f-description").value = o.description || "";
+    SLOTS.forEach(function (k) {
+      var found = "";
+      Object.keys(o).forEach(function (key) {
+        if (key.trim().toLowerCase() === k && typeof o[key] === "string") found = o[key];
+      });
+      inputs[k].value = found;
+    });
+    refresh();
+  }
+
+  // ------------------------------------------------------------ wiring
+  ["f-name", "f-displayName", "f-description"].forEach(function (id) {
+    $(id).addEventListener("input", refresh);
+  });
+  SLOTS.forEach(function (k) {
+    inputs[k].addEventListener("input", refresh);
+    inputs[k].addEventListener("change", refresh);
+  });
+
+  $("f-weapons").addEventListener("change", function () {
+    var files = Array.prototype.slice.call(this.files || []);
+    var left = files.length;
+    var input = this;
+    if (!left) return;
+
+    files.forEach(function (file) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var w = JSON.parse(reader.result);
+          // A weapon file has a "template"; loadouts and Module Forge files
+          // do not, and are skipped here as the mod skips them.
+          if (w && typeof w.name === "string" && w.template) {
+            var entry = { name: w.name.trim(), displayName: w.displayName || "",
+                          slot: typeof w.slot === "string" ? w.slot : "primary" };
+            // A drone gadget is always forced to a gadget slot by the mod.
+            if (/^Module Active Drone/i.test(String(w.template)) && !gadgetFileSlot(entry.slot)) {
+              entry.slot = "gadget1";
+            }
+            yours = yours.filter(function (y) { return !same(y.name, entry.name); });
+            yours.push(entry);
+          }
+        } catch (e) { }
+        if (--left === 0) {
+          yours.sort(function (a, b) { return a.name.localeCompare(b.name); });
+          remember(); fillLists(); refresh();
+          input.value = "";
+        }
+      };
+      reader.readAsText(file);
+    });
+  });
+
+  $("btn-forget").addEventListener("click", function () {
+    yours = []; remember(); fillLists(); refresh();
+  });
+
+  $("f-load").addEventListener("change", function () {
+    var file = this.files && this.files[0];
+    var input = this;
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try { loadObject(JSON.parse(reader.result)); }
+      catch (e) { window.alert("That file is not valid JSON: " + e.message); }
+      input.value = "";
+    };
+    reader.readAsText(file);
+  });
+
+  $("btn-copy").addEventListener("click", function () {
+    var text = $("output").textContent;
+    var btn = this;
+    function fallback() {
+      var area = document.createElement("textarea");
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      try { document.execCommand("copy"); } catch (e) { }
+      document.body.removeChild(area);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(fallback);
+    } else {
+      fallback();
+    }
+    btn.textContent = "COPIED!";
+    setTimeout(function () { btn.textContent = "COPY JSON"; }, 1200);
+  });
+
+  $("btn-save").addEventListener("click", function () {
+    var name = $("f-name").value.trim() || "MyLoadout";
+    var blob = new Blob([$("output").textContent], { type: "application/json" });
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name + ".json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  });
+
+  var box = $("presets");
+  PRESETS.forEach(function (p) {
+    var row = document.createElement("div");
+    row.className = "preset";
+    var b = document.createElement("button");
+    b.className = "secondary";
+    b.textContent = p.title;
+    b.setAttribute("data-preset", p.data.name);
+    b.addEventListener("click", function () { loadObject(p.data); });
+    var d = document.createElement("div");
+    d.textContent = p.about;
+    row.appendChild(b);
+    row.appendChild(d);
+    box.appendChild(row);
+  });
+
+  fillLists();
+  refresh();
+
+  // For the harness: the lists and the lookup, read-only.
+  window.__loadout = {
+    SLOTS: SLOTS, STOCK_WEAPONS: STOCK_WEAPONS, STOCK_GADGETS: STOCK_GADGETS,
+    PRESETS: PRESETS, resolve: resolve,
+    setYours: function (list) { yours = list; fillLists(); refresh(); }
+  };
+})();
+</script>
+</body>
+</html>

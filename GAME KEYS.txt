@@ -1,0 +1,178 @@
+==============================================================================
+PUNK - WHICH KEYS THE GAME USES, AND WHICH ARE FREE
+==============================================================================
+
+Read on 2026-10-01 from the game's own input setup (its InputActions asset),
+the keys its scenes give to the debug menu and main menu, and every place its
+code reads a key directly. Key names only - nothing of the game's is copied
+here. Target: PUNK Playtest v0.12.9.
+
+THE SHORT ANSWER: U is free in the game - nothing binds it, on any screen,
+and no code reads it. Since drone modes were built (2026-10-01) Weapon
+Forge uses it as the "drones back to normal" key.
+
+What matters for a mod key is the FLYING list. Weapon Forge's keys only act
+while you are flying, so a key the game uses only on the map, in a shop or in
+a menu is still free for a mod. In co-op each player's mod keys act only on
+their own ship.
+
+
+------------------------------------------------------------------------------
+KEYBOARD - WHILE FLYING
+------------------------------------------------------------------------------
+
+USED BY THE GAME:
+
+  W A S D             move
+  Mouse               aim
+  Left mouse          primary fire
+  Right mouse         secondary fire
+  Space               dash (also self-destruct)
+  Shift (either one)  hover
+  Left Alt            hover
+  F                   use / interact
+  E                   item wheel
+  Tab                 ship menu
+  Escape              pause
+  1  or  Ctrl         gadget 1      (Ctrl means either Ctrl key)
+  2  or  middle mouse gadget 2
+  3  or  T            gadget 3
+
+USED BY THE MODS:
+
+  H                   Weapon Forge - put the rank choices away / back
+                      ([Rank choices] Key in the .cfg)
+  Y                   Weapon Forge - drone modes; hold it and press a
+                      gadget's button for that gadget alone
+                      ([Drone modes] Key)
+  U                   Weapon Forge - drones back to normal
+                      ([Drone modes] NormalKey)
+
+FREE:
+
+  Letters    B  C  G  I  J* K  L  M  N  O  P  Q  R* V  X  Z
+  Numbers    4  5  6  7  8  9  0
+  F keys     F1* F2  F3  F4  F5  F6  F7  F8  F9  F10  F11  F12*
+  Symbols    `  -  =  [  ]  \  ;  '  ,* .  /
+  Others     Enter  Backspace  Insert  Delete  Home  End  Page Up
+             Page Down  the four arrow keys  Right Alt*  Caps Lock
+  Numpad     every key: 0-9  +  -  *  /  .  Enter
+
+  * see "Special keys" below: J, R, F1, F12, comma and Right Alt each have
+    something to know about them.
+
+
+------------------------------------------------------------------------------
+GAMEPAD - WHILE FLYING
+------------------------------------------------------------------------------
+
+USED BY THE GAME:
+
+  Left stick                  move
+  Right stick                 aim
+  A / Cross                   use (also self-destruct)
+  X / Square                  gadget 1
+  Y / Triangle                gadget 2
+  B / Circle                  gadget 3
+  LB / L1                     dash
+  RB / R1                     secondary fire
+  LT / L2                     hover
+  RT / R2                     primary fire
+  View / Select / Share       ship menu
+  Menu / Start / Options      pause (a tap)
+  D-pad left                  ship menu
+  D-pad down                  item wheel
+
+USED BY THE MODS:
+
+  D-pad up                    Weapon Forge - rank choices
+  D-pad right                 Weapon Forge - drone modes (hold it about a
+                              second for back to normal)
+
+FREE:
+
+  L3 (press the left stick)
+  R3 (press the right stick)
+
+  That is all. Every face button, shoulder, trigger and D-pad direction is
+  taken once the two mod keys are counted. The PlayStation touchpad press is
+  bound to a "Debug" action that nothing reads, so it is free in practice,
+  but only on a PlayStation pad.
+
+
+------------------------------------------------------------------------------
+SPECIAL KEYS - read these before picking one
+------------------------------------------------------------------------------
+
+  Ctrl + Alt + D   opens the GAME'S OWN DEBUG MENU, which is switched on in
+                   the playtest. Escape closes it. Ctrl and Alt are also
+                   gadget 1 and hover, so pressing it in flight fires those too.
+  J                spawns a fake eye - but only after "spawn eye" has been
+                   switched on inside that debug menu. Otherwise free.
+  R                on the MAIN MENU it resets the tutorial. While flying it
+                   does nothing.
+  , (comma)        bound to a "Debug" action that no code reads. Free in
+                   practice.
+  F1               taken if you run the third-party "PUNK Debug Menu Key (F1)"
+                   plugin. (Seen in a log; that plugin has not been read.)
+  F12              Steam takes a screenshot on F12 by default. Steam's, not
+                   the game's.
+  Shift + Tab      opens the Steam overlay by default. Both keys are game
+                   keys anyway.
+  Right Alt        free on its own, but on keyboards with an AltGr key the
+                   system sends AltGr as Ctrl + Right Alt, and Ctrl is gadget 1.
+  Windows key      avoid: Windows takes it.
+
+  Splash and loading screens take any key, and Escape or B on the main menu
+  asks to quit.
+
+
+------------------------------------------------------------------------------
+OTHER SCREENS - for reference
+------------------------------------------------------------------------------
+
+These are live only when you are NOT flying, so a mod key that acts only
+while flying can share them.
+
+  Map            Tab / Escape close, W A S D move, mouse wheel zoom,
+                 E inventory and next tab, Q map and previous tab,
+                 F quick equip, Enter / Space grab, T select a station.
+                 Pad: View or B close, sticks / D-pad move, triggers zoom,
+                 LB / RB tabs, X quick equip, A grab or select.
+  Ship menu      W A S D move the grid, arrow keys move the selection,
+  and shops      Enter pick up, E shop, Q vault, F unequip.
+                 Pad: right stick grid, left stick / D-pad selection, A pick
+                 up, RT shop, LT vault, X unequip.
+  Item wheel     E closes it (pad: D-pad down); mouse / right stick picks.
+  Options        W / S or arrows move, A / D or arrows change a setting,
+                 Q / E change tab, Escape closes. Pad: LT / RT change,
+                 LB / RB tab, A apply, B close.
+  Menus          W A S D or arrows move, Enter / Space choose, Escape back.
+  Free camera    W A S D move, Space faster, mouse wheel zoom, Escape exits.
+                 (A camera view the game has; not part of normal play.)
+
+
+------------------------------------------------------------------------------
+WHAT TO TYPE IN A .cfg
+------------------------------------------------------------------------------
+
+A Weapon Forge key setting takes the key's own name, in any case:
+
+  letters and numbers   H   u   7
+  F keys                F5
+  symbols               backquote  minus  equals  leftBracket  rightBracket
+                        backslash  semicolon  quote  comma  period  slash
+  others                enter  backspace  insert  delete  home  end  pageUp
+                        pageDown  upArrow  downArrow  leftArrow  rightArrow
+                        rightAlt  capsLock
+  numpad                numpad0 ... numpad9  numpadPlus  numpadMinus
+                        numpadMultiply  numpadDivide  numpadPeriod
+                        numpadEnter
+  no key at all         None
+
+A pad setting takes DpadUp, DpadDown, DpadLeft, DpadRight, L3, R3, Select,
+Start, North / South / East / West (or Y / A / B / X), LB or RB. Any Input
+System path such as <Gamepad>/rightStickPress also works.
+
+The .cfg is read when the game starts, so a change needs a restart. The
+restart row in the GAME MODE FORGE options tab, on the main menu, does that.

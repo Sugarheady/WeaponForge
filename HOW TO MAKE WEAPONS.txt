@@ -90,9 +90,28 @@ apostrophes are all fine - the name is only ever compared to itself.
   5. Your weapon is a new entry on the loadout select screen.
 
 If something is wrong with a file, the game does not crash - the
-weapon is skipped and the reason is written to:
-     <game folder>\BepInEx\LogOutput.log
-Search the log for "WeaponForge".
+weapon is skipped and the reason is written to Weapon Forge's own
+log:
+     <game folder>\BepInEx\WeaponForge.log
+
+THE LOG FILE (since 2026-09-25). Weapon Forge writes everything to
+WeaponForge.log, beside BepInEx's own LogOutput.log, so LogOutput.log
+stays readable for BepInEx and any other mods you run:
+  - WeaponForge.log is THIS launch. It starts with the BUILD stamp.
+  - WeaponForge.prev.log is the launch BEFORE, kept so a restart or
+    a quit to the desktop does not wipe the session you wanted.
+  - LogOutput.log keeps Weapon Forge's "loaded" and BUILD lines, and
+    a copy of every ERROR, so a broken file is still visible there.
+    Warnings and ordinary lines are only in WeaponForge.log.
+  - The BepInEx console window shows the same as LogOutput.log.
+  - If the GAME itself throws an error whose stack trace names
+    Weapon Forge, a copy goes in WeaponForge.log too. BepInEx leaves
+    the game's own errors out of LogOutput.log by default, so this
+    file is the only place those are written down.
+  - Two copies of the game at once: the second writes
+    WeaponForge.2.log and says why at the top.
+  - Want it all back in LogOutput.log? Set [Logging] OwnLogFile =
+    false in BepInEx\config\com.sugarheady.weaponforge.cfg.
 
 WARNINGS REPEAT ONCE PER RUN, not once per session. Most warnings are
 said once rather than once per shot, or a flamethrower would write
@@ -157,6 +176,15 @@ Rules of thumb:
 - Field names are not case-sensitive.
 - A field name the game doesn't know logs a warning and is
   skipped (check the log if a change doesn't seem to apply).
+  When the name DOES exist one level down, the warning says where -
+  "range" on a bullet weapon is "rangeData": { "range": ... }, and
+  only a beam has a top-level "range".
+- "damage" can be a plain number: "damage": 14 sets the amount and
+  keeps the template's damage type. The long form still works:
+  "damage": { "amount": 14, "damageType": "Resource Caps" }.
+- Your weapon's card says "Damage" where the game's own cards say
+  "Contact Damage" - it is the same number, the gun's hit damage.
+  (It is not ramming damage; that is the "contactDamage" block.)
 
 ----------------------------------------------------------------
  4. TEMPLATES - PICKING YOUR BASE WEAPON
@@ -265,6 +293,8 @@ GADGETS fire on a key press with a cooldown, not held-down fire:
   - The loadout contains ONLY the weapon you make (plus the ship).
     A gadget loadout does NOT include the base loadout's popper on
     left-click - just your gadget.
+  - To start a run with SEVERAL weapons and gadgets at once, write a
+    loadout file - see 4t. LOADOUTS.
 
 GADGET MODULES you can use as a template:
   Module Active Purple AirMines    (air mines)
@@ -310,6 +340,9 @@ Example - turn a custom rocket into a gadget on key 1:
                     is what you want for helper weapons: subEmitter stages
                     and turret ammo. ("shop" is a separate toggle and is
                     off by default, so "none" on its own = nowhere at all.)
+
+A LOADOUT FILE can still start you with any of these, whatever
+"source" says - see 4t. LOADOUTS.
 
 HOW LOOT WORKS: a crate carries a LootDropper pointing at a DropTable,
 and that table rolls exactly ONE module from a weighted pool (plus a
@@ -508,8 +541,86 @@ loot drop, AND a shop item all at once (or shop-only).
 
   "shop": true              enable shop purchase
   "shopPrice": 100          cost in money/yellow (default 100)
+  "shopPriceIncrement": 0   money ADDED to the price each time it is
+                            bought (default 0 = a flat price)
+  "shopCost": {...}         other currencies ON TOP of the money -
+                            see below
+  "shopCostIncrement": {..} the same escalation, per ingredient
+  "shopUnlock": "Chip"      hide it until you have found that
+                            ingredient at least once
   "shopUnlockLevel": 1      how many STATIONS you must unlock before it
                             can appear (default 1)
+
+
+PAYING WITH INGREDIENTS AS WELL AS MONEY  ("shopCost")
+------------------------------------------------------
+The shop's price is a LIST of currencies, not a number, and the game
+already draws one icon per currency and reddens the ones you cannot
+afford. So this needed no new UI - only the keys to fill the list.
+
+  "shopPrice": 400,
+  "shopCost": { "Chip": 1, "Fiber": 2 },
+
+That costs 400 money AND 1 Chip AND 2 Fiber, and the shop shows all
+three. Ingredients stack ON TOP of the money price - which is what
+every one of the game's own 62 shop entries does. For an
+ingredient-only cost, write "shopPrice": 0.
+
+THE FIVE THE GAME ACTUALLY TRADES IN:
+  Chip        Fiber       Gland       Powerstar       Generator
+
+  Two of those are stored under a different name than the one on
+  screen - Fiber is "Coral" and Generator is "Shell" - and BOTH
+  spellings are accepted, because the name you saw in game is the one
+  you are going to type.
+
+  Four more exist and NOTHING IN THE GAME HANDS THEM OUT: Bond, Ex,
+  Face and Strange Ball. They are accepted with a warning rather than
+  refused (a game update could start dropping them), but a price in
+  one of them can never be paid.
+
+  You can also name any ship RESOURCE - "Tech", "Purple", "Fuel" -
+  and it is taken off that tank.
+
+WHOLE UNITS ONLY. The shop counts in integers, so 0.5 is zero and is
+dropped with a warning. That is a crash guard as much as tidiness:
+the game's purchase code subtracts a currency WITHOUT checking the
+ship can hold it, while the can-I-afford check quietly answers "you
+have 0" - and a cost of 0 is the one value that passes the check and
+then dereferences nothing on the way out.
+
+MAKING IT MORE EXPENSIVE EACH TIME  ("shopCostIncrement")
+  "shopCost": { "Powerstar": 1 },
+  "shopCostIncrement": { "Powerstar": 1 },
+
+  Adds one more Powerstar to the price after every purchase, exactly
+  the way "shopPriceIncrement" does for money. The game matches an
+  increment to the price of the SAME currency, so you can escalate the
+  money and leave the ingredient flat, or the other way round. An
+  increment naming a currency that is not in "shopCost" is dropped -
+  there would be nothing for it to raise.
+
+HIDING IT UNTIL YOU HAVE FOUND ONE  ("shopUnlock")
+  "shopUnlock": "Powerstar"          (or a list: ["Chip","Powerstar"])
+
+  Keeps the item out of the shop entirely until you have picked up
+  that ingredient at least once this run. It is the game's own gate -
+  seven stock items use it.
+
+  It is DELIBERATELY SEPARATE FROM THE PRICE. The stock items always
+  pair the two (the Fiber item is hidden until you find Fiber), but
+  they answer different questions, so you can gate on one thing and
+  charge another. Leave it out and the item is on sale from its
+  unlock level as usual, showing a red price you cannot pay yet.
+
+  A GATED ITEM IS NOT TIED TO A STATION TIER. Once you have found the
+  ingredient it appears in the next shop you open, whatever
+  "shopUnlockLevel" says - that is how the game's own gated items work
+  (they are added as a shop opens, never rolled from a station's list).
+  The build log says so: "Added ... HIDDEN until you have found
+  Powerstar". Until 2026-09-27 a gated item was ALSO put in the
+  station's list, which ignores the gate, so it could be on sale at the
+  very first station (R19 test 270). Fixed.
 
 HOW PUNK'S SHOP UNLOCK WORKS (from the game's code): the shop is
 gated by a STATION THRESHOLD, not pure chance. There's one counter
@@ -543,6 +654,94 @@ Example - a mid-game shop weapon:
     "shopUnlockLevel": 2,
     "weapon": { "damage": { "amount": 6 } }
   }
+
+----------------------------------------------------------------
+ 4t. LOADOUTS - START A RUN WITH SEVERAL THINGS EQUIPPED
+----------------------------------------------------------------
+
+A weapon file makes a card with ONE thing on it. A LOADOUT file makes
+a card with up to FIVE: a gun on each mouse button and a gadget on
+each of the 1, 2 and 3 keys, all equipped the moment the run starts.
+
+WHERE: a folder called "loadouts" next to WeaponForge.dll - BESIDE the
+"weapons" folder, not inside it. The folder appears the first time the
+ship-select screen opens. One .json file = one card. Loadout
+Builder.html (next to Weapon Builder.html) makes them.
+
+  {
+    "name": "TwinGuns",             <- REQUIRED. The loadout's own id.
+    "displayName": "TWIN GUNS",     <- The big title on the card.
+                                       (empty = the name in capitals)
+    "description": "Two at once.",  <- The small text. Leave it out and
+                                       the card lists what it carries:
+                                       "Starts with POPPER + SHOTGUN."
+    "primary":   "Module Weapon White Popper",     <- left click
+    "secondary": "Module Weapon White Shotgun",    <- right click
+    "gadget1":   "Module Active Purple AirMines",  <- key 1 (and Ctrl)
+    "gadget2":   "",                               <- key 2
+    "gadget3":   ""                                <- key 3
+  }
+
+Fill 1 to 5 slots. An empty or missing slot starts empty. Each slot is
+ONE name.
+
+WHAT A SLOT TAKES - any of these spellings:
+  - one of YOUR weapon files, by its "name" (the string inside that
+    file - "Boomerang" - not the file's name on disk)
+  - a stock module by its asset name: "Module Weapon White Shotgun",
+    "Module Active Purple AirMines". The "Module Weapon " / "Module
+    Active " part is optional, so "White Shotgun" works too.
+  - the name ON THE CARD in game: "SHOTGUN", "AIR MINE", or your own
+    weapon's displayName - as long as only one thing carries it.
+Loadout Builder.html lists every stock weapon and gadget, and can read
+your weapons folder to offer yours in the same lists.
+
+WEAPONS IN WEAPON SLOTS, GADGETS IN GADGET SLOTS. That is the game's
+rule, not ours: primary and secondary take weapons; gadget1-3 take
+gadgets and drones. One of YOUR weapons counts as whatever its own
+file's "slot" builds it as - a file with "slot": "gadget1" made a
+GADGET, and that gadget fits any of gadget1, 2 or 3 in a loadout (the
+number in its own file does not matter). To put it on a mouse button
+instead, change "slot" in the weapon file.
+
+ANY OF YOUR WEAPONS CAN GO IN A LOADOUT, whatever its "source" says. A
+"loot"-only weapon or a "none" helper is still built, so it can be
+named here - a loadout is how you START with a gun that is otherwise
+only found in crates.
+
+THE SAME THING TWICE is allowed - you start with two separate copies.
+
+WHAT IT DOES NOT DO:
+  - The ship itself (the embedded core in the middle of the grid) is
+    the same on every card in the game, so there is nothing to choose.
+  - Only the five weapon/gadget slots, on purpose. Upgrade modules -
+    Module Forge modules, boosters, power cores - on the rest of the
+    grid are not part of a loadout. A loadout is a starting SETUP of
+    weapons and gadgets that work well together, not a head start on
+    upgrades.
+  - It only decides what you START with. From then on the modules are
+    ordinary equipment: they save, load with Continue, and can be
+    swapped or dropped like anything else.
+
+WHERE THE CARD GOES: straight after the game's own cards, before the
+single-weapon cards your weapon files make.
+
+WHEN SOMETHING IS WRONG the log says so - search WeaponForge.log for
+"loadouts/":
+  - a name it cannot find: that slot starts EMPTY, and the warning
+    lists every weapon name it DOES know.
+  - a weapon in a gadget slot (or the reverse): that slot starts
+    EMPTY, and the warning says where it can go.
+  - nothing in the file resolves at all: NO card, rather than a card
+    that starts a run with no gun.
+  - a loadout dropped in the "weapons" folder by mistake: skipped
+    there, with a line saying to move it to "loadouts".
+  - a key it does not know (a typo like "gadget 1"): named in a
+    warning, with the list of keys it does read.
+  - two loadout files with the same "name": the second is skipped.
+
+Files are read once when the game starts, like weapons - restart after
+adding or editing one.
 
 ----------------------------------------------------------------
  4b. ELECTRIC / CHAIN-LIGHTNING WEAPONS (the White Tesla)
@@ -1469,6 +1668,145 @@ drone belonging to the other. That is the base game, not this mod.
 Presets: "Combat Drone", "Drone Swarm", "Rogue Drone".
 
 ----------------------------------------------------------------
+ 4f-2. DRONE MODES (a key that changes what your companions do)
+----------------------------------------------------------------
+
+Like the option in a shoot-em-up. Press Y and every gadget's companions
+change what they are doing. It works on wingmen (orbs and drone bodies),
+on Forge drone gadgets, and on the game's own five drone gadgets with no
+file at all. Swarm-gun minions are left out.
+
+THE KEY
+-------
+
+  Y  (gamepad: D-pad right)    every gadget steps to the next mode.
+                               It acts when you LET GO.
+  Y + a gadget's own button    that gadget alone steps (keyboard 1/2/3
+                               or Ctrl / middle mouse / T; gamepad
+                               West / North / East). The gadget does NOT
+                               fire while Y is held.
+  U, or hold Y about a second  everything back on NORMAL.
+
+  The cycle:  NORMAL > ORBIT > DRAG > PROTECTOR > REAR GUARD > SEEKER >
+              SENTRY > NORMAL
+
+  A fading alert names what you chose: "DRONES: ORBIT", "GADGET 2:
+  SEEKER", "DRONES: NORMAL". Pressing with nothing to command says
+  "NO DRONES". Each gadget's card has a "Drone modes" line naming the
+  keys. The key only works while you are flying - not in the map, a
+  shop, the ship menu or a pause. In co-op each player's key moves only
+  their own companions (and the rank key H now works the same way).
+
+  NORMAL is whatever the companions do without the key - a wingman's own
+  motion, a drone's own AI, a drone file's own "follow" / "hold".
+
+THE MODES
+---------
+
+  ORBIT        a ring round you that keeps turning.
+  DRAG         a single-file line along the path you flew, like a tail.
+  PROTECTOR    a short row close in FRONT of where you aim. A drone
+               there takes the shots coming at you.
+  REAR GUARD   a longer, wider row further BEHIND where you aim.
+  SEEKER       drones hunt further out (SeekRange, 40 by default - the
+               game's own leash is 20) and come back when nothing is left.
+  SENTRY       drones guard the spot your ship was at when you pressed.
+               Fly SentryRecall (60) away and they come back to you:
+               "SENTRY RECALLED", and that gadget is on NORMAL again.
+               Fast travel takes the post with you.
+  INTERCEPTOR  drones go for enemy shots heading at you and take them.
+               NOT in the default cycle yet - add "Interceptor" to Cycle
+               to try it. Explosive shots are met outside their own blast.
+               Drones lose health doing it; InterceptorNoDamage = true is
+               a test switch where they lose none, and wingman orbs join
+               in by deleting the shots they meet.
+
+  Every companion of yours in one mode is ONE formation - two gadgets on
+  ORBIT make one ring, wingmen and drones together.
+
+  Wingmen do the four formations, and INTERCEPTOR with drone bodies. A
+  wingman ring keeps its own motion under SEEKER and SENTRY (Y + its
+  button skips those). Drones do every mode. The game's SUICIDE drone
+  joins every mode too; it cannot touch you or be hit by enemy fire, so
+  it only goes off on walls and enemies.
+
+  In a formation a drone's GUN keeps working - it still sees, aims and
+  shoots from where the formation puts it. Only SEEKER and SENTRY loosen
+  the game's "only fights when you are near" rule.
+
+  A spot inside rock moves toward you until it is clear, and a drone with
+  rock between it and its spot uses the game's own pathfinder to get
+  round. A drone that falls far behind is brought back beside you, before
+  the game would unload it.
+
+THE SETTINGS - [Drone modes] in the mod's config
+------------------------------------------------
+
+  BepInEx\config\com.sugarheady.weaponforge.cfg, written on first launch.
+  Read once at start, so a change needs a restart (the GAME MODE FORGE
+  tab's restart row does that).
+
+  Key = Y, PadButton = DpadRight   the mode key. "none" in both switches
+                                   drone modes off entirely.
+  Slot1 / Slot2 / Slot3 = (blank)  optional extra keys for "Y + that
+                                   gadget"; the gadget's own button still
+                                   works too.
+  NormalKey = U                    everything back on NORMAL.
+  HoldForNormal = true             holding Y about a second does too.
+  Cycle = Orbit, Drag, Protector, RearGuard, Seeker, Sentry
+                                   reorder, or leave modes out - a mode
+                                   not listed is never offered.
+  Formation = Loose                Loose: drones fly to their place at
+                                   their own speed and lag a boost.
+                                   Locked: they hold it like wingmen.
+  SeekRange = 40, SentryRadius = 8, SentryRecall = 60
+  AlertSeconds = 2.5
+  InterceptorNoDamage = false      the INTERCEPTOR test switch.
+  OrbitRadius 3.5, OrbitSpin 60, DragSpacing 1.6, ProtectorDistance 2.6,
+  RearGuardDistance 4.5, Spacing 1.3
+                                   the shapes' default numbers.
+
+  GAME KEYS.txt lists every key the game leaves free, and what to type.
+
+ONE GADGET'S OWN NUMBERS - the "modes" block
+--------------------------------------------
+
+  On a wingman file or a drone gadget file, top level:
+
+  "modes": {
+    "join": "orbit, protector, seeker",
+    "orbitRadius": 5,
+    "seekRange": 60
+  }
+
+  join               which modes this gadget takes part in. Blank or
+                     "all" = every mode it can do; "none" = it keeps its
+                     own behaviour whatever the key says. Its Y + button
+                     steps it through only these.
+  orbitRadius, dragSpacing, protectorDistance, rearGuardDistance,
+  spacing, interceptRadius
+                     its own shape numbers (the config's otherwise).
+  seekRange, sentryRadius
+                     drone files only.
+
+  The log prints one "modes -" line per file saying what it read.
+
+WHAT IS SAVED
+-------------
+
+  Each gadget's mode (and a sentry's post) is saved with the run, so a
+  Continue puts your companions back the way you left them. A new run
+  starts on NORMAL. A New Game Plus jump keeps the modes, except SENTRY
+  (its post was in the world you left). Swapping the gadget in a slot,
+  or moving it to another slot, puts that slot back on NORMAL.
+
+THE LOG
+-------
+
+  Every press writes a "drone modes:" line naming what each gadget did,
+  including "[it cannot do SEEKER]" for a gadget that stayed on normal.
+
+----------------------------------------------------------------
  4g. SWARM GUNS (a minion spawner on the TRIGGER)
 ----------------------------------------------------------------
 
@@ -2260,6 +2598,13 @@ Shooter, and the Shooter is the thing overheat blocks - so heat would
 build with nothing able to act on it. The builder refuses it there rather
 than shipping a feature that looks configured and does nothing.
 
+  -> WANT TO SEE THE HEAT? The on-ship readouts are a separate block,
+     "gauge" and "bubble", written up under READOUTS further down. They
+     are separate because ONE bar serves overheat, charge and spin-up,
+     so it cannot live inside any one of them. HEAT HAS TOP PRIORITY on
+     both, and a vent or jam lockout holds the bar and empties it as you
+     recover - so empty means you can fire again.
+
 WHY THIS ONE IS CLEAN
 
 The game supports it almost completely by accident. Shooter.Block(object)
@@ -2470,6 +2815,14 @@ cadence belongs to its module rather than to the weapon's fireRate, so
 the main reward could not arrive either. The builder refuses it there
 and says so.
 
+  -> WANT TO SEE THE WIND-UP? The on-ship readouts are a separate
+     block, "gauge" and "bubble", written up under READOUTS further
+     down - separate because ONE bar serves overheat, charge and
+     spin-up. Spin-up is IN THE DEFAULT LIST, so a "gauge" block with
+     no "show" already picks it up. The bar follows the ramp, so a
+     "click" wind-up reads as STEPS rather than as a smooth slide that
+     disagrees with the gun.
+
 WHAT COUNTS AS SUSTAINED FIRE
 
 The trigger is down AND you can pay for the shots. An empty gun does
@@ -2480,15 +2833,22 @@ than being a special case, and it is the more interesting rule.
 
 THE FIVE REWARDS - two on, three off
 
-  "rate": true        fire rate,  "fireRate": 2         ON by default
-  "accuracy": true    scatter,    "accuracyAtFull": 1   ON by default
-  "damage": false     damage,     "damageAtFull": 1.5
-  "pellets": false    count,      "pelletsAtFull": 2
-  "cheaper": false    cost,       "costAtFull": 0.5
+  "rate": true        fireRate,        "fireRate": 2        ON by default
+  "accuracy": true    angleVariance,   "accuracyAtFull": 1  ON by default
+  "damage": false     damage.amount,   "damageAtFull": 1.5
+  "pellets": false    projectileCount, "pelletsAtFull": 2
+  "cheaper": false    cost,            "costAtFull": 0.5
+
+THE MIDDLE COLUMN IS THE WEAPON FIELD EACH REWARD ACTUALLY MOVES, and
+"accuracy" is the one worth naming out loud: it is "angleVariance",
+the random scatter cone, and nothing else. It does NOT touch "spread",
+which is the deliberate fan of a shotgun - tightening that would turn a
+held shotgun into a rifle, which is a different weapon rather than a
+better one.
 
 Everything is a MULTIPLIER at full except accuracyAtFull, which is the
-fraction of the scatter REMOVED - 1 is pinpoint, 0.5 halves it. That
-is the way round the question gets asked ("how much better does it
+fraction of the angleVariance REMOVED - 1 is pinpoint, 0.5 halves it.
+That is the way round the question gets asked ("how much better does it
 get"), so it is the way round the key reads.
 
 A fireRate at or below 1 makes the gun slower the longer you hold,
@@ -2588,8 +2948,583 @@ accuracy on a weapon with no scatter, a discount on a weapon that
 costs 0, a pellet multiplier on a melee weapon, a fireRate at or
 below 1, or every reward switched off.
 
+SPIN-UP HAS THE SAME SEVENTEEN REWARDS AS "surge"
+
+It shipped with five - rate, accuracy, damage, pellets, cheaper - and
+gained the other twelve on 2026-09-17, because both blocks now read one
+shared list. Add one to either and it appears in both.
+
+  rate        fireRateAtFull      ON BY DEFAULT
+  accuracy    accuracyAtFull      ON BY DEFAULT
+              spreadAtFull
+  damage      damageAtFull
+  pellets     pelletsAtFull       works on beams too
+  cheaper     costAtFull
+  speed       speedAtFull         projectile weapons only
+  range       rangeAtFull         projectiles AND beams
+  size        sizeAtFull          the real HITBOX / the beam's damage cast
+  burst       burstAtFull         more shots per trigger pull
+              burstDelayAtFull
+  burn        burnAtFull          the BASE-GAME burn the shot carries
+  explosion   explosionAtFull     radius AND damage
+  push        pushAtFull          pushForce, and
+              knockbackAtFull     the shove on YOU
+  warmup      warmupAtFull        0 removes the minigun gate
+  lifetime    lifetimeAtFull      projectile weapons only
+
+The full description of each is under "surge" below; they behave
+identically, only the ramp driving them differs.
+
+"warmup" is the one that is more interesting HERE than on a surge: the
+spin meter fills while the trigger is down INCLUDING while the game's
+own warmup gate is still closed, so the gate shortens itself as you
+lean on it. On most weapons it is 0 and does nothing, and the log says
+so.
+
+TWO KEYS WERE RENAMED, AND BOTH SPELLINGS STILL WORK
+
+  fireRate  ->  fireRateAtFull
+  spread    ->  spreadAtFull
+
+Every number in both blocks ends in "AtFull" now, so there is one rule
+instead of a per-key memory. The mod accepts the old spellings forever
+and nothing already written changes. The builder page emits the new
+ones and folds an old file onto them when you LOAD .JSON.
+
+AND TYPING A NUMBER NOW SWITCHES ITS REWARD ON. Before, "damageAtFull":
+2 with no "damage": true beside it did nothing at all - which is
+indistinguishable from a broken feature. The log names it on any file
+where that changes the outcome, so nothing starts hitting harder
+without telling you.
+
 Preset: "Windup" (a minigun - and it sets angleVariance on purpose, so
 the accuracy half has something to tighten).
+
+Not to be confused with "surge" below: spin-up pays you WHILE the meter
+fills, a surge pays you AFTER it blows, while it drains.
+
+
+----------------------------------------------------------------
+ 4j3. SURGE - THE OVERLOAD WINDOW
+----------------------------------------------------------------
+
+Lean on the trigger, fill the heat meter, and at the top it BLOWS -
+and instead of locking you out, the gun gets BETTER for as long as the
+meter takes to drain.
+
+  "overheat": { "max": 100, "perShot": 9, "coolPerSecond": 28,
+                "response": "none" },
+  "surge": {
+    "ramp": "fade",
+    "fireRateAtFull": 2.4,
+    "damageAtFull": 1.6,
+    "sizeAtFull": 1.5
+  }
+
+THE SURGE NEEDS AN "overheat" BLOCK. It is not a meter of its own - it
+is the phase after overheat's meter blows - so it reuses "max",
+"perShot", "perSecond" and "coolPerSecond" rather than asking for them
+twice. A surge with no working heat meter is ignored and the log says
+which of the three reasons it was (no block, "enabled": false, or the
+gadget refusal).
+
+THE SHARP WAY TO SEE IT
+
+The vent lockout and the surge are the SAME PHASE WITH OPPOSITE SIGNS.
+"response": "vent" locks the gun while the meter drains; a surge
+rewards you while the meter drains. Same threshold, same clock.
+
+*** WHICH IS WHY "response": "vent" AND A SURGE CANNOT BOTH WORK ***
+
+A vent BLOCKS the gun until the heat is back under "ventTo", which is
+exactly the window a surge runs in. You would get the whole reward on
+a weapon that cannot fire, and both features would report themselves
+working in the log.
+
+And "vent" is what "response" DEFAULTS TO, so this is the most likely
+file anyone writes. The builder switches the response to "none" and
+says so - loudly if you wrote "vent" on purpose, quietly if it only
+came from the default.
+
+The four responses against a surge:
+
+  none    THE DEFAULT for a surge weapon. The meter is purely the
+          trigger for the window.
+  jam     GOOD DESIGN, not a conflict. A fixed lockout (1.5s by
+          default) at the blow, then the surge for the rest of the
+          drain: a beat of vulnerability bought by a payoff. The log
+          prints how much of the window the jam eats and how much is
+          left to shoot with, and warns if the jam is longer than the
+          whole window.
+  slow    Composes. The penalty and the payout multiply, because both
+          go through one owner. The log prints the PRODUCT, because
+          "degrades to 0.3 and surges to 2.4" does not obviously come
+          to 0.72.
+  vent    Fatal. Switched to "none" - see above.
+
+"ramp" - HOW THE PAYOUT BEHAVES ACROSS THE WINDOW
+
+  fade    THE DEFAULT. Full strength the instant it blows, tapering to
+          nothing as the meter empties. The literal inverse of spinUp,
+          and the muzzle colour and the bar follow it, so you can see
+          the window closing.
+  flat    Full reward for the whole drain, then it stops dead. A
+          cleaner "overdrive window" - you know exactly what you have
+          and for exactly how long.
+
+  "endAt": 40   the window closes at this heat instead of at 0, which
+                shortens the payout without touching the cool rate.
+
+WHAT FILLS THE METER
+
+  "fill": "fire"            what overheat already does. THE DEFAULT.
+  "fill": "hits"            only landing hits fills it
+  "fill": "damage"          only damage dealt fills it
+  "fill": "fire,hits"       combinations, comma-separated or an array
+  "fill": "all"             all three
+
+  "perHit": 3               heat per hit that lands
+  "perDamage": 0.4          heat per point of damage removed
+
+*** NAMING ANYTHING REPLACES THE SET RATHER THAN ADDING TO IT. ***
+"fill": "hits" means this weapon no longer gains ANY heat from
+shooting - overheat's "perShot" and "perSecond" are both out. That is
+the point (a gun that only overloads when you are actually
+connecting), but the log says it out loud because it is a change to a
+block you did not edit.
+
+A HIT IS DAMAGE THAT LANDED, not a shot that touched something. The
+game refuses damage three silent ways - an active damage blocker, no
+tank of that resource type (which is how the damage-type table lets a
+Crawler resist nearly everything), and i-frames - and none of those
+fill the meter. Damage is measured off the victim's own tank, so it
+composes with "crit" for free, and OVERKILL DOES NOT COUNT: one rocket
+into a five-health fly would otherwise fill any meter in the game.
+
+A shotgun fills eight times as fast as a rifle for the same trigger
+pull, and a piercing beam faster still - it re-damages each target
+every "damageRepeatDelay" it stays on them, times however many it is
+threading. That is accepted rather than normalised away, so the log
+does the arithmetic for YOUR weapon: pellets, pulls to fill, and the
+per-second figure on a beam.
+
+WHAT DRAINS IT DURING THE WINDOW
+
+  "drain": "cool"       the meter's own coolPerSecond. THE DEFAULT.
+  "drain": "fire"       firing spends the window
+  "drain": "both"
+
+  "drainPerShot": 9     heat removed per trigger pull
+
+"fire" makes a big reward self-limiting: the better the gun is, the
+faster you burn the window. It also means the window WAITS FOR YOU if
+you hold your fire, which is a real mechanic (bank the surge for the
+next room) rather than a bug - the log says so when you build one.
+
+Naming "fire" with no "drainPerShot" would leave nothing able to empty
+the meter at all, so the builder puts cooling back and tells you. A
+window that cannot close is a stuck weapon, not a balance choice - it
+is the one thing in this block the builder will not let you have.
+
+  "refill": true    the meter can gain heat DURING the window
+
+*** "refill" AND "drain" FIGHT OVER ONE NUMBER. *** If what firing puts
+back is more than what the drain takes out, the weapon sits in a
+PERMANENT SURGE for as long as you hold the trigger - an infinite buff
+reached from two individually reasonable settings. The build log does
+that subtraction and names both numbers. It does not stop you, because
+it might be the weapon you want.
+
+THE REWARDS - EVERY NUMBER ENDS IN "AtFull"
+
+**This is the same list "spinUp" uses**, because both blocks read one
+shared set - so anything added to one appears in the other, and the
+descriptions below apply to both.
+
+Each one is a MULTIPLIER at the moment of the blow. 2 is double, 0.5
+is half, 1 is no change. TYPING A NUMBER SWITCHES ITS REWARD ON - you
+do not also have to remember the matching "true", because a number in
+the file that does nothing is indistinguishable from a broken feature.
+
+  rate        fireRateAtFull      ON BY DEFAULT
+  accuracy    accuracyAtFull      ON BY DEFAULT - the FRACTION of the
+              spreadAtFull        scatter removed (1 = pinpoint), plus
+                                  a multiplier on the deliberate fan
+  damage      damageAtFull
+  pellets     pelletsAtFull       works on beams too - the beam
+                                  visuals are rebuilt with the count
+  cheaper     costAtFull
+  speed       speedAtFull         projectile weapons only
+  range       rangeAtFull         projectiles AND beams
+  size        sizeAtFull          the real HITBOX on a projectile; the
+                                  damage cast on a beam
+  burst       burstAtFull         more shots per trigger pull
+              burstDelayAtFull
+  burn        burnAtFull          the BASE-GAME burn the shot carries,
+                                  the same number "charge" scales -
+                                  not the mod's own "burn" block
+  explosion   explosionAtFull     radius AND damage, by the same
+                                  number, exactly as charge does
+  push        pushAtFull          pushForce, and
+              knockbackAtFull     the shove on YOU
+  warmup      warmupAtFull        0 removes the minigun gate entirely
+                                  for the length of the window
+  lifetime    lifetimeAtFull      projectile weapons only
+
+  "chargedShots": true    every shot in the window is a charged shot.
+  "chargeLevel": 1        Needs a "charge" block on the same weapon -
+                          that block IS the set of multipliers a
+                          charged shot scales by. A charge you built
+                          yourself is never overwritten.
+
+"cheaper" and "rate" COMPOUND: double the rate at half the cost is
+FOUR times the damage per unit of resource, not twice.
+
+Every reward goes through the same owner as spinUp, the on-kill buff
+and overheat's own penalty, so a weapon can carry several of them and
+they multiply instead of fighting. A surge and a spinUp on one gun is
+a weapon that winds up as you lean on it and then pays out again when
+the meter blows - though the wind-up is LOST while a jam is blocking
+the Shooter, so with "response": "jam" the two peaks do not overlap.
+
+SEEING IT - AND THIS MATTERS MORE THAN IT SOUNDS
+
+A heat bar FILLING and a heat bar DRAINING look identical, and once a
+surge exists that is the only thing you need to know. So:
+
+  "surge": { "tintMuzzle": true, "color": "#FFD940",
+             "tintStrength": 1, "showSurge": true,
+             "startSfx": "Weapons/Bolt/Shoot", "endSfx": "" }
+
+The muzzle colour is SWAPPED for the length of the window rather than
+a second tint being layered over the orange - pick a colour you can
+tell apart from "hotColor" at a glance, because that contrast is the
+whole readout. On a beam it tints the beam too. With "ramp": "fade"
+the colour bleeds out with the reward.
+
+It works even with "overheat": { "tintMuzzle": false }, which is a
+real weapon: one that shows no heat at all until it overloads.
+
+The readouts have a "surge" source of their own, and it is FIRST in
+the default list:
+
+  "gauge": { "show": ["surge", "heat"] }
+
+It only reports while the window is open, so it costs nothing on a
+weapon without one and falls straight through to "heat" - which is why
+it could be added to the default list without changing any file
+already written.
+
+READING THE LOG
+
+  surge - the meter blows at 100 and the gun then runs at full
+  strength the instant it blows, fading to nothing as the meter
+  empties, for about 2.14s while you keep firing (3.57s if you stop).
+  Filled by firing; drained by the meter's own cooling.  TO REACH IT:
+  firing gives 54 heat/s, so about 1.85s of sustained fire.  AT FULL:
+  fire rate 6/s -> 14.4/s, damage 12 -> 19.2, projectile size 0.11 ->
+  0.165.
+
+THE BUILD LOG IS THE WHOLE SAFETY NET FOR THIS BLOCK, and that is
+deliberate: nothing here clamps a number you chose. What it does
+instead is the ARITHMETIC - how long to reach the blow, how long the
+window lasts, what the product of two blocks comes to - because every
+way this can be configured into doing nothing produces a perfectly
+valid weapon and an otherwise clean log.
+
+Everything that can quietly do nothing is a warning: a reward aimed at
+a field this weapon type does not have ("speed" or "lifetime" on a
+beam), "range" on a weapon whose rangeData is switched off, "burn" or
+"explosion" on a weapon that has none, accuracy on a weapon with no
+scatter, a discount on a weapon that costs 0, a fireRateAtFull at or
+below 1, "chargedShots" with no charge block, and every reward
+switched off.
+
+Preset: "Overload" - and it writes "response": "none" out in full
+rather than relying on being corrected, plus an angleVariance for the
+accuracy half to have something to tighten.
+
+
+----------------------------------------------------------------
+ 4j4. RANK - THE GUN THAT LEVELS
+----------------------------------------------------------------
+
+The gun banks the damage it deals and gets stronger. It keeps its rank
+between saves and loses it when the run ends.
+
+EVERY COPY OF THE GUN RANKS ON ITS OWN. A second one you find, buy or
+spawn starts at rank 0 with none of the first one's unlocks - its XP,
+its rank and what it has unlocked belong to that copy, wherever it goes:
+a slot, the vault, or the ground. (Before 2026-09-27 all copies of one
+file shared a single rank. They do not any more.)
+
+  "rank": {
+    "maxRank": 8,
+    "curve": "step",
+    "xp": 300,
+    "stats": {
+      "damage": [1, 1.1, 1.2, 1.3, 1.45, 1.6],
+      "rate":   [1, 1, 1.1, 1.15, 1.25, 1.4]
+    }
+  }
+
+Presets: "Veteran" (stats only), "Prospector" (a pool you pick from),
+"Wildfire" (levels off its own burn).
+
+
+XP IS DAMAGE ACTUALLY REMOVED - NOT THE DAMAGE NUMBER
+
+The game refuses damage three silent ways before it touches anything:
+an active shield, no tank of that damage type (which is how some enemies
+resist nearly everything), and i-frames. A gun paid by the number it
+rolled would level FASTEST against the things it cannot hurt.
+
+So rank measures the victim's health before and after, and takes the
+difference. Overkill does not count either - a 200-damage rocket into a
+5-health fly is worth 5.
+
+Two things follow that are worth knowing:
+
+  - Crit is included for free. It multiplies the damage on the way in,
+    so it is already in the number that came off.
+  - Crates and boxes pay in proportion to their (small) health, so
+    scenery can never be a grind. "countObjects": true turns them on
+    anyway; it is off by default.
+
+
+DAMAGE OVER TIME PAYS, AND THAT TOOK WORK
+
+"fromDamageOverTime" defaults to TRUE, so a burn or gas build levels at
+the same speed as everything else.
+
+A burn tick has nothing attached saying which weapon lit the fire - the
+game just ticks damage on anything burning. So the mod remembers the
+weapon at the moment a shot sets something alight and credits that. Set
+it false if you want only direct hits to count.
+
+
+YOUR WINGMEN LEVEL YOUR GUN, AND THAT IS A SWITCH
+
+"fromWingmen" defaults to TRUE.
+
+Wingmen fire a COPY of the gun you are carrying, and each copy is
+equipped to YOU rather than to the drone holding it - which is what
+credits their kills to you in the first place. So their damage has
+always banked into the same rank as your own shots, and the copies carry
+every stat and unlock the rank has earned.
+
+Set it false and only shots you fire yourself count:
+
+    "rank": { "fromWingmen": false }
+
+  WHY YOU MIGHT WANT THAT. With a full ring out, your wingmen can easily
+  be dealing more damage than you are, so a gun carrying both features
+  climbs noticeably faster than the same numbers on a gun without them.
+  That is fine if you meant it. Turn it off if you want the rank to
+  measure what YOU did.
+
+  The wingmen still fire the ranked version of your gun either way -
+  this only changes who the XP is counted for, never what the copies
+  are.
+
+  The build log says so only when it is OFF, because on is the default
+  and a line on every ranked weapon saying nothing changed is noise.
+
+
+THE CURVE - HOW MUCH THE NEXT RANK COSTS
+
+  "curve": "static"    the same every rank ("xp" each time)
+  "curve": "step"      "xp", then 2x, then 3x - 300, 600, 900...
+  "curve": "percent"   each rank costs "xpPercent" more than the last
+
+"maxRank" defaults to 10 and goes as high as you like.
+
+*** A PERCENT CURVE STOPS DEAD AT A HIGH maxRank ***
+
+Each rank multiplying the last runs away fast: at +25% a rank, by about
+rank 400 the requirement is a bigger number than the game can hold, and
+ranking simply stops with nothing on screen to say why.
+
+The build log prints the rank where that happens, so read it. Use
+"step" if you want a long climb - it grows without running away.
+
+
+WHAT A RANK GIVES - TWO KINDS, AUTHORED SEPARATELY
+
+1. STATS - a value per rank, for any of the eighteen base stats:
+
+     rate, damage, accuracy, spread, pellets, cost, range, speed,
+     size, burst, burstDelay, burn, push, knockback, explosion,
+     explosionDamage, warmup, lifetime
+
+   These are the same eighteen "surge" and "spinUp" pay out, spelled the
+   same way, so there is nothing new to learn.
+
+     "stats": { "damage": [1, 1.1, 1.25, 1.5] }
+
+   *** THEY ARE MULTIPLIERS AND THE FIRST ENTRY IS RANK 0 ***
+
+   So a table normally opens with 1, meaning unchanged. The one above
+   is: nothing at rank 0, +10% at rank 1, +25% at rank 2, +50% at rank 3.
+
+   A table SHORTER than "maxRank" holds its last value. That is what
+   makes a four-entry table a sensible thing to write on a
+   "maxRank": 9999 weapon - it climbs, then it stops climbing.
+
+   0 is not "no change". Write 1. And 0 on fire rate is a weapon that
+   never fires again, because the game computes 1/fireRate every frame.
+
+2. UNLOCKS - a pool of other blocks in this same file:
+
+     "rank": { "unlocks": ["chain", "split", "grow"] },
+     "chain": { "jumps": 2, "range": 7 },
+     "split": { "count": 3, "on": ["death"] },
+     "grow":  { "to": 2.2, "over": 0.7 }
+
+   Write each one out in full, exactly as you normally would. Naming it
+   in "unlocks" switches it OFF at build time; ranking switches it on.
+
+   That is deliberate: it keeps a feature's settings in the file you are
+   already editing rather than in a separate reward table, and it means
+   a pooled feature is tuned the same way as an ordinary one.
+
+   "minion", "turret" and "spawner" cannot be pooled. Granting a feature
+   re-runs the build, and those three clone game assets when they build,
+   so every rank would leave another set behind. The builder says so and
+   skips them; everything else in the pool still works.
+
+
+HOW THE NEXT UNLOCK IS CHOSEN
+
+  "draw": "order"    straight down the list, then round again
+  "draw": "random"   one at random
+  "draw": "pickup"   a few appear and you choose one
+
+"pickupCount" (default 3) is how many appear.
+
+A PICKUP CHOICE LOOKS LIKE A MODULE PICKUP. Each one wears your gun's
+icon and colour and says what it is - "PICK UP / CHAIN / shots jump to
+2 more enemies". Fly up to the one you want and press the USE key (the
+same key that picks up a module); the others vanish. Nothing is taken
+by touch, so flying through them is safe.
+
+They stay put while you are near them, so you can reach the one you
+want, and follow you if you fly off, so you cannot leave them behind.
+They are laid out clear of walls and stations, and turn or widen their
+ring to stay clear as they follow you.
+
+ONLY ONE SET IS OUT AT A TIME ON A SHIP, even with two ranked guns. Ranks
+gained meanwhile queue up, and when you have two ranked guns their sets
+take turns. The last line of each choice says which gun and which slot it
+is for - "for PROSPECTOR - PRIMARY" - which is the only way to tell two
+copies of one gun apart.
+
+A save made with a set out keeps it: the set comes back out around your
+ship a moment after you are flying again.
+
+PUT THEM AWAY: press H (a gamepad: D-pad up) and every set out is put
+away, still owed; press it again and they come back around your ship
+wherever it is now. For a choice that landed somewhere awkward, or just
+to get them out of the way. Rebind it in this mod's BepInEx config,
+[Rank choices] Key and PadButton ("none" for no key). GAME KEYS.txt next
+to this file lists which keys the game leaves free, and what to type for
+each. The weapon card of a gun whose rank lets you pick names the key.
+It works only while you are flying, and in co-op each player's H puts
+away only their own choices.
+
+THE LINE UNDER THE NAME is worked out from the feature's own block
+("chain" with "jumps": 2 says "shots jump to 2 more enemies"). A repeat
+lists what deepens. To write it yourself:
+
+    "rank": { "describe": { "chain": "Shots arc to the nearest enemy" } }
+
+
+A DRAWN FEATURE STAYS IN THE POOL
+
+It has to. At "maxRank": 9999 a pool that emptied would leave thousands
+of ranks paying nothing. So drawing something twice DEEPENS it:
+
+  "onRepeat": {
+    "chain": { "jumps": 1, "damageMultiplier": "+20%" },
+    "grow":  { "to": "+25%" }
+  }
+
+A plain number is a flat add. A string ending in % is a percentage of
+the value YOU authored - and percentages SUM, so three 20% draws are
++60%, not 1.2 cubed.
+
+Without an "onRepeat" entry for a feature, drawing it again does
+nothing. The builder says so at load rather than letting you find out.
+
+*** TWO FIELDS RUN THE WRONG WAY - CHECK BEFORE YOU DEEPEN ONE ***
+
+  - "slow.amount" is a target FRACTION OF NORMAL SPEED, so a bigger
+    number is a WEAKER slow. Deepen it downward.
+  - "leech.fraction" is capped by "leech.maxPerSecond". Raising the
+    fraction past the cap does nothing you can see, so raise both.
+
+
+STATIONS PAY XP TOO
+
+"stations" defaults to true: the first time you use a station, every
+ranked weapon on your ship gets "stationXp" (default 500). Arriving
+somewhere is not something one of your two guns did, so they all get it.
+
+It pays ONCE PER STATION, EVER, PER COPY - not for using the same one
+again. A second copy of a gun found later still earns a station the
+first copy had already found: it has not been there.
+
+THE STATION YOU START THE RUN BESIDE PAYS NOTHING - station XP is for
+stations you fly to. (It used to pay, so every ranked gun began a run a
+rank or two up the moment you used its grid.) A continued run remembers
+which one it was.
+
+
+PICKUPS CAN PAY XP TOO - IF YOU ASK
+
+    "rank": { "pickupXp": 60 }
+
+Off (0) by default. Set, every ranked weapon on your ship gets that much
+each time you pick up an INGREDIENT (Fiber, Powerstar...), a CONSUMABLE
+or a MODULE - the things you take with the use key. Resource orbs
+(fuel, money, health) never pay: every bubble would be XP.
+
+
+WHERE THE RANK IS SHOWN
+
+On the weapon card, beside the game's own stats:
+
+  Rank         3 / 8    240 / 900 xp
+  Rank bonus   damage x1.3, fire rate x1.15
+  Unlocked     CHAIN x2, GROW
+  Can unlock   CHAIN, SPLIT, GROW  (you pick)
+
+"Rank bonus" is how much of the numbers above it the rank is paying
+right now. A new copy's card (and the shop's) shows rank 0 and what it
+can unlock. "show": false turns all of it off.
+
+On a rank up, a line in the status feed - "PROSPECTOR RANK 3" - for
+about four seconds, then it goes. "log": false turns it off.
+
+
+*** RANK BELONGS TO THE COPY ***
+
+The record lives inside the save folder, one line per ranked gun, filed
+under where that gun is when you save - its slot, its place in the
+vault, or the pickup it is lying in. That is why rank survives a save
+and dies with the run: deleting a save takes it with it, and a new run
+has no file to read. A save made before 2026-09-27 (one line per weapon
+file) still loads: each line goes to the first copy of that file found.
+
+NEW GAME PLUS (Game Mode Forge's NewGamePlus.dll) is the one new run that
+keeps it. When you jump to a new world with your grid and vault carried,
+every ranked gun arrives exactly as it left - rank, XP toward the next
+rank, every choice taken, and any choice set still owed (they come out
+around your ship in the new world, one set at a time). The stations that
+already paid it XP are in the old world, so the new world's stations can
+pay it again. A ranked gun lying on the ground stays behind. Nothing to
+set up: with New Game Plus installed it just happens, and without it
+nothing changes.
 
 
 ----------------------------------------------------------------
@@ -3372,6 +4307,81 @@ remember which prefix a given block uses.
 IT MULTIPLIES THE PULSE RATHER THAN REPLACING IT, so a half-strength
 pulsing tint still pulses - between "nothing" and "half" instead of
 between "nothing" and "full". Setting one never switches the other off.
+
+IF YOU HAVE TURNED THE STRENGTH UP AND IT STILL IS NOT OBVIOUS, THE
+STRENGTH IS NOT THE KNOB YOU WANT - "tintMode" IS.
+
+    "tintMode": "multiply"    the original, and the default
+    "tintMode": "replace"     paints the colour on; much stronger,
+                              though still bounded - see below
+
+A MULTIPLY CAN ONLY DARKEN. That is the whole of it. Your colour is
+multiplied into the sprite's own, so it moves the pixel toward black and
+never toward the colour - which means a pale tint over a dark grey Cross
+barely changes it while the same tint over a pale Fly reads clearly.
+That is exactly the "some enemies look tinted and others not so much"
+report, and no strength value fixes it: at 1 a multiply is already as
+strong as a multiply gets.
+
+REPLACE STOPS YOUR COLOUR COMPOUNDING. It sets the tint factor to your
+colour rather than multiplying it into whatever the prefab and the other
+live layers already put there, so it is the strongest a tint can be and
+it does not get weaker as more layers pile on. Reach for it when the
+tint is a READOUT you need to spot in a fight - a stun, an execute
+threshold, a slammable window - and stay on multiply when it is
+atmosphere.
+
+BUT NEITHER MODE CAN BRIGHTEN DARK ART, and correcting that is what R15
+test 185 bought. This section used to say replace "brightens as readily
+as it darkens", and that is wrong one layer down: a sprite's colour is a
+VERTEX MULTIPLY IN THE SHADER, so the pixel you actually see is always
+
+    texture x colour
+
+and the very most any tint can do is "texel x yours". Measured off the
+game's atlas, the FLY'S BODY ART AVERAGES 40/255 LUMINANCE - 16% grey -
+against 76 for its beak, which is exactly the report: "their prefab
+models dont appear to change color very much except for their mouths".
+The body was being written correctly the whole time; a pale blue at full
+strength lands on a dark blue-grey because the texture underneath it is
+nearly black.
+
+So what replace fixes is the LAYER arithmetic, not the ceiling. Three
+honest ways to make a tint read on a dark enemy:
+
+  - PICK A COLOUR THAT SURVIVES A MULTIPLY. Saturated reds, oranges and
+    greens keep their hue against dark art; pale pastels wash out.
+    Against a 16% grey, #FF3300 still reads as red and #8CCCFF does not
+    read as anything.
+  - USE "colorPulse". A throb is MOTION, and motion is visible at any
+    brightness. On the darkest enemies this is the only thing that
+    always works.
+  - ACCEPT THAT IT IS DARKER, not absent - the unit does change, it
+    changes toward a dark version of your colour.
+
+Ask if you want a fourth: a coloured Light2D on the tinted unit would
+genuinely brighten it, because the sprite material is LIT. That is a new
+mechanism rather than a setting, so it is not built.
+
+    "stun": { "tint": "#8CCCFF", "tintMode": "replace",
+              "tintStrength": 0.8 }
+
+Every block in the list above takes it and "multiply" stays the default,
+because every file already written was tuned against it.
+
+TWO SPELLINGS ARE ACCEPTED, and one of them is not arbitrary: minion
+"colorMode" already calls this exact distinction "replace" and "tint"
+("tint - multiply, keeps shading"), so "tint" is read as multiply here
+too rather than making you learn a second word for the same idea. The
+key itself may also be written "colorMode", matching the tint/color
+split the strength key already handles. Two REPLACE layers on one unit
+AVERAGE rather than overwriting, so a unit that is both slowed and
+stunned reads as both instead of as whichever fired last. Multiply
+resolves first and replace paints over the result.
+
+Note this is a UNIT tint only. The muzzle-flash tints ("overheat" and
+"spinUp") have no multiply mode to choose between - a flash colour is
+always a replacement - so they take a strength and no mode.
 
 WORTH TURNING DOWN WHEN SEVERAL EFFECTS TINT THE SAME UNIT. Live tint
 layers MULTIPLY over the unit's own colours, so a unit that is both
@@ -4372,7 +5382,7 @@ These go inside the "weapon": { } block and work on every type.
 
   SOUNDS CAN NOW BE NAMED. Every sound field takes the readable name
   the game's own audio database uses - "Weapons/Bolt/Shoot",
-  "Cells/Fuel", "UI/Click" - as well as a raw GUID. Until 2026-09-02
+  "Cells/Fuel", "UI/OK" - as well as a raw GUID. Until 2026-09-02
   the lookup compared GUIDs only, so all 259 of the game's sounds
   were reachable solely by typing a guid and nothing mapped a name to
   one. SOUNDS.txt next to this file lists every one of them with its
@@ -5519,7 +6529,7 @@ that DID load, and the slot goes silent rather than falling back - so
 check the log if a weapon loses its sound.
 
 For a STOCK sound, use the readable name from SOUNDS.txt -
-"Weapons/Bolt/Shoot", "Cells/Fuel", "UI/Click". A raw GUID still
+"Weapons/Bolt/Shoot", "Cells/Fuel", "UI/OK". A raw GUID still
 works and the builder page has pickers for the common ones. Custom
 names win a clash with a game name, the same order every sprite key
 uses.
@@ -5821,6 +6831,341 @@ PROJECTILE templates also accept:
 
   Pairs naturally with a slow, long-lived, low-damage shot. Projectile
   weapons only, not usePhysics. Preset: "Deflector".
+
+  BLOOM - TOP-LEVEL "bloom" block. Projectile weapons only (and missiles,
+  in bullet mode - see below).
+
+  The shot APPEARS at your crosshair instead of travelling to it, swells
+  into a circle, and pops. Nothing flies, which is the whole feature and
+  the reason it SHOOTS AROUND CORNERS: there is no flight for a wall to
+  interrupt. (The one exception is "when": "bullet": no bubble, and the
+  gun's own shot flies the drift's path from the ring. Its own section is
+  below.)
+
+  IT IS NOT A BEAM AND IT IS NOT AN EXPLOSION, and both near-misses
+  matter. A beam is a ray FROM THE BARREL, so the very object you wanted
+  to shoot past would stop it. An explosion spawned from a prefab carries
+  no owner in this game, so it credits no kills and ignores friendly
+  fire. A bloom is a real projectile with its velocity zeroed - it keeps
+  its owner, its damage type, its burn, its kill credit, and it digs
+  terrain through the game's OWN armour check like any other shot.
+
+  IT READS THE RAW CROSSHAIR, NEVER THE BARREL. Aim assist bends the
+  barrel by up to 15 degrees on every stock White weapon, and a weapon
+  whose promise is "it lands where I point" cannot be built off that. So
+  "aimAssistData" is ignored here and the log says so. Your other blocks
+  still use it.
+
+  EVERY NUMBER IS A STAT THE WEAPON ALREADY HAS:
+
+    projectileRadius   the bloom's FINAL SIZE
+    projectileSpeed    how fast it INFLATES (radius units per second)
+    rangeData.range    how far out it can be PLACED (clamped past that)
+    spread             how far from the crosshair the blooms sit
+    projectileCount    how many blooms per trigger pull
+    angleVariance      scatter - jitter off each ring slot
+    angleOffset        rotates the ring, so "spiral" spins the pattern
+    fireRate           how fast you make another
+    pushForce          the pop's shove, when "push" is on
+    burstSize/Delay    a WALKING LINE of blooms, one per burst step -
+                       the tail of a burst is deferred by real time, so
+                       each one lands wherever the cursor is when it
+                       fires
+
+  A stock RANGE or SPEED module really does extend the reach and quicken
+  the swell, with no wiring here: the game's own ModifyWeaponProperty
+  reaches both through IHasRangeProperty / IHasSpeedProperty.
+
+  THE FUSE IS DERIVED: size divided by inflate rate. Two of those three
+  numbers fix the third, and these two are the ones a module can reach.
+  "lifetimeData.time" acts as a CEILING if it is shorter. Set "fuse" by
+  hand only to break that link - or when projectileSpeed is 0, where
+  there is nothing to divide by.
+
+  THE DRAWN BUBBLE IS SIZED TO THE HITBOX, so the edge you see is the
+  edge that hurts. That needs saying because the game has no such
+  relationship of its own: "Radius" is a collision number and the art is
+  whatever the prefab happens to be. The stock circle sprite is one world
+  unit across, so a bloom authored at "projectileRadius": 3.5 would
+  otherwise draw a dot and kill things three and a half units away from
+  it. Bloom rescales the art to match - which means "projectileScale" has
+  NO EFFECT on a bloom: the size is the hitbox, by definition.
+
+  PREFER A STILL SPRITE TO A FLIPBOOK for the bubble. The swell already
+  animates it, and a shrinking flipbook like "part_cyrcle:19-0" would
+  ramp a second time on top, so the drawn circle would lag the damage
+  circle for most of the swell. The presets use "part_cyrcle_0", the
+  full disc.
+
+  WHY "spread" IS A RING RADIUS HERE. This is a top-down game, so a
+  volley scatters in ONE axis - GetDirections fans pellets by angle and
+  by nothing else. Project a real shotgun cone onto the point you are
+  aiming at and you get a LINE of blooms, not a ring. So spread keeps
+  meaning "how wide this gun throws" and is read as the cone angle:
+
+    ring radius = placement distance x tan(spread / 2)
+
+  Consequences, all of them consistent with the rest of the game: the
+  ring widens the further out you place it, spread 0 stacks everything on
+  the crosshair, ONE pellet always lands dead centre (GetDirections has
+  the identical special case), and more pellets makes the ring DENSER
+  rather than wider - which is exactly what extra pellets do to every
+  other gun.
+
+    when        "pop" (default) - harmless while it swells, one hit at
+                the burst. Telegraphed and dodgeable, and the size is a
+                warning.
+                "swell" - hurts the whole time it grows, over a
+                spreading area.
+                "bullet" - no bubble at all: the gun's own shot is placed
+                on the ring and flies the drift's path. See BULLET MODE
+                below.
+    pick        "all" (default) - everything inside the circle.
+                "nearest" - only whatever is closest to the centre. Turns
+                a crowd weapon into a precision one: the circle becomes
+                the area you are allowed to be sloppy in rather than the
+                area you damage.
+    retick      "swell" only. Seconds before the same target can be hit
+                again. 0 (default) hits each thing exactly ONCE as the
+                circle passes over it. Try 0.25 for a burning-field feel.
+                Do not think of it as "every frame" - at 50 physics steps
+                a second that is a deletion, not a weapon.
+    drift       "none" (default) parks it where it lands.
+                "inward" closes on the centre of the pattern.
+                "outward" spreads away from it.
+                "along" sweeps the whole pattern on your aim.
+                "spin" swirls it around the centre.
+                "spiral" winds it into the centre on an even spiral -
+                "turns" laps, clockwise unless "direction" says counter.
+                Four bubbles make four arms.
+                "staggered" closes straight in, but the bubbles land one
+                after another round the ring (clockwise unless
+                "direction" says counter). Each still pops exactly as it
+                reaches the middle: the later ones simply have a longer
+                fuse, so they swell more slowly too.
+                BOTH AT ONCE: a "spiral" with a "stagger" number. Every
+                shot winds the same spiral and they land one after
+                another.
+    turns       "spiral" only. Laps on the way in, default 1; 3 is the
+                classic three-arm look. 0 closes straight, like "inward".
+                The arms stay evenly spaced however many laps.
+    direction   "clockwise" or "counter", for "spiral", "staggered" and
+                "spin". Left out: clockwise for spiral and staggered, and
+                COUNTER-clockwise for spin - the way spin has always
+                turned, so spin weapons already written are unchanged.
+    stagger     "drift": "staggered" or "spiral". How much later the LAST
+                bubble lands than the first, as a share of the fuse (0.5 =
+                half a fuse later). The ones between are evenly spaced.
+                On "staggered" it is always on (0.5 when left out). On a
+                "spiral" it is OFF unless you set it - set it and you get
+                a STAGGERED SPIRAL: every bubble winds the same spiral,
+                the later ones more slowly, so they land one after another
+                round the ring. A spiral with no "stagger" is unchanged.
+    pace        "spiral" bubbles only. "steady" (default) - the same
+                speed all the way, so it turns faster and faster as the
+                laps tighten, like water down a drain. "even" - the same
+                TURNING rate all the way: fastest on the outer lap, easing
+                into the middle. Both land on the centre as it pops.
+    driftSpeed  units/second. 0 (default) DERIVES it - just fast enough
+                to reach the middle as it pops. On a spiral that is the
+                speed ALONG the path, which is several times the straight
+                distance (below), and "pace": "even" ignores it.
+    fuse        seconds before the pop. 0 (default) derives it, see
+                above.
+    push        the pop throws what it caught outward, at the weapon's
+                own pushForce. Default false: a pop that throws bodies is
+                a big change to how a gun feels.
+    digThrough  default false. OFF means a bloom digs exactly like any
+                other weapon - the game compares your damage against each
+                cell's own threshold and breaks it or does not - and it
+                asks that question for EVERY cell inside the circle, not
+                just one. ON deletes cells regardless of the threshold.
+                Both are capped at 400 cells per pop, with a log line if
+                one hits that.
+
+  AN EXPLOSION ON A BLOOM GOES OFF AT THE POP. Both
+  "impactBehaviour.spawnExplosion" and "lifetimeData.spawnExplosion" are
+  honoured there, because on a bloom the pop is both moments at once -
+  its impact AND the end of its life. The same is true of the destroy
+  effect, the sub-emitter and the discharge. Each fires at most once even
+  if both blocks ask for it.
+    absorb      default false. The bubble eats enemy shots it touches.
+                Enemy bullets have their colliders switched off and
+                resolve hits by raycast, so this uses the mod's shot
+                tracker to find them - switched on for you.
+    deflect     needs "absorb". Caught shots are turned back instead of
+                deleted, and a turned shot becomes YOURS - it can kill
+                whatever fired it and the kill is credited to you. It
+                mirrors off the bubble like light off a convex surface,
+                so WHERE on it you catch something decides where it goes:
+                dead centre returns it to the sender, the edge glances it
+                away. Add a "rally" block and the returns stack.
+    blind       where a bloom lands when NOTHING is pointing at a spot -
+                a minion, a turret, an enemy carrying this weapon, or a
+                wingman in one of its direction-aiming modes.
+                "maxRange" (default) puts it straight out at full reach.
+                "firstHit" puts it at the first thing in the way, so it
+                behaves like the hitscan weapon it resembles. Reach for
+                that one if those shots keep landing on empty ground.
+                A WINGMAN AIMING AT YOUR CURSOR does not use this - it
+                reads your crosshair, clamped to its own reach.
+    ring        the reach indicator, and it is OFF by default.
+                "held" draws it while the trigger is down, "always"
+                whenever the weapon is out, "outOfRange" only when you
+                are pointing further than it can reach.
+                Bloom is the one weapon whose range is INVISIBLE: point
+                too far and it does not miss, it quietly lands nearer
+                than you asked. DRAWS NOTHING IN A GADGET SLOT - it is
+                driven from the Shooter, which gadgets never touch. The
+                weapon itself is unaffected.
+    ringSprite  leave it EMPTY for a clean ring the mod draws itself (the
+                default). Or name any custom or stock sprite to use that
+                instead. If a named sprite resolves to nothing the circle
+                is skipped with a warning and the weapon still works.
+                (Before R19 the default borrowed "Sprite Particle
+                Toroid_0", the electric toroid's star-burst - stretched
+                to the full reach it looked like a stray icon behind the
+                ship, not a circle.)
+    ringColor   colour name or hex with alpha (default "#59D9FF4D").
+    ringFade    seconds to fade the ring IN and OUT as it is shown and put
+                away (default 0 = instant). So a "held" or "outOfRange"
+                ring eases in instead of flashing up the moment you
+                cross the edge.
+    ringOpacity 0-1, multiplied into ringColor's own alpha (default 1) -
+                dims a preset's ring without retyping its colour.
+    ringWidth   the line's thickness in WORLD UNITS, the same at any
+                reach (default 0 = the drawn ring's own proportion,
+                which gets thicker as the reach grows). Only the ring the
+                mod draws - a ringSprite is its own art.
+
+  DRIFT IS THE DOOR TO EVERY STEERING FEATURE. "wave", "homing",
+  "guided" and the game's own noise wobble all rebuild Velocity as
+  rotate(idealDirection) x Velocity.magnitude - so at zero speed they
+  propagate zero and do NOTHING WHATEVER. Any drift wakes all of them at
+  once, and the log warns if you have one of those blocks with no drift.
+  EXCEPT "spiral": the spiral puts the shot on its path every step, which
+  overrules anything else steering it (said in the log).
+
+  A SPIRAL IS A LONGER TRIP IN THE SAME TIME. From the ring to the centre
+  is about 1.9 times the straight distance for half a lap, 3.4 times for
+  one lap and 9.5 times for three, and the bubble still has to get there
+  by the time it pops - so a spiral bubble wants a fuse of a few seconds
+  (a low projectileSpeed), or it races round. The build log prints the
+  factor for your "turns". With four bubbles and three laps the arms sit
+  closer together than a bubble is wide, so they touch on the way in;
+  that is expected, and a smaller projectileRadius spaces them out.
+
+  TWO DIFFERENT SPIRALS. "drift": "spiral" here curves each shot's PATH
+  into the centre. The separate top-level "spiral" block turns where each
+  trigger pull's RING STARTS (it rotates angleOffset). They are different
+  things with the same word, and they combine: a spiral block on a spiral
+  bloom turns the pattern a little further every pull.
+
+  REFUSED, NOT IGNORED. "converge", "grow", "speedRamp" and "boomerang"
+  each fight bloom over one field, so the log names the clash and
+  switches bloom off rather than shipping two features quietly
+  cancelling. ("grow" is fine in bullet mode, which does not swell.) A
+  "usePhysics" BUBBLE is refused too - a rigidbody with no velocity is a
+  dropped object, whatever its gravityScale - but a MISSILE can fly a
+  bloom's path as itself in bullet mode.
+
+  MERELY INERT ON A BUBBLE, AND NAMED RATHER THAN REMOVED: "ricochet",
+  "bounce" and "chain". A bubble never runs the engine's own collision
+  sweep (it does its own overlap), so there is no impact for any of them
+  to react to. A BULLET does hit things the normal way, so they work
+  there.
+
+  BULLET MODE - "when": "bullet".
+
+  His idea: the same placement and the same paths, but no bubble - the
+  shots act like the gun's own projectile, whatever that is: a Popper's
+  dot, the Blades, a rocket. They appear on the ring round your crosshair
+  (clamped to the reach, the reach ring still drawn), then FLY the
+  drift's path with their own size, art, trail, hits, piercing and
+  impact.
+
+  THE NUMBERS GO BACK TO THEIR USUAL MEANINGS, with one exception.
+  "projectileSpeed" is how fast it flies along the path (not a swell
+  rate), and "projectileRadius" is its ordinary hit size. So a bullet
+  wants a normal bullet speed - Crossfire's 2.5 would crawl - and more
+  laps means a longer flight. The exception is "rangeData.range", which
+  is STILL how far out the pattern can be placed. The engine's own range
+  handler is switched off on these shots (a range of 22 would otherwise
+  delete a three-lap spiral partway round). Where a shot has no centre to
+  end at - "outward", "along", "spin", or after "through" - it flies as far
+  as the gun reaches, then ends. Its own "lifetimeData" still applies as
+  usual, and the log warns if the trip in is longer than the lifetime.
+
+    atCentre    what a bullet does when it reaches the centre ("inward",
+                "spiral" and "staggered" reach it):
+                "end" (default) - its flight ends there, firing what it
+                would at the end of its range or lifetime. A MISSILE
+                EXPLODES; a Popper simply goes.
+                "through" - it carries on straight, out the other side,
+                for as far as the gun reaches (or until its lifetime).
+                "burst" - it goes off as if it had hit something: its
+                impact effect, explosion, sub-emitter and discharge. For a
+                missile, end and burst look the same.
+    missile     MISSILE templates only (White Dart, Purple / Caps /
+                Electron Rocket):
+                "fly" (default) - the mod sets the rocket's speed and
+                direction every step and switches its own thrust, turning
+                and wobble off for that shot. It holds the exact path, all
+                the way in, at a steady projectileSpeed. Its collisions are
+                still real physics, so it explodes on whatever it hits.
+                "chase" - the rocket's own engine chases a point moving
+                along the path. It feels like a rocket - its own cruise
+                speed (a stock rocket settles near 6 units/second, printed
+                in the log) and its own wobble - and it cuts across the
+                inner laps it cannot turn tightly enough for. At the centre
+                it counts as arrived at its closest pass.
+
+  NO DRIFT IS NOT ALLOWED IN BULLET MODE. A bullet that never moves
+  sits inside whatever it touches and hits it every step with nothing to
+  end it, so "drift": "none" is flown "inward" instead, and the log says
+  so. A bullet that appears INSIDE an enemy or a wall hits it at once,
+  like any shot fired into it - a bloom bullet has no muzzle to be safe
+  from, so the impact's safetyDistance is not applied.
+
+  ANYTHING THAT TURNS A BLOOM BULLET TAKES IT OFF THE PATH. "homing",
+  "guided", "chain", "ricochet" and a bounce all turn a shot's heading;
+  once that happens it flies on as an ordinary bullet for as far as the
+  gun reaches, and no centre rule applies. "wave" weaves along the
+  straight drifts as usual and is overruled on "spiral" and "spin". On a
+  MISSILE, "guided" and "homing" are not used at all - bloom flies it.
+
+  Bubble-only settings do nothing on a bullet, and the log names them:
+  "pick", "retick", "push", "digThrough", "absorb", "deflect", "fuse",
+  "driftSpeed" and "pace".
+
+  GRENADES ARE REFUSED. Steering a falling shot along a path means
+  setting its velocity every step, which cancels its fall and turns a
+  grenade into a missile. The test is the shot's gravityScale, not the
+  "usePhysics" flag - a rocket has usePhysics and no gravity at all.
+
+  ONE BALANCE NOTE. With "pick": "all" and "drift": "inward", four blooms
+  all pass through the centre at once - four overlapping damage circles
+  on one spot, so the middle takes four times the damage. That is
+  arguably the point of the pattern, but it is worth knowing before you
+  set the damage number.
+
+  Presets: "Flashpoint" (one bubble where you point), "Crossfire" (four
+  on a rim closing on the middle - the drift worked example), "Wellspring"
+  (a slow swelling field that hurts as it opens), "Backstop" (a close
+  bubble that swallows fire and returns it), "Whirlpool" (four bubbles
+  spiral three laps into your cursor), "Domino" (six bubbles land one
+  after another), "Buzzsaw" (bullet mode on the Blades: they spiral in
+  and carry on through), "Corkscrew" (bullet mode on a rocket, flown:
+  three rockets spiral in and detonate on the centre) and "Riptide" (the
+  same, chased: the rockets' own engines follow the spiral). "Cyclone"
+  is spiral AND staggered: six bubbles wind two laps in and land one
+  after another.
+
+  AN EXPLOSION AT A BLOOM'S END CREDITS THE GUN. Since 2026-10-02 the
+  pop's explosion (and a bullet's, at the centre) is fired through the
+  shot's own explosion code, so a kill it makes pays this weapon's
+  "onKill" rewards and its rank XP. Before, the kill was yours but the
+  weapon was not named, so those rewards never paid for it.
 
   GROWING / SHRINKING SHOT - TOP-LEVEL "grow" block.
 
@@ -6662,6 +8007,17 @@ PROJECTILE templates also accept:
               "cruise" is given. The stock rocket uses 70.
   speedCap    a hard ceiling on speed. On the stock rocket this ships at
               100 and is never reached.
+
+              A CAP OF ZERO MEANS NEVER THRUST, NOT NO LIMIT. The
+              engine's thrust line is gated on "is this shot slower than
+              maxSpeed", and a speed is never negative - so at 0 the
+              thrust never runs at all, whatever "cruise" or "thrust"
+              says. That is the stock value on every weapon that is not
+              already a homing weapon, the DERBIS GRENADE INCLUDED, and
+              it is why "cruise" used to do nothing on a lobbed shot
+              however high you set it (R15 test 187). It is raised for
+              you now, with a line in the log saying so. Leave the key
+              out for no cap; set a real number for a real ceiling.
   wobble      how much of the shot's own random turbulence to keep, as a
               multiplier. DEFAULTS TO 0 - off. The stock rocket ships
               turbulenceTorque 2.5 against a steering torque of 2, so
@@ -6707,6 +8063,35 @@ PROJECTILE templates also accept:
   still pulls it down the whole time, so you fly it in an arc and lead
   upward. "converge" is still the answer if you want a lobbed shot to
   LAND on a point without steering it.
+
+  AND ON A GRENADE, "cruise" HAS TO BEAT THE WEIGHT AS WELL - which the
+  line above about the speed it settles at does NOT tell you, because
+  that number is level-flight speed in a world with no gravity.
+
+  The cruise a shot needs just to HOLD ITS HEIGHT is:
+
+      hover cruise = gravityScale x 9.81 / damping
+
+  The mass cancels out, which is what makes it a number you can compare
+  straight against the one in your file. On Ammo Derbis (gravityScale
+  1.8, damping 0.4) that is 44 units/second. So a Derbis grenade with
+  "cruise": 10 has about 23% of the thrust it takes to hold itself up:
+  point it at the sky and it will rise a little, lose the fight, and
+  fall - which is exactly what R14 test 163 looked like, and the build
+  log had just said "settles at 10 units/second" with total confidence.
+
+  It is now warned about, with the hover number printed. Two honest
+  answers:
+
+    - raise "cruise" above the hover number for something that can
+      genuinely climb where you point it;
+    - or leave it low and treat it as a MORTAR YOU CAN NUDGE, which is
+      a real weapon - aim the arc and use the steering to adjust where
+      it comes down.
+
+  A ROCKET (gravityScale 0, e.g. Ammo Rocket Fire) has none of this to
+  fight, which is why the same "cruise" number flies completely
+  differently on the two prefabs.
 
   "arrive" DOES MUCH LESS ON A ROCKET than on a bullet, and the log says
   so. A bullet's velocity is rewritten directly, so it can be turned as
@@ -7597,6 +8982,845 @@ PROJECTILE templates also accept:
 
   Preset: "Singularity".
 
+  WINGMAN - TOP-LEVEL "wingman" block. GADGET SLOT ONLY.
+
+  COMPANIONS THAT FIRE A COPY OF YOUR OWN SHOT. They sit around your
+  ship or trail behind it, and every time your primary (or secondary)
+  fires, so do they - with the same ammo, the same damage and the same
+  look as the gun you are actually holding.
+
+  THE "template" IN THIS FILE IS NEVER FIRED. You still need one -
+  every Weapon Forge file does, because it is what the gadget module
+  is cloned FROM, and the build fails without it. But the weapon the
+  companions fire is not it: it is WHATEVER YOU ARE CARRYING, cloned
+  the moment you pick it up. Change guns and they change with you.
+
+  So pick any cheap template you like; it only supplies the shell.
+  "White Popper" is fine.
+
+  TWO COPIES OF ONE WINGMAN FILE ARE TWO GADGETS. The same file in
+  gadget 1 and gadget 3 gives you two rings, each with its own cap,
+  its own companions, its own "2/3" readout on the HUD and its own
+  save record - pulling one out takes only its own companions with it.
+  (Until 2026-09-27 two copies shared one cap and one ring, R19 test
+  267. Two DIFFERENT files were always separate.)
+
+  On "motion": "orbit" the two rings fly as ONE even circle, taking
+  turns round it - gadget 1's first, gadget 3's first, gadget 1's
+  second... Two copies of a file have the same radius and spin, so
+  without that the second ring would sit exactly on top of the first
+  and six companions would look like three. Two DIFFERENT files keep
+  their own rings, so give them different radii if they overlap.
+
+  WHAT MAKES THE COPIES YOURS RATHER THAN THE WEAPON'S. Two things
+  land on the copies and on nothing else:
+
+    - EVERY OTHER BLOCK IN THIS FILE. Put "wave" in a wingman file and
+      the companion shots wave while your own shots fly straight. Put
+      "burn" in it and only the companion shots burn.
+    - WEAPON MODULES SLOTTED AROUND THE GADGET. +1 projectile next to
+      the gadget gives the COMPANIONS an extra pellet, not your gun.
+      That one is the game's own behaviour rather than ours: a gadget
+      already builds its weapon from its own cluster's modules.
+
+  AND THE MODULES AROUND YOUR OWN GUN COUNT TOO. Put +1 projectile
+  beside your primary and the companions fire the extra pellet as
+  well, because they are copying the gun as you actually have it
+  built rather than as it shipped. Stack one on each and you get
+  both. "inheritUpgrades": false turns that half off and leaves only
+  the gadget's own cluster.
+
+  (This needs saying because it did not work until R17, and the way
+  it failed was confusing rather than obvious. A module's effect is
+  written onto the BUILT weapon, never back onto the weapon asset -
+  so a copy made from the asset gets the gun with none of your grid
+  applied. Both clusters are now handed to the copy.)
+
+  Your actual weapon is never modified. The copy is a separate asset,
+  which is what makes that promise true rather than careful.
+
+  A CHANGE TO EITHER GRID TAKES EFFECT AT ONCE. Drop a module in,
+  and the next shot the companions fire is built from the new grid -
+  you do not have to unequip and re-equip the gadget to see it.
+
+  AND THE COPIES INHERIT YOUR WEAPON'S OWN FORGE FEATURES. If you are
+  carrying a Forge weapon with "crit" or "overheat" or "onKill", the
+  companion shots get those too - otherwise they would fire the same
+  ammo at the same damage while silently dropping half of what makes
+  that gun itself. Where both the weapon and the wingman file set the
+  same thing, THE WINGMAN FILE WINS, and the log says so. Turn the
+  whole thing off with "inherit": "none".
+
+    "wingman": {
+      "count": 2,
+      "mirror": "primary",
+      "visual": "FuelPickup",
+      "color": "#7fd4ff",
+      "motion": "drag",
+      "aim": "outward"
+    }
+
+  count      THE CAP, not how many you start with. On the default
+             "key": "deploy" you start a run with NONE and put them
+             out one at a time; the other key modes hand you the
+             whole complement (see "key").
+  capPerLevel
+             extra cap per module LEVEL above 1, so a BoosterCore
+             beside the gadget is worth something. 1 by default.
+             Set 0 for a cap that never moves.
+
+             The gadget is switched to "canBeBoosted" for you when
+             this is above 0, and it has to be: every stock WEAPON
+             module in the game ships that flag OFF, and a wingman
+             file's template is usually a weapon - so without it the
+             module sits at level 1 however many cores surround it,
+             and the cap never budges. That is precisely what R16
+             test 207 measured.
+  mirror     "primary" (default), "secondary" or "both". Mirroring a
+             slot you are not carrying anything in is not an error -
+             they sit idle and say so once in the log.
+
+             ON "both", THE COMPANIONS COPY THE TRIGGER YOU PULLED.
+             Left click and they fire your primary's shot; right
+             click and they fire your secondary's. They do not pick
+             one gun and stay on it.
+  inheritUpgrades
+             true by default: the copies are built from the modules
+             around the gadget AND the modules around the gun being
+             copied. See above.
+  fireRatio  copies per shot you fire. 1 (default) is one each, every
+             shot. 0.5 is every other shot. On a BURST weapon every
+             shot of the burst mirrors, not just the first.
+  damageScale
+             share of your weapon's damage per copy. DEFAULTS TO 1 -
+             full damage - and the build log states the resulting
+             total out loud, because a silent nerf is worse than a
+             number you can read. Two companions at 1.0 is roughly 3x
+             your damage output for one gadget slot.
+
+  THE BODY
+
+  body       "orb" (default) - art and a firing position, nothing
+             else. No health, no collider, cannot be targeted, enemy
+             shots pass straight through.
+
+             "drone" - A REAL UNIT. Hittable, targetable, killable,
+             with a health bar of its own.
+
+             THIS IS NOT ABOUT LOOKS, and the distinction matters
+             because the other half has always worked: put a drone
+             prefab's name in "visual" and an ORB borrows its art with
+             every script stripped. What "drone" buys is being a unit
+             in the world.
+
+             AND THERE IS NO CHEAPER VERSION OF IT. The obvious idea -
+             keep the phantom, switch its collider back on - cannot be
+             made to work, and the reason is in the project settings
+             rather than in this mod. Every layer enemy fire can reach,
+             your own fire reaches too: the difference in that
+             direction is the empty set. The only thing separating the
+             two is a check that the thing you hit carries a `Unit`
+             component, and a GameObject a mod made has none. So a
+             damageable body has to be a spawned entity - which is why
+             the orbs came first.
+
+             THEY FIRE EXACTLY AS AN ORB DOES. The copy is built by
+             this gadget and equipped to YOUR ship, so kill credit,
+             friendly fire, leech, surge and rank all behave normally,
+             and the body's own gun and AI are switched off. The body
+             is a body.
+
+             YOUR OWN EXPLOSIONS AND GAS WILL KILL THEM. The game puts
+             no faction filter on a blast at all - only plain bullets
+             are skipped - so an explosive, lobbed or gas build fields
+             companions that die to its own fire. That is the honest
+             cost of a damageable companion and it is left alone on
+             purpose. What they CANNOT do is pay you: damaging or
+             killing your own side earns no rank XP, no leech healing,
+             no surge and no on-kill reward.
+
+             A LOBBED OR ROCKET WINGMAN DOES NOT POP ON ITS OWN
+             SQUADMATE. That needed a fix rather than being free:
+             plain bullets have always skipped a friendly unit, and
+             physics shots never did - the two classes have disagreed
+             since the beginning, and nobody noticed because a
+             friendly body is rarely in your own line of fire. A ring
+             puts several there permanently, and under "aim": "cursor"
+             every shot crosses it. Note this is about TRIGGERING a
+             shot, not about being caught by one: an explosion that
+             already exists still hits everything in range, companions
+             included.
+
+  DAMAGEABLE DRONE BODIES - the "drone" sub-block
+
+  Only read when "body" is "drone". Everything in it is optional.
+
+      "wingman": {
+        "count": 4,
+        "body": "drone",
+        "drone": {
+          "minion": "Enemy_Fly Variant Drone",
+          "health": 200,
+          "respawn": 8,
+          "contactDamage": { "damage": 4, "scaleBySpeed": true }
+        }
+      }
+
+  drone.minion
+             which unit prefab the body is built from. Defaults to
+             "Enemy_Fly Variant Drone", the stock COMBAT drone. Any of
+             the 80 spawnable units works; the builder page has the
+             full grouped dropdown, and a hostile prefab is put on
+             your side automatically.
+
+             THE FIVE DRONE GADGET ASSETS FOLLOW TWO DIFFERENT NAMING
+             RULES, which is why nobody can remember them. Three are
+             named after the resource they cost - Caps, Electron,
+             Purple - and two after what they do. So the TECH drone is
+             "Enemy_Fly Variant Drone Phantom" (the gadget costs 2
+             Tech) and the HEALTH one is ...Suicide (2 Health, the
+             only gadget in the game priced in health). "Module Active
+             Drone *" is the GADGET; this key names the BODY.
+
+             ...Suicide IS REFUSED, and for a measurable reason rather
+             than a taste one: it is the only drone on the
+             PlayerProjectiles layer, which enemy fire does not
+             collide with. Enemy fire could not touch it, so
+             "damageable" would be a lie. You get the default instead
+             and the log says so.
+  drone.physics
+             false (default) is KINEMATIC: the body sits exactly where
+             it is put, so all four motions, both bunchings and every
+             aim mode are exact, and nothing can shove it - not an
+             explosion, not the ship, not terrain.
+
+             true holds it on the ring with a spring instead, so a
+             blast really can knock one out of formation and it really
+             does come back. "looseness" is the knob.
+
+             THE ONE THING TO KNOW BEFORE TURNING IT ON: under "drag"
+             or "lead" the companions are CROWDED into "spread"
+             degrees on purpose, and at radius 2.2 that arc is under
+             two units long while a drone body is over one unit wide.
+             More than one bunched body does not fit, so they shove
+             each other apart and it reads as jitter. Two honest
+             fixes, and the build log prints both with your own
+             numbers: raise "radius", or set "solidToEachOther": false.
+             Widening a ring that was never the problem is the wrong
+             lever.
+  drone.respawn
+             seconds before a destroyed companion comes back. 0
+             (default) is off - gone until you press the gadget key
+             again, which matches the deploy economy the rest of the
+             gadget runs on. It does soften the cap.
+  drone.respawnCost
+             false by default - respawns are free, because you already
+             chose the timer and a respawn that quietly drains
+             resource reads as a leak rather than as a price. When it
+             is on and you cannot afford it the respawn WAITS rather
+             than being skipped: a skipped respawn is a companion that
+             silently never returns.
+  drone.deathBlast
+             false by default. The stock drone's own death explosion
+             throws BURN in roughly a 2-unit radius and your ring sits
+             at 2.2, so on by default would ignite the ship every time
+             one died. It is stripped unless you ask - both of them,
+             in fact: the body carries that field twice, on two
+             different components.
+  drone.trailColor
+             the little streak a drone leaves as it moves. A colour, or
+             "match" to follow wingman "color". Unset = the drone's own
+             trail colour. (The BODY colour is wingman "color" itself -
+             one colour key for orbs and drone bodies alike.) Until R19
+             this key was refused with a note saying "use wingman
+             color", which could not actually paint the trail.
+  drone.healthBar
+             "full" (default) | "hurt" | "flash" | "hide". The game draws
+             ONE SEGMENT PER POINT OF HEALTH, IN ONE ROW, so a tough
+             companion wears a bar as wide as its health - three at
+             health 120 cover the ship. "hurt" shows no bar until a
+             companion is first damaged, and then keeps it (the game
+             never hides a bar once it has appeared). "flash" shows it
+             on each hit and FADES IT AWAY "healthBarSeconds" after the
+             last one. "hide" removes it entirely.
+  drone.healthBarRow
+             wrap the bar at this many segments per row (the game's own
+             maxUnitsPerRow). 10 makes a 120-health bar twelve short rows
+             instead of one long one. 0 (default) = one row.
+  drone.healthBarRows
+             how many ROWS tall the bar is; the segments per row are
+             worked out from each companion's own health. 2 turns a
+             120-health bar into two rows of 60. Wins over healthBarRow
+             when both are set. Wrapping only trades width for height -
+  drone.healthBarScale
+             - so this is the one that makes the bar SMALLER: the whole
+             bar, both ways (default 1, 0.1-3). 0.5 is half size.
+  drone.healthBarSeconds
+             "flash" only - how long the bar stays after the LAST hit
+             before it fades (default 3). The fade itself takes about
+             0.6 s: the bar's own colours and its segments dim together,
+             then it is gone until the next hit.
+  drone.solidToOwner
+             false by default, WHICH IS THE OPPOSITE OF THE SAME KEY
+             IN "minion", and that is deliberate. A swarm you can surf
+             is funny; a wingman is held on a 2.2-unit ring around your
+             own hull, so solid would mean constant contact between
+             the ship and every companion, every frame, forever. It is
+             a COLLISION switch, not a damage one - they still block
+             enemies, still hit terrain, and you can still shoot them.
+  drone.solidToEachOther
+             true by default. MOOT under the default kinematic body -
+             two kinematic rigidbodies do not push each other - so it
+             only does anything with "physics": true.
+  drone.inheritModules
+             true by default: the non-weapon modules slotted around
+             the GADGET are installed into each body, exactly the way
+             a stock drone gadget does it. Purple, Electron, Tech,
+             Fuel and shields all work literally. The WEAPON modules
+             are skipped on purpose - the body's own gun is off, and
+             they already reach the copies through "inheritUpgrades".
+
+             IT TRACKS THE GRID, it does not just copy it once.
+             Slot a module beside the gadget while companions are
+             already out and they are re-synced to it on the spot;
+             pull one out and they lose it. You do not have to recall
+             and redeploy, which is what an earlier build made you do.
+
+             A re-sync NEVER refills them. A drone body keeps the
+             damage it has taken - that is the whole reason it
+             persists through the save as a body rather than as a
+             number - so slotting and unslotting a card is not a free
+             heal. If a module LOWERS a pool, anything above the new
+             capacity is trimmed to it.
+
+             ONE TRAP, AND IT IS THE FIRST THING ANYONE WILL TRY. A
+             HEALTH-capacity module grants the body a Health tank, and
+             a drone's health is not Health - it is Caps on the stock
+             combat drone, and Electron / Purple / Tech on the others.
+             So the module works, the number is real, the log is
+             truthful, and the companion is no tougher. Use
+             "drone": { "health": 200 } for that: it resolves
+             whichever resource this body's health actually is.
+
+  THE BODY'S OWN STATS
+
+  These are the keys from the "minion" vocabulary that survive the
+  fact that a wingman body's AI and its own gun are switched off.
+  NINE OF THE FIFTY-ONE, and which nine is decided by the architecture
+  rather than by taste: nothing is looking, nothing is shooting,
+  nothing is pathing, and "wingman" already owns colour, scale,
+  lifetime ("decay") and the cap. Anything else you put under "drone"
+  warns in the build log and names the wingman key that does the job.
+
+  drone.statMode
+             "absolute" (default) or "multiply", for every number
+             below.
+  drone.health
+             the stock combat drone has 50. See the trap above for why
+             this key exists rather than a health module.
+  drone.healthPerLevel
+             extra health per GADGET level above 1, so a BoosterCore
+             makes the companions tougher as well as more numerous.
+  drone.iFrames
+             a hard floor on how often anything can damage the body.
+             Every damageable prefab in the game ships 0, so this
+             makes one tougher against FAST weapons specifically
+             rather than tougher overall.
+  drone.fireproof
+             how fast the body's burn level falls. Resistance to fire
+             is cooling, not immunity.
+  drone.untargetable
+             true makes enemy Vision skip it entirely, so nothing ever
+             shoots AT it. It can still be caught by explosions.
+             Note this throws away the best thing about a drone body:
+             soaking fire that was aimed at you.
+  drone.resources
+             { "Resource Electron": 20 } - pools on the body. A shield
+             needs one to spend.
+  drone.regen
+             { "Resource Electron": 2 } - per second. On the stock
+             combat drone, regen for Caps IS healing.
+  drone.shield
+             { "resource": "Resource Electron", "effectiveness": 2,
+             "size": 4, "show": true, "color": "#7fd4ff" }.
+             The game only DRAWS shields for Caps, Electron, Purple
+             and Tech; the other four absorb damage perfectly and are
+             completely invisible unless you set "color".
+  drone.contactDamage
+             TACKLING. A ring of companions sweeping around your ship
+             already shoves enemies out of its path, because the
+             bodies are solid and the ring moves. This turns that into
+             damage. Absent = off; the block's absence IS the switch.
+
+             Takes "damage", "damageType", "scaleBySpeed",
+             "minSpeed", "damagePerSpeed", "maxDamage", "push",
+             "recoil", "repeatDelay", "radius" and "hitsPlayer" -
+             the same keys as the top-level "contactDamage" block,
+             minus "who" and "window" (the body is the carrier by
+             construction, so there is nothing to mark and nothing to
+             expire).
+
+             THE SWEEP IS FED THE RING'S OWN MOVEMENT, because a
+             kinematic body reports zero velocity and the detection is
+             built on velocity - without that this would have done
+             nothing at all while every number in the log looked
+             right. It also makes "scaleBySpeed" meaningful: a fast
+             "spinSpeed" hits harder. "recoil" does nothing on a
+             kinematic body, which is not simulated.
+
+  visual     what it looks like. Tries, in order: one of YOUR sprites,
+             then a sprite in the game, then a PREFAB borrowed for its
+             look. That last one is how you get the orbs - FuelPickup
+             (blue), ResourcePickup_Red (health, red),
+             ResourcePickup_White, ResourcePickup_Tech, and the Caps
+             and Purple orbs.
+
+             A BORROWED PREFAB KEEPS ITS ART AND LOSES EVERY SCRIPT.
+             Renderers, particles, animators and lights come across;
+             the collider is switched off and the rigidbody is taken
+             out of the simulation. The log names what was stripped,
+             once per prefab.
+
+             That is stricter than it was, and R16 is why. FuelPickup
+             carries a `ParticleLifetime` - it shrinks the orb
+             through five frames over three seconds and then DELETES
+             it, at a lifetime rolled between 5 and 7 seconds. The
+             report was "the blue orbs ... fade away after awhile
+             (like 5 seconds)", and it was not a fade at all. The old
+             rule named seven components to remove and covered every
+             one anybody had thought of; a list like that is only
+             ever as complete as the last prefab somebody tried, so
+             it is now the other way round - everything goes except a
+             short list of scripts that provably only set a sprite.
+             If a borrowed body looks plainer than the thing you took
+             it from, that is the cost, and the log line says so.
+  color      tints it. Remember a sprite colour is a MULTIPLY, so it
+             can only darken toward the colour - bright orb art takes
+             a tint well, dark art does not.
+  scale      size multiplier.
+  rotate     which way the art points. "fire" (default) faces where
+             its next shot will actually go, so the nose never lies.
+             "cursor" always faces the crosshair. "travel" faces the
+             way it is sliding. "off" for a round orb.
+
+             IF YOU DRAW YOUR OWN SHIP SPRITE, DRAW IT POINTING RIGHT.
+             The whole game rotates art from +X - it is the same
+             expression the engine uses on every projectile - so art
+             drawn pointing up comes out 90 degrees off.
+
+  ANIMATION IS OPT-IN, exactly like "gas" and "shield": a bare name
+  shows one still frame, and ":0-7" or "@12" asks for movement. That
+  is so a file you already wrote cannot silently start animating.
+
+  pulse      the gentle throb, on by default. It is the same one the
+             catalyst node uses, and for the same reason: a parked
+             companion should read as live and armed rather than as a
+             stuck bullet. "pulseAmount" and "pulseSpeed" tune it.
+  spin       the COIN TURN instead - the body narrows to an edge and
+             opens out again, DARKENING as it closes because edge-on
+             you are looking at the rim. "spinRate",
+             "spinThinness" and "spinHorizontal" tune it.
+             SPIN AND PULSE BOTH DRIVE THE BODY'S SIZE, so only one
+             can run; spin wins and the log says so.
+  colorPulse throbs the colour instead of the size. 0 is steady.
+
+  WHERE THEY SIT - "motion"
+
+  orbit      a ring that turns at "spinSpeed" degrees per second.
+             "radius" sets the ring. The companions are spaced evenly
+             by HOW MANY ARE OUT, not by the cap - three of a cap of
+             six sit 120 degrees apart, not 60 - and the ring
+             re-spreads whenever that number changes, so deploying,
+             recalling or letting one decay slides the rest round
+             rather than leaving a gap. "looseness" sets how quickly.
+  trail      strung out behind you along the path you actually flew.
+             "spacing" is the gap between them, "smoothing" how
+             tightly they follow. Stop moving and they HOLD their last
+             spacing rather than piling onto you.
+  drag       on the ring, but sliding to the side OPPOSITE your
+             movement - beads on a hoop. Move right and they gather on
+             your left. With "aim": "outward" that makes them a rear
+             guard that covers your retreat.
+  lead       the same, on the side you are moving TOWARD. Beads that
+             scout ahead and fire where you are charging.
+
+  DRAG AND LEAD ONLY. The six keys below are read by "drag" and
+  "lead" and by nothing else - under "orbit" or "trail" they are
+  inert, and the build log now names any of them it finds in a file
+  that cannot use them. (R16 set "spread": 90 and "bearing": "aim"
+  on an orbit and reasonably concluded the orbit was ignoring them.
+  It was; they are not orbit's keys. "orbit" spaces the companions
+  evenly on its own and turns the ring at "spinSpeed".)
+
+  bearing    what "ahead" and "behind" are measured from.
+             "movement" (default) - the way you are travelling.
+             "aim" - the direction from your ship to the CURSOR, so
+                     "lead" + "aim" gathers them between you and where
+                     you are pointing.
+             "both" - the bisector of the two.
+  signal     what "movement" means. "both" (default) is your input and
+             your actual velocity summed, which is the one that
+             behaves the way people expect: crisp response to what you
+             press, AND the companions still swing when an explosion
+             throws you across the room. "velocity" is only the
+             second, "input" only the first.
+  spread     how wide the bunch fans, in degrees.
+  looseness  how slowly a companion slides to its place. This is the
+             "loose beads" feel - higher is lazier.
+  bunching   "fan" (default) gives each one a fixed slot, so the
+             spread is exactly the number you set. "repel" has them
+             all seek the same point and push each other apart -
+             tighter on a held heading, looser through a turn, and it
+             looks more alive.
+  atRest     where they go when you stop moving and there is no
+             direction to be opposite of.
+             "relax" (default) - they spread back out to EVEN spacing
+                     around the ship. With four companions that is
+                     north/east/south/west, and with "aim": "outward"
+                     it turns a stopped ship into a ring turret
+                     covering every approach. Each one is given its
+                     OWN slot, chosen so the set travels as little as
+                     possible and nobody crosses anybody.
+
+                     (Before R17 each companion independently eased
+                     to its nearest even slot, which is correct for
+                     one and wrong for a group: "drag" bunches them
+                     all within "spread" degrees of a point BY
+                     DESIGN, so three beads inside 55 degrees all
+                     round to the SAME slot and pile onto it. R16:
+                     "Stopping keeps them in their place for a
+                     moment then for some reason the 3 stack as one
+                     shooting in the same direction." The bug only
+                     appeared in the state the feature exists to
+                     produce.)
+             "hold" - they freeze in the bunch you last flew into.
+             "holdThenRelax" - hold for "holdSeconds", then spread.
+             Ignored under "bearing": "aim", because a cursor always
+             has a position and they never run out of a direction.
+
+  THE HEADLINE COMBINATION is "motion": "drag" with "aim": "outward"
+  and "atRest": "relax". Moving, they bunch behind you and concentrate
+  their fire one way; stopped, they spread to the compass points and
+  cover everything. Kite and they guard your back, stand and fight and
+  they are a turret.
+
+  WHERE THEY SHOOT - "aim"
+
+  parallel   (default) along your ship's own aim, so the shots stay
+             side by side and never cross.
+  cursor     each one aims AT the crosshair, so the shots converge.
+  mirrored   angles mirrored about your aim, opening outward. Widest
+             coverage. "spread" sets how far.
+  nearest    each picks its own closest enemy. Crates and boxes are
+             excluded - they carry the same aim-assist marker enemies
+             do, so the filter is whether a thing has an AI.
+  outward    along the line from your SHIP THROUGH that companion,
+             extended. One rule: the companion to your south shoots
+             south, the one to your east shoots east.
+  none       they NEVER FIRE. The pair for it is "body": "drone" with
+             a "drone.contactDamage" block - a pure tackle ring. On an
+             orb it does nothing at all (an orb has no hitbox), and the
+             build log warns.
+
+  THE GADGET KEY - "key"
+
+  deploy     (default) each press puts out ONE more, up to the cap -
+             the way Gradius options are collected. Each press costs
+             the gadget's own activation cost and respects its
+             cooldown, exactly as every other gadget does.
+  toggle     first press sends the WHOLE complement out, next press
+             stows it. You start with none.
+  burst      the complement is out from the start; the key makes them
+             all fire at once, regardless of your trigger.
+  recall     the complement is out from the start; the key stows
+             them, and pressing again sends them back.
+  none       the complement is out from the start and the key does
+             nothing.
+
+             THREE OF THESE DID NOT WORK BEFORE R17 and it is worth
+             knowing which, in case you tried one: "burst", "recall"
+             and "toggle" all deployed nothing at all. Only "deploy"
+             and "none" ever put a companion on screen. Each handler
+             was written for a complement that was already out and
+             nothing ever put one out - "burst" fired a volley from
+             an empty ring, "toggle"'s first press stowed companions
+             that did not exist. R16: "I think i figured it out.
+             'key': 'burst', is preventing me from summoning the
+             orbs."
+
+             THE KEY REPEATS WHILE YOU HOLD IT, AND "fireRate" IS
+             THE GAP. A gadget's cooldown is literally 1/fireRate on
+             the weapon this file builds, and the game re-presses the
+             key on every frame the button is down once that has
+             passed - it reads a held button, not a press. White
+             Popper ships 7, so holding it is SEVEN PRESSES A SECOND;
+             on "toggle" that is summon and stow seven times a
+             second. Set "fireRate": 2 for a half-second gap.
+
+             This is the one place a wingman file's "fireRate"
+             matters. The build log used to say it did nothing at
+             all, which was wrong - "cost" and "resourceUsed" reach
+             the gadget down the same three-property path, and that
+             is what gave the mistake away. R17: "probably needs a
+             slight delay between activation... Can this be delayed
+             with firerate or something else?" Yes, and it always
+             could.
+
+  atCap      what a deploy press does when you are already at the cap.
+             "recallOne" (default) retires one, so the key walks the
+             count down and back up. Also "recallAll" and "refuse" -
+             and on "refuse" the HUD counter plays the game's own
+             "you are full" flash, the same one a drone gadget gives.
+
+             DEPLOY-ONLY, and the build log warns now if you set it
+             anywhere else. It is read in exactly one place - the
+             handler for "key": "deploy" - so under "toggle",
+             "burst", "recall" or "none" the game never consults it.
+             R17: a "burst" file firing its ring at the cap read as
+             "recallOne" misbehaving, and "atCap" had not been looked
+             at once.
+  decay      seconds a deployed companion lasts. 0 (default) is
+             forever. PUNK has no levels to reset on, so a timer is
+             the only way to make them temporary.
+  persist    true by default: the companions you have out are still
+             out when you load that save. See below. Set false and
+             the gadget becomes a per-session summon - you load with
+             none and press the key again. That is the natural
+             pairing with "decay", where they are temporary anyway.
+
+  THEY SURVIVE SAVING AND LOADING. Deploy three, Save and Exit,
+  Continue, and three are waiting for you - at the cap you have NOW,
+  so if you pulled the BoosterCore out in between you get what you
+  can currently field rather than what you saved. A gadget you had
+  STOWED (with "toggle" or "recall") is still stowed.
+
+  WHAT IS STORED IS THE NUMBER, NOT THE COMPANIONS. They are rebuilt
+  from this file on load, which means an edit you make between saving
+  and loading takes effect - a new colour, a new motion, a different
+  weapon to mirror. It also means nothing about a companion can go
+  stale in a save, which is the failure this mod has hit before:
+  only mementos replay, so anything set at spawn time (colour, size,
+  the stripped scripts) silently reverts.
+
+  A record it cannot read means NONE DEPLOYED, never a guess. The
+  worst thing persistence could do is hand you companions you never
+  paid the activation cost for, so every failure lands on zero: a
+  missing file, a corrupt one, a version this build does not know, a
+  gadget that is no longer in your grid. Press the key again.
+
+  The record is a small text file called weaponforge_wingmen.txt
+  inside the save folder, so a coop save and a normal save cannot
+  read each other's, and deleting a save takes it with it. You can
+  open it in Notepad, and deleting it just means you load with none.
+
+  THERE IS A COUNT ON THE HUD, "2/4", in the same row of readouts a
+  drone gadget uses - deployed over the cap, with the gadget's own
+  icon and colour. It is the game's widget; the mod just stops it
+  hiding itself for a gadget that is not a minion spawner.
+
+  TAKE THE GADGET OUT OF THE GRID AND THE COMPANIONS GO WITH IT.
+  (They used to stay, firing, which meant you could park a wingman
+  effect and then use the slot for something else.)
+
+  READ THE BUILD LOG FIRST IF SOMETHING LOOKS WRONG. Every time you
+  change weapon, the log prints one line saying what was cloned, what
+  your weapon brought with it BY NAME, and what this file applied over
+  the top. A broken copy otherwise reads as ten separate bugs - the
+  crit is missing, the burn is missing, the sprite is wrong - when it
+  is one.
+
+  READOUTS - TOP-LEVEL "gauge" AND "bubble" BLOCKS.
+
+  TWO WAYS FOR A GUN TO TELL YOU WHAT IT IS DOING, borrowed from the
+  ship's own HUD. They answer different questions, which is why they
+  are two blocks rather than one with a style switch:
+
+    "gauge"   a QUANTITY  - "I am 70% hot"        a filling bar
+    "bubble"  a STATE     - "you are locked out"  a flashing icon
+
+  A weapon can have either, both or neither. Both are OFF unless the
+  file asks for them.
+
+  WHAT THEY CAN SHOW. Four features produce a 0-100% number:
+
+    heat     from your "overheat" block
+    charge   from your "charge" block
+    spinUp   from your "spinUp" block
+    surge    from your "surge" block - how much of the overload
+             window is left
+
+  "show" lists which ones, IN PRIORITY ORDER. There is only one bar and
+  one bubble, so the first source in your list with something to say
+  wins and the rest stay quiet. The default order is:
+
+      "show": ["surge", "heat", "spinUp"]
+
+  SURGE IS FIRST AND IT COSTS NOTHING. It reports nothing at all unless
+  the window is actually open, so on a weapon without a surge the bar
+  falls straight through to "heat" and behaves exactly as it always
+  did - which is why it could be added to the default list without
+  changing any file already written.
+
+  It is first because it answers the one question the heat bar cannot:
+  a meter FILLING and a meter DRAINING look identical, and once a surge
+  exists, which of the two you are in is the whole story.
+
+  CHARGE IS NOT IN THE DEFAULT LIST and has to be named. It already has
+  the growing orb at your barrel, so a bar for it as well is two
+  readouts for one number unless you actually want that. Name it and
+  you get both.
+
+  THE RECOMMENDED PRIORITY, and the reason for it:
+
+      "show": ["surge", "heat", "charge", "spinUp"]
+
+  Surge first because it is a phase you are IN rather than a quantity,
+  and it only speaks while it is happening. Overheat next because it is
+  the only one of the others that can STOP you shooting - being locked
+  out matters more than knowing how wound up you are. Charge third.
+  Spin-up last, because a wind-up you can hear and feel anyway.
+
+  WHICH GUN? The one you are FIRING. When you are firing neither, it
+  falls back to whichever gun is still above its threshold - which is
+  what keeps a jammed secondary on screen while you fight with your
+  primary.
+
+  "gauge" - THE FILLING BAR
+
+    show       which sources, in priority order. See above.
+    threshold  below this fraction it is not worth showing. 0.25 by
+               default. Set 0 and it is visible whenever the weapon is
+               in your hands.
+    hideAfter  seconds after you stop firing before it fades, even if
+               still above the threshold. 3 by default. 0 never fades.
+    color      the fill at EMPTY. Defaults to the bar's own orange-red.
+    hotColor   the fill at FULL. Omit it and the bar is one colour.
+    scale      size. 1 is the game's own.
+    offsetX    where it sits, in world units from the ship. Defaults to
+    offsetY    (0, -1.5), just under you - the same place the
+               self-destruct bar uses.
+    sound      a one-shot as the bar appears. NO SOUND by default.
+    loopSound  a tone held the whole time the bar is up, stopped when it
+               goes. NO SOUND by default.
+
+    A LOCKOUT HOLDS THE BAR AND EMPTIES IT. During an overheat vent or
+    jam you cannot fire, so "hideAfter" is ignored - otherwise the bar
+    would disappear in the one state where it is the only thing telling
+    you when you get the gun back. While locked it counts DOWN, so
+    EMPTY MEANS YOU CAN FIRE AGAIN.
+
+    That is two different numbers under the hood, and it matters if you
+    are tuning: a "vent" unlocks when the heat falls to "ventTo", so
+    the bar is remapped to hit empty exactly there rather than stopping
+    part-full. A "jam" unlocks on a fixed timer while the gun cools on
+    its own separate schedule, so there the bar reads the TIMER. Both
+    read as "empty = fire now" and neither lies.
+
+  "bubble" - THE FLASHING ICON
+
+    show       as above.
+    slowAt     at or above this it pulses slowly. 0.5 by default.
+    fastAt     at or above this it pulses fast. 0.85 by default.
+    hideAfter  as above. 3 by default.
+    mode       "pulse" (default) or "steady" - on, not flashing.
+    sprite     which icon. See below.
+    color      what colour to tint it.
+    scale      size.
+    offsetX    defaults to (1.38, 1.44), up and to the right, where the
+    offsetY    fuel warning sits.
+    sound      one sound for both pulse speeds. NO SOUND by default.
+    slowSound  the slow pulse only. Overrides "sound".
+    fastSound  the fast pulse only. Overrides "sound".
+
+    A LOCKOUT ALWAYS FLASHES FAST, whatever your numbers say. It is the
+    one state where the message is "now".
+
+  SOUND - AND THE ONE YOU HAVE TO TURN OFF RATHER THAN ON
+
+  Both readouts are SILENT unless you ask for a sound. That is the
+  default for overheat, chargeshot and spin-up alike, and it is not
+  quite the same statement for the two blocks:
+
+    THE BAR never had one. The self-destruct meter it is copied from
+    has two sounds, but the ship plays those itself - they are not on
+    the widget, so a copy of the widget makes no noise. "sound" and
+    "loopSound" add one where there was none, in exactly the shape the
+    game uses there: a one-shot as it comes up, and a held loop that is
+    stopped by handle when it goes.
+
+    THE BUBBLE DID, AND IT WAS THE WRONG ONE. The low-fuel warning it
+    is copied from carries a little component that its two flash
+    animations poke once per flash, and both flashes loop - so a copied
+    bubble inherited YOUR LOW-FUEL ALARM: every 2.3 seconds while
+    pulsing slow, and every 0.7 seconds while pulsing fast. Leaving
+    "slowSound" and "fastSound" empty is what takes that off. Naming
+    them replaces it. There is no way to get the fuel alarm back on a
+    bubble by accident, and the REAL low-fuel warning is untouched.
+
+  Both take a sound the same way every other sound key in this file
+  does: a custom sound from your "sounds" folder, or one of the game's
+  own by name (see SOUNDS.txt). "none" also means silence, explicitly.
+
+  TWO THINGS WORTH KNOWING BEFORE YOU PICK A CLIP:
+
+    The bubble sounds ONCE PER FLASH, and a fast flash comes round
+    every 0.72 seconds. A clip longer than that overlaps itself into a
+    chord. Use something short, or give the sound a "repeatMinDelay" in
+    its sidecar.
+
+    "mode": "steady" has no flashes to sound on, and switching the
+    flashing off is also what switches off the thing that plays the
+    sound. So a steady bubble pings ONCE as it appears, and again if it
+    escalates from slow to fast. It is the honest behaviour rather than
+    a key that resolves and then does nothing.
+
+  A LOOPING BAR TONE HAS TO ACTUALLY LOOP. A custom sound is forced to,
+  so it always will. One of the game's own is used as-is and most of
+  them are one-shots - it will play once and not restart. The build log
+  says so when you name one.
+
+  THE ICONS
+
+  Weapon Forge ships TEN icons drawn for this, in "Example Sprites".
+  Copy the .png files into your sprites folder the same way you would
+  any custom sprite, then name one:
+
+    wf_alert   diamond + "!"      the general "look at this"
+    wf_warn    triangle + "!"     the classic warning
+    wf_heat    a flame            overheat
+    wf_lock    a padlock          a jam or a vent lockout
+    wf_bolt    a lightning bolt   a charge
+    wf_star    a four-point star  "ready", "full", "charged"
+    wf_ring    a ring             spin-up - it reads as winding
+    wf_dot     a filled circle    the quietest option
+    wf_plus    a plus             a buff or a boost
+    wf_skull   a skull            for the ghoulish
+
+  They are drawn PURE WHITE with the shape in the alpha channel, which
+  is what lets "color" turn them any colour at full brightness. That is
+  not decoration: a UI tint is a MULTIPLY, so coloured art can only
+  ever be DARKENED. If you draw your own, draw it white.
+
+  Leave "sprite" out and the bubble keeps the game's own fuel-warning
+  icon. You can also name a sprite from the game, but most of the
+  game's art is coloured and so will not recolour cleanly - there is a
+  list of the ones that DO in "GAME ICONS THAT TINT.txt".
+
+  DOES THIS TOUCH THE SELF-DESTRUCT BAR? NO. Both readouts are COPIES
+  of the ship's widgets, made at run time. The real self-destruct bar
+  and the real fuel warning are never written to and keep working
+  exactly as they always did - and, to say the obvious thing out loud,
+  FILLING A GAUGE CANNOT KILL YOU. The death lives in the ship's own
+  code and needs three things at once: no fuel, the key held down, and
+  the ship's own private counter reaching full. A readout is a number
+  in a picture.
+
+  THE GLOBAL SWITCH. WeaponForge.cfg has a "Gauges" setting under
+  "Readouts": "files" (default, obey each weapon), "on" (give a bar to
+  every weapon that can overheat or spin up, even if its file never
+  asked) or "off" (no readouts at all). Handy for trying the feature
+  without editing anything.
+
   CATALYST - TOP-LEVEL "catalyst" block. Plain OR lobbed.
 
   A NODE YOU SHOOT INTO. Fire one and it hangs in the air; put another
@@ -7929,10 +10153,145 @@ PROJECTILE templates also accept:
                lists, and only while you have asked for it.
                "buffIndicator" in a weapon file overrides Style for that
                weapon in either direction.
-    clearBurn  burn level removed from YOUR OWN ship per kill. The only
-               payout that can save you mid-fire. Your ship sheds burn
-               at 5/second on its own, so 5+ here roughly doubles that
-               per kill.
+    clearBurn  burn level removed from YOUR OWN ship per kill - as in
+               your ship is ON FIRE. NOT the "overheat" meter; that is
+               "coolHeat" below, and until R15 the build log called this
+               field "cools", which is how the two got confused. The
+               only payout that can save you mid-fire. Your ship sheds
+               burn at 5/second on its own, so 5+ here roughly doubles
+               that per kill.
+
+    coolHeat   heat taken off THIS WEAPON'S OWN "overheat" meter per
+               kill, in the same units as "max" and "perShot". Warns and
+               does nothing if the weapon has no "overheat" block.
+
+                   "overheat": { "enabled": true, "max": 100,
+                                 "perShot": 8, "coolPerSecond": 20 },
+                   "onKill":   { "enabled": true, "coolHeat": 25 }
+
+               That gun overheats in about 12 shots and every kill buys
+               three of them back.
+
+               THE PART WORTH DESIGNING AROUND: a kill that drops the
+               meter below "ventTo" also ENDS A VENT LOCKOUT on the next
+               frame, through the same path a normal cooldown uses (so
+               the recover sound, the repaint and the fire-rate restore
+               all happen properly). A gun with a brutal "vent" response
+               and a generous coolHeat is one that jams the moment you
+               start missing and never jams while you are connecting -
+               which is a real weapon rather than a number.
+
+               With "response": "slow" there is no lockout to end and it
+               simply walks the fire-rate penalty back.
+
+               Scoped to the weapon that scored the kill, so a
+               secondary's kills never cool your primary. Module Forge
+               can do the same thing from a MODULE - see "coolHeat" in
+               HOW TO MAKE MODULES.txt, which needs both mods installed.
+
+    coolHeatFrom
+               "self" (default) or "any" - WHOSE kill counts.
+
+               READ THIS IF YOUR GUN LOCKS AND WILL NOT COME BACK.
+               There is a deadlock in "self" and it is not obvious
+               until it bites you. A "vent" response locks the gun
+               until the meter is fully cool. While it is locked you
+               cannot fire it, so you cannot kill with it, so nothing
+               cools it: the kills that would rescue the gun are
+               exactly the kills it can no longer score. The feature
+               switches itself off at the moment it is meant to save
+               you, and only a shot still in the air can break out.
+
+               R16 found it in play: "Killing things with a different
+               weapon while it was locked didn't let me fire again. I
+               guess that would be a bug huh?"
+
+               Set "coolHeatFrom": "any" and a kill with ANY weapon
+               takes "coolHeat" off this meter, lockout or not. That
+               turns a jam into something you can shoot your way out
+               of with your other gun, which is the interesting
+               version. The build log warns when a locking weapon has
+               "coolHeat" and has not set this.
+
+               Left at "self" by default so no file you already wrote
+               changes behaviour on the next launch.
+
+               IT GOES IN "onKill", NOT IN "overheat". That is worth
+               saying on its own line, because the warning that tells
+               you this key exists is printed while talking about your
+               OVERHEAT response ("a weapon whose overheat LOCKS it"),
+               so "overheat" is the natural place to try it - and a
+               key in there is read by nobody and complained about by
+               nobody. R17 test 217 is exactly that: the key added,
+               the file reloaded, and nothing whatsoever different.
+
+                 "overheat": { "response": "vent", "max": 100 },
+                 "onKill":   { "coolHeat": 35, "coolHeatFrom": "any" }
+
+               The build log now names the block in the warning, and
+               calls out a stray "overheat".coolHeatFrom by name.
+
+    gas        true leaves a GAS CLOUD on every corpse.
+
+               Needs a "gas" block on the same weapon. That block is
+               what describes the cloud; this key only decides WHEN
+               one appears. So it is one switch rather than a second
+               copy of twenty knobs, and the cloud a kill leaves is
+               the cloud you already tuned and have already seen.
+
+                 "gas":    { "radius": 1.8, "damagePerSecond": 12,
+                             "burnPerSecond": 3, "duration": 5 },
+                 "onKill": { "gas": true }
+
+               That gun sprays gas while you fire and every enemy it
+               kills becomes another cloud, so a crowd poisons itself.
+
+               With no "gas" block the key is SWITCHED BACK OFF at
+               build time and says so. That matters more here than
+               elsewhere: this block also carries "chance" and
+               "maxPerSecond", so a flag that quietly did nothing
+               would be indistinguishable from an unlucky roll.
+
+               Gas rides on a projectile, so a beam, a melee weapon
+               or anything else with no bullet cannot carry one at
+               all - the "gas" block is refused for those already,
+               and this key follows it.
+
+    gasChains  true (DEFAULT). MAY A CLOUD'S OWN KILL LEAVE ANOTHER
+               CLOUD?
+
+               A cloud with "damagePerSecond" credits its kills to
+               the gun that made it - that is how gas kills count as
+               your kills at all. So the chain comes for free: gas
+               kills leave gas, which kills, which leaves gas. In a
+               packed room one corpse takes the room, and that is the
+               point of the feature rather than a hazard in it.
+
+               IT CANNOT RUN AWAY. Every enemy dies exactly once and
+               one death pays out once, so the clouds a fight can
+               produce are capped by how many things are in it. It
+               spreads through a crowd and then stops - there is no
+               term that feeds itself.
+
+               Set it false if you want corpses to smoke without the
+               spread. Two numbers are the harder limits if you want
+               one:
+
+                 gas.max          how many clouds may exist at once
+                                  (24 by default, and 0 = unlimited).
+                                  At the cap the OLDEST is asked to
+                                  fade, not destroyed and not refused
+                                  - which is why you have probably
+                                  never noticed the cap binding.
+                 maxPerSecond     how many kills may pay out in a
+                                  second, in this block
+
+               WORTH KNOWING WHEN YOU COUNT CLOUDS: "max" counts
+               CLOUDS, and each cloud draws "gas".puffs sprites (5 by
+               default). A weapon at the default cap is 24 clouds and
+               about 120 puffs on screen. If a trail is on it has its
+               OWN budget ("trailMax", 40) on top of this one.
+
     buffDuration / buffFireRate / buffDamage / buffMaxStacks
                a timed buff. The two bonuses are FRACTIONS (0.25 =
                +25%) and both need a duration or they do nothing.
@@ -7959,6 +10318,11 @@ PROJECTILE templates also accept:
   A shot that leaves a CLOUD behind, and the cloud is what does the
   work - burning, poisoning, bogging things down, shoving them about,
   or PUTTING FIRES OUT.
+
+  THE SAME CLOUD CAN ALSO APPEAR ON A CORPSE. Add "onKill": { "gas":
+  true } and every kill this weapon scores leaves one, described by
+  this block - nothing to configure twice. "gasChains" in that block
+  decides whether those clouds' OWN kills leave more.
 
   NONE OF THIS COULD BE TAKEN FROM THE GAME, and the reason is worth
   knowing before you tune it.
@@ -8854,6 +11218,15 @@ PROJECTILE templates also accept:
   unchanged and a charge composes with +damage modules instead of
   overriding them. "count" and "pierce" are the two that ADD instead.
 
+  -> CHARGE ALREADY HAS A READOUT - the orb on your barrel, set up with
+     the "meter*" keys below. The on-ship bar and bubble are a SECOND,
+     optional one, written up under READOUTS; they live apart because
+     one bar serves overheat, charge and spin-up. Charge is
+     DELIBERATELY NOT in their default list - name it in "show" to opt
+     in. On a gun that also overheats, the heat wins the bar, which is
+     exactly why the orb stays on: your charge still has a readout at
+     the busiest moment.
+
       "charge": true           on, with defaults
       "charge": {
         "enabled": true,
@@ -9443,6 +11816,46 @@ and damages whatever it touches, so most projectile options do nothing.
   cut a real tunnel. Point resultCellType at a solid type instead and
   the weapon BUILDS walls.
 
+  AND HOW YOU BUILD, WHICH IS THE HALF NOBODY FINDS. Everything above
+  describes digging, and flipping resultCellType alone does not give
+  you the opposite - you have to flip BOTH fields at once:
+
+      "cellConvertData": {
+        "enabled": true,
+        "radius": 2.5,
+        "convertableCells": "soft",
+        "resultCellType": "CellType_Obsidian"
+      }
+
+  "soft" is Slime and the three Fogs - the stuff you FLY THROUGH. That
+  is what there is to build ON. Leave convertableCells on the digging
+  default of "solid" and you have a weapon that converts rock into rock:
+  it runs, it logs a full expansion, it warns about nothing, and nothing
+  appears. Both halves have to point the other way or the feature is
+  silently a no-op.
+
+  PICK A CELL THAT DOES NOT BURN. CellType_Solid ignites at 45 and
+  burns 15 seconds - the most flammable thing in the game - so a
+  barricade made of it is kindling the first time anything in the room
+  carries fire. CellType_Obsidian, _Panel, _Shard and _Mud all have a
+  fire threshold of 0, which the game reads as NEVER BURNS.
+
+  AND IT NEEDS A CONTACT. The conversion runs from the shot HITTING
+  something (see the four paths above), so a plain bullet fired into
+  open air expires at its range having touched nothing and builds
+  nothing at all.
+
+  That only bites when you are BUILDING. A lobbed weapon always finds
+  the floor, so a grenade is the honest template for a wall - there is
+  nothing to aim at otherwise. For DIGGING a straight shot is fine,
+  because you are pointing it at rock in the first place, which is why
+  the shipped Excavator preset is an ordinary bullet.
+
+  Watch the radius. The Crawler Laser's 4 is an eight-unit lump, which
+  is enough to seal yourself inside your own wall if you drop one at
+  your feet. Nothing stops you doing that - terrain does not care whose
+  it is.
+
   "EMPTY" IS NOT ON THE LIST AND YOU DO NOT NEED IT. It is cell id 0
   and a const on the class rather than an asset, so it cannot be named
   - a Fog does the same job.
@@ -9673,12 +12086,21 @@ match.
 ----------------------------------------------------------------
 
 Weapon doesn't appear on the loadout screen:
-  - Check BepInEx\LogOutput.log for "WeaponForge" lines. A
-    missing "name"/"template" or a typo'd template name is
-    logged with your file's name.
+  - Open BepInEx\WeaponForge.log. A missing "name"/"template" or
+    a typo'd template name is logged with your file's name. (Not
+    LogOutput.log - that only gets Weapon Forge's errors now.)
+  - No WeaponForge.log at all, or its BUILD line is old: the DLL
+    did not load or did not get copied. LogOutput.log says which.
   - Two files with the same "name" - only the first loads.
   - JSON syntax error (missing comma, quote). Paste the file into
     an online JSON validator.
+
+A loadout card doesn't appear, or one of its slots is empty:
+  - Search the log for "loadouts/". Every skipped slot says why - a
+    name it could not find (with the list it does know), or a weapon
+    in a gadget slot. A file where NOTHING resolves gets no card.
+  - Check the file is in "loadouts", beside "weapons" - a loadout in
+    the weapons folder is skipped with a line saying so.
 
 A stat change didn't apply:
   - Restart the game fully - files are read at menu load only.

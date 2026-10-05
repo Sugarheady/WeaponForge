@@ -68,8 +68,9 @@ On first run the mod creates `weapons`, `sprites` and `sounds` folders next to i
 `README.txt` and example weapons.
 
 > **There is no hot reload.** Weapon JSON is read once at startup, so every change needs a full game
-> restart. A malformed file is skipped and the reason is logged — search `BepInEx\LogOutput.log` for
-> `WeaponForge`.
+> restart. A malformed file is skipped and the reason is logged to the mod's own
+> `BepInEx\WeaponForge.log` (the launch before is `WeaponForge.prev.log`). `LogOutput.log` keeps only the
+> load lines and a copy of every error.
 
 ## Notes
 

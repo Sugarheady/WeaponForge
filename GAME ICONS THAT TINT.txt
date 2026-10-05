@@ -1,0 +1,187 @@
+GAME ICONS THAT TINT
+====================
+
+For the "bubble" readout's "sprite" key, and for anything else in Weapon Forge
+that tints a sprite.
+
+WHY THIS LIST EXISTS
+--------------------
+
+A UI tint is a MULTIPLY. So "color" can only ever DARKEN art that already has
+colour in it - a blue icon can be made navy, never yellow. Only art that is
+PURE WHITE can be tinted to any hue you like at full brightness.
+
+That makes "which of the game's sprites are white" a real question with a real
+answer, and guessing it wrong looks like the tint is broken rather than like the
+sprite was a bad choice.
+
+Every icon-sized sprite in PUNK v0.12.9 was checked pixel by pixel: 942 of them
+between 8x8 and 64x64 with enough opaque pixels to see. EXACTLY 111 ARE PURE
+WHITE and are listed below. Everything not on this list will darken rather than
+recolour.
+
+NO ART IS REPRODUCED HERE - these are names only. The sprites belong to the
+game; this file just says which ones behave.
+
+START HERE INSTEAD
+------------------
+
+Weapon Forge ships TEN icons drawn for this feature, in "Example Sprites":
+
+    wf_alert  wf_warn  wf_heat  wf_lock  wf_bolt
+    wf_star   wf_ring  wf_dot   wf_plus  wf_skull
+
+They are drawn white-on-alpha on purpose, they are sized and shaped to read at
+a glance as a status icon, and they are ours - so they work, they tint, and
+they are in the repo. Reach for the list below only when you want something
+specific the shipped set does not cover.
+
+THE SHORTLIST - the ones that actually read as a status icon
+------------------------------------------------------------
+
+  Sprite UI ShipCanvas Warning     27x27  a diamond with "!" - the game's own
+                                          fuel warning, and still the best
+  UIFoldoutClosed                  11x11  a small solid triangle
+  Sprite Shapes Projectiles_13     29x29  a four-point burst
+  Sprite Shapes Projectiles_14     29x29  a solid diamond
+  HUD_GridTiles_11                 24x24  a sparkle
+  HUD_GridTiles_12                 24x24  a plus / cross
+  Sp Particle Star_0               20x20  a star
+  part_cyrcle_0                    20x20  a solid circle
+  UI ClusterBorder_12              32x32  a dashed ring
+  HUD_Modules_3                    24x24  corner brackets
+  HUD_ModuleIcons_6                34x34  corner brackets, larger
+  area_zero_block_hazard_0         26x26  a jagged outline
+  Sprite VFX Lighning_0            37x36  a lightning fork
+
+ANIMATED ONES
+-------------
+
+Several are numbered RUNS, so the usual frame spec animates them instead of
+just pulsing - e.g. "Sp Particle Star:0-15".
+
+  Sp Particle Star_0 .. _15
+  part_cyrcle_0 .. _15
+  Sprite Smoke Fire_0 .. _11
+  Sprite VFX Lighning_0 .. _8
+
+A WARNING ABOUT SIZES
+---------------------
+
+These range from 8x8 to 37x36 and the bubble's slot is a fixed 1.35 world
+units, so a big sprite and a small one will NOT sit the same. Use "scale".
+
+ALL 111, ALPHABETICALLY
+-----------------------
+
+  Blank                                          16x16
+  Enemy_Cross_Queen_3                            55x28
+  EyeEnemy_1                                     15x11
+  EyeEnemy_2                                     15x11
+  EyeEnemy_3                                     15x11
+  HUD_GridTiles_11                               24x24
+  HUD_GridTiles_12                               24x24
+  HUD_GridTiles_20                               24x24
+  HUD_GridTiles_5                                24x24
+  HUD_GridTiles_6                                24x24
+  HUD_ModuleIcons_17                             34x34
+  HUD_ModuleIcons_6                              34x34
+  HUD_Modules_1                                  24x24
+  HUD_Modules_2                                  24x24
+  HUD_Modules_29                                 24x24
+  HUD_Modules_3                                  24x24
+  HUD_VaultGrid                                  29x29
+  HUD_resource_HEALTH_Empty                      11x8
+  HUD_resource_HEALTH_Full                       11x8
+  HairAnimSheet_7                                16x30
+  MainMenu_placeholders_15                       9x9
+  MainMenu_placeholders_16                       9x9
+  Rounded_Rect_10px                              20x20
+  Sheet_MapIcons_0                               20x20
+  Sp Particle Star_0                             20x20
+  Sp Particle Star_1                             20x20
+  Sp Particle Star_10                            20x20
+  Sp Particle Star_11                            20x20
+  Sp Particle Star_12                            20x20
+  Sp Particle Star_13                            20x20
+  Sp Particle Star_14                            20x20
+  Sp Particle Star_15                            20x20
+  Sp Particle Star_2                             20x20
+  Sp Particle Star_3                             20x20
+  Sp Particle Star_4                             20x20
+  Sp Particle Star_5                             20x20
+  Sp Particle Star_6                             20x20
+  Sp Particle Star_7                             20x20
+  Sp Particle Star_8                             20x20
+  Sp Particle Star_9                             20x20
+  Sprite HUD Resource Tech EMPTY                 9x10
+  Sprite HUD Resource Tech FULL                  9x10
+  Sprite Shapes Projectiles_13                   29x29
+  Sprite Shapes Projectiles_14                   29x29
+  Sprite Shapes Projectiles_15                   29x29
+  Sprite Ship Highlight                          24x20
+  Sprite Smoke Fire_0                            20x20
+  Sprite Smoke Fire_1                            20x20
+  Sprite Smoke Fire_10                           20x20
+  Sprite Smoke Fire_11                           20x20
+  Sprite Smoke Fire_2                            20x20
+  Sprite Smoke Fire_3                            20x20
+  Sprite Smoke Fire_4                            20x20
+  Sprite Smoke Fire_5                            20x20
+  Sprite Smoke Fire_6                            20x20
+  Sprite Smoke Fire_7                            20x20
+  Sprite Smoke Fire_8                            20x20
+  Sprite Smoke Fire_9                            20x20
+  Sprite UI ShipCanvas Warning                   27x27
+  Sprite VFX Lighning_0                          37x36
+  Sprite VFX Lighning_1                          37x36
+  Sprite VFX Lighning_2                          37x36
+  Sprite VFX Lighning_3                          37x36
+  Sprite VFX Lighning_4                          37x36
+  Sprite VFX Lighning_5                          37x36
+  Sprite VFX Lighning_6                          37x36
+  Sprite VFX Lighning_7                          37x36
+  Sprite VFX Lighning_8                          37x36
+  Sprite_Lazer_6_0_0                             20x8
+  Sprite_Station_0                               13x13
+  Sprite_Station_1                               8x19
+  Sprites_Shapes_71                              8x8
+  UI ClusterBorder_10                            32x32
+  UI ClusterBorder_11                            32x32
+  UI ClusterBorder_12                            32x32
+  UI ClusterBorder_13                            32x32
+  UI ClusterBorder_14                            32x32
+  UI ClusterBorder_7                             32x32
+  UI ClusterBorder_8                             32x32
+  UI ClusterBorder_9                             32x32
+  UIFoldoutClosed                                11x11
+  UIFoldoutOpened                                11x11
+  area_zero_block_hazard_0                       26x26
+  area_zero_block_hazard_fill_0                  26x26
+  area_zero_block_hazard_fill_1                  26x26
+  area_zero_block_hazard_fill_2                  26x26
+  area_zero_block_hazard_fill_3                  26x26
+  area_zero_enemy_fly_3                          18x13
+  module_selection                               21x21
+  part_cyrcle_0                                  20x20
+  part_cyrcle_1                                  20x20
+  part_cyrcle_10                                 20x20
+  part_cyrcle_11                                 20x20
+  part_cyrcle_12                                 20x20
+  part_cyrcle_13                                 20x20
+  part_cyrcle_14                                 20x20
+  part_cyrcle_15                                 20x20
+  part_cyrcle_2                                  20x20
+  part_cyrcle_3                                  20x20
+  part_cyrcle_4                                  20x20
+  part_cyrcle_5                                  20x20
+  part_cyrcle_6                                  20x20
+  part_cyrcle_7                                  20x20
+  part_cyrcle_8                                  20x20
+  part_cyrcle_9                                  20x20
+  part_engineFIre_0                              24x8
+  part_engineFIre_1                              24x8
+  part_engineFIre_2                              24x8
+  part_engineFIre_3                              24x8
+  part_engineFIre_4                              24x8
+  part_engineFIre_5                              24x8
