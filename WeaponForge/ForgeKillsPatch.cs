@@ -93,6 +93,43 @@ namespace WeaponForge
                 _shots.Clear();
         }
 
+        // ★ STAND-INS CREDIT THE GUN THEY STAND IN FOR (courier, 2026-10-09).
+        // A courier drone's beam copy and a named payload are weapon objects
+        // the mod built so a drone can fire; their kills, damage and rewards
+        // belong to the gun that launched the drone - its rank, its onKill,
+        // its leech and surge. Resolved at the two places a weapon is first
+        // named (DoShoot's stamp, and a beam's hit), so every reader after
+        // sees the gun. `gun` null removes the alias.
+        private static readonly Dictionary<WeaponBase, WeaponBase> _standIns =
+            new Dictionary<WeaponBase, WeaponBase>();
+
+        public static void CreditTo(WeaponBase standIn, WeaponBase gun)
+        {
+            if (standIn == null)
+                return;
+
+            if (gun == null)
+                _standIns.Remove(standIn);
+            else
+                _standIns[standIn] = gun;
+        }
+
+        // Run entry (ForgeCourier.Reset): the stand-ins of a run that ended.
+        public static void ClearStandIns()
+        {
+            _standIns.Clear();
+        }
+
+        private static WeaponBase Resolve(WeaponBase w)
+        {
+            WeaponBase gun;
+
+            return (w != null && _standIns.Count > 0 &&
+                    _standIns.TryGetValue(w, out gun) && gun != null)
+                ? gun
+                : w;
+        }
+
         public static WeaponBase WeaponOf(Component shot)
         {
             WeaponBase w;
@@ -445,7 +482,7 @@ namespace WeaponForge
         {
             static void Prefix(WeaponBase __instance)
             {
-                _firing = __instance;
+                _firing = Resolve(__instance);
                 _firingFrame = Time.frameCount;
             }
 
@@ -487,7 +524,7 @@ namespace WeaponForge
         [HarmonyPatch(typeof(DamagableResource), "OnHitByHitscanWeapon")]
         public class OnHitscan
         {
-            static void Prefix(HitscanWeapon weapon) { _credit = weapon; }
+            static void Prefix(HitscanWeapon weapon) { _credit = Resolve(weapon); }
             static void Finalizer() { _credit = null; }
         }
 

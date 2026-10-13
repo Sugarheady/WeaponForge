@@ -496,12 +496,48 @@ namespace WeaponForge
                     ForgeRank.Progress p =
                         ForgeRankCopies.TryGet(__instance, out copy) ? copy.p : null;
 
+                    // ★ A GUN IN THE VAULT (R21 305: "My prospector didn't
+                    // display the exp on the weapon at first then i equiped it
+                    // and it had it upgrades carried over"). A vault card is
+                    // drawn off `WeaponModule.baseWeapon`, a gun the module
+                    // built in its constructor from the SHARED asset - so the
+                    // copy's progress (restored by a Continue or carried by a
+                    // New Game Plus jump, before its own gun is ever built) was
+                    // not found from it and the card read rank 0. The module
+                    // being drawn is known (OnModuleCard), and it is the copy's
+                    // identity anyway.
+                    if (p == null && OnModuleCard.Drawing != null &&
+                        ForgeRankCopies.TryGet(OnModuleCard.Drawing, out copy) && copy != null)
+                    {
+                        p = copy.p;
+                    }
+
                     Card(cfg, p, results);
                 }
                 catch (Exception)
                 {
                     // A card line must never stop a card drawing.
                 }
+            }
+        }
+
+        // Which module's card is being drawn, for the length of
+        // `WeaponModule.GetPropertyList` - the vault card's only route to a
+        // copy's progress (see OnPropertyList). Cleared in a finalizer, so a
+        // throw inside the card cannot leave it set for the next one.
+        [HarmonyPatch(typeof(WeaponModule), "GetPropertyList")]
+        public class OnModuleCard
+        {
+            internal static Module Drawing;
+
+            static void Prefix(WeaponModule __instance)
+            {
+                Drawing = __instance;
+            }
+
+            static void Finalizer()
+            {
+                Drawing = null;
             }
         }
 
