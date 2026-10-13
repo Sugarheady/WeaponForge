@@ -1,0 +1,25 @@
+{
+  "name": "CourierShield",
+  "displayName": "COURIER SHIELD",
+  "description": "A test: a slow drone that enemy fire can hit. It blocks what reaches it and is shot down after 6 damage.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "shootable": "hit",
+    "health": 6,
+    "shots": 6,
+    "interval": 0.6,
+    "speed": 14,
+    "scale": 1.4
+  },
+  "weapon": {
+    "fireRate": 0.7
+  },
+  "module": {
+    "icon": "HUD_GridTiles_34",
+    "color": "#c0ffe8"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "name": "R16_GhostRound",
+  "displayName": "GHOST ROUND",
+  "description": "Comes out of nothing and goes back into it. Watch the streak, not the bullet.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+  "weapon": {
+    "damage": {
+      "amount": 0.8,
+      "damageType": "Resource White"
+    },
+    "fireRate": 2,
+    "projectileSpeed": 16,
+    "projectileColor": "#ffd27f",
+    "resourceUsed": "Resource White",
+    "cost": 0.3,
+    "rangeData": {
+      "enabled": true,
+      "range": 22,
+      "slowDown": false,
+      "destroyWhenReached": true
+    },
+    "impactBehaviour": {
+      "enabled": false
+    },
+    "trail": {
+      "enabled": true,
+      "color": "#ffd27f",
+      "perUnit": 6,
+      "lifetime": 0.5,
+      "size": 0.25,
+      "sizeEnd": 0
+    }
+  },
+  "module": {
+    "color": "#ffd27f",
+    "resourceGain": {
+      "resource": "Resource White",
+      "amount": 12
+    }
+  },
+  "fade": {
+    "enabled": true,
+    "inUnits": 3,
+    "outUnits": 8,
+    "trail": true
+  }
+}

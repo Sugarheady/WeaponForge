@@ -1,0 +1,38 @@
+{
+  "name": "R16_Wingmen",
+  "displayName": "WINGMEN",
+  "description": "Companions that fire a copy of your own shot. Deploy one per gadget press.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+
+  "module": {
+    "color": "ColorBlue",
+    "resourceGain": { "resource": "Resource White", "amount": 2 }
+  },
+
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+
+    "visual": "FuelPickup",
+    "color": "#7fd4ff",
+    "scale": 1.0,
+    "pulse": true,
+    "rotate": "off",
+
+    "motion": "drag",
+    "radius": 2.4,
+    "spread": 55,
+    "looseness": 0.3,
+    "bunching": "repel",
+
+    "aim": "outward",
+    "damageScale": 0.5
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Pincer",
+  "displayName": "PINCER",
+  "description": "Four drones surround your cursor and fire through it at once.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "ring": "outOfRange",
+    "formation": "ring",
+    "windup": 0.35
+  },
+  "weapon": {
+    "fireRate": 1,
+    "projectileCount": 4,
+    "spread": 50
+  },
+  "module": {
+    "icon": "HUD_GridTiles_44",
+    "color": "#ffb0d8"
+  }
+}

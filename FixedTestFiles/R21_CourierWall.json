@@ -1,0 +1,25 @@
+{
+  "name": "CourierWall",
+  "displayName": "COURIER WALL",
+  "description": "A test: the drone stops at the first wall and fires from there, and it turns its shots a quarter turn each time.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "overWalls": false,
+    "shots": 4,
+    "interval": 0.25,
+    "snap": 90,
+    "turn": 90,
+    "speed": 20
+  },
+  "weapon": {
+    "fireRate": 1
+  },
+  "module": {
+    "icon": "HUD_GridTiles_19",
+    "color": "#b0b8ff"
+  }
+}

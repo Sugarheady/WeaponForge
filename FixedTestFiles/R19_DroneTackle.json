@@ -1,0 +1,59 @@
+{
+  "name": "R19_DroneTackle",
+  "displayName": "BATTERING RING",
+  "description": "Tough shielded drones on a fast ring that hurts whatever it sweeps through.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 2,
+    "fireRate": 2
+  },
+  "module": {
+    "color": "ColorOrange"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "mirror": "primary",
+    "damageScale": 0.5,
+    "key": "deploy",
+    "radius": 2.8,
+    "spinSpeed": 200,
+    "looseness": 0.25,
+    "aim": "outward",
+    "rotate": "travel",
+    "color": "#ffb45e",
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone",
+      "health": 300,
+      "respawn": 6,
+      "resources": {
+        "Resource Electron": 30
+      },
+      "regen": {
+        "Resource Electron": 3
+      },
+      "shield": {
+        "resource": "Resource Electron",
+        "effectiveness": 2,
+        "show": true,
+        "size": 4
+      },
+      "contactDamage": {
+        "damage": 6,
+        "scaleBySpeed": true,
+        "minSpeed": 4,
+        "damagePerSpeed": 1.5,
+        "maxDamage": 40,
+        "push": 12,
+        "repeatDelay": 0.35
+      }
+    }
+  }
+}

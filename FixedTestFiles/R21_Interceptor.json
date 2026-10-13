@@ -1,0 +1,43 @@
+{
+  "name": "R21_Interceptor",
+  "displayName": "INTERCEPTOR WING",
+  "description": "Three tough wingman drones that only guard: INTERCEPTOR, INTERCEPT FRONT and INTERCEPT REAR. Hold Y and press this gadget's button to step through the three; they go for the shots heading at you.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "fireRate": 2,
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+  "module": {
+    "color": "ColorBlue"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "damageScale": 0.5,
+    "key": "recall",
+    "radius": 2.6,
+    "spinSpeed": 60,
+    "looseness": 0.3,
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone",
+      "health": 200,
+      "respawn": 5,
+      "healthBar": "hide"
+    }
+  },
+  "modes": {
+    "join": [
+      "interceptor",
+      "interceptfront",
+      "interceptrear"
+    ],
+    "interceptRadius": 6
+  }
+}

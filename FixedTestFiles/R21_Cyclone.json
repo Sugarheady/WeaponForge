@@ -1,0 +1,30 @@
+{
+  "name": "Cyclone",
+  "displayName": "CYCLONE",
+  "description": "Six bubbles spiral into your cursor and land one after another.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "drift": "spiral",
+    "turns": 2,
+    "stagger": 1,
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 7, "damageType": "Resource White" },
+    "cost": 3,
+    "fireRate": 0.5,
+    "projectileRadius": 0.9,
+    "projectileSpeed": 0.45,
+    "projectileCount": 6,
+    "spread": 40,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_25",
+    "color": "#b9a8ff"
+  }
+}

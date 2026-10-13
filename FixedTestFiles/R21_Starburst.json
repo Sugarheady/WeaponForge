@@ -1,0 +1,47 @@
+{
+  "name": "Starburst",
+  "displayName": "STARBURST",
+  "description": "Grenades appear round your cursor and are thrown outward, a cluster bomb where you point.",
+  "template": "Module Weapon White Derbis",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "outward",
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "fireRate": 0.8,
+    "cost": 3,
+    "damage": {
+      "amount": 2,
+      "damageType": "Resource White"
+    },
+    "projectileCount": 8,
+    "spread": 20,
+    "projectileSpeed": 14,
+    "rangeData": {
+      "range": 20
+    },
+    "explosion": {
+      "radius": 1.6,
+      "damages": [
+        {
+          "amount": 3,
+          "damageType": "Resource White"
+        }
+      ]
+    },
+    "impactBehaviour": {
+      "enabled": true,
+      "spawnExplosion": true
+    },
+    "lifetimeData": {
+      "enabled": true,
+      "time": 1.5,
+      "spawnExplosion": true
+    }
+  }
+}

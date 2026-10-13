@@ -1,0 +1,7 @@
+{
+  "name": "R21_LobbedBlooms",
+  "displayName": "R21 LOBBED BLOOMS",
+  "description": "Grenades thrown in: IMPLOSION (all at once, going off) and GRENADE RAIN (one after another, through).",
+  "primary": "GRENADE RAIN",
+  "secondary": "IMPLOSION"
+}

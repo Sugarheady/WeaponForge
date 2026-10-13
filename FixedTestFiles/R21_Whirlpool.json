@@ -1,0 +1,29 @@
+{
+  "name": "Whirlpool",
+  "displayName": "WHIRLPOOL",
+  "description": "Four bubbles spiral into your cursor and burst together.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "drift": "spiral",
+    "turns": 3,
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 10, "damageType": "Resource White" },
+    "cost": 3,
+    "fireRate": 0.6,
+    "projectileRadius": 1,
+    "projectileSpeed": 0.4,
+    "projectileCount": 4,
+    "spread": 40,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_21",
+    "color": "#7fb8ff"
+  }
+}

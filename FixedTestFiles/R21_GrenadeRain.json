@@ -1,0 +1,44 @@
+{
+  "name": "GrenadeRain",
+  "displayName": "GRENADE RAIN",
+  "description": "Six grenades lobbed in one after another; they cross at your cursor and keep falling.",
+  "template": "Module Weapon White Derbis",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "inward",
+    "arrive": "staggered",
+    "lob": "medium",
+    "atCentre": "through"
+  },
+  "weapon": {
+    "fireRate": 0.8,
+    "cost": 3,
+    "damage": {
+      "amount": 2,
+      "damageType": "Resource White"
+    },
+    "projectileCount": 6,
+    "spread": 40,
+    "projectileSpeed": 26,
+    "rangeData": {
+      "range": 22
+    },
+    "explosion": {
+      "radius": 1.6,
+      "damages": [
+        {
+          "amount": 3,
+          "damageType": "Resource White"
+        }
+      ]
+    },
+    "impactBehaviour": {
+      "enabled": true,
+      "spawnExplosion": true
+    }
+  }
+}

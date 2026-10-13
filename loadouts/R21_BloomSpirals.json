@@ -1,0 +1,7 @@
+{
+  "name": "R21_BloomSpirals",
+  "displayName": "R21 BLOOM SPIRALS",
+  "description": "Bloom spirals: WHIRLPOOL (clockwise, steady, 3 laps) and EDDY (counter-clockwise, even, 2 laps).",
+  "primary": "WHIRLPOOL",
+  "secondary": "EDDY"
+}

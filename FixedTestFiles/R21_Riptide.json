@@ -1,0 +1,27 @@
+{
+  "name": "Riptide",
+  "displayName": "RIPTIDE",
+  "description": "Rockets chase a spiral into your cursor and burst there.",
+  "template": "Module Weapon Electron Rocket",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "spiral",
+    "missile": "chase",
+    "atCentre": "burst",
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "fireRate": 0.9,
+    "projectileCount": 2,
+    "spread": 40,
+    "rangeData": { "range": 18 }
+  },
+  "module": {
+    "icon": "HUD_GridTiles_39",
+    "color": "#7ff0ff"
+  }
+}

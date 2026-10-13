@@ -1,0 +1,29 @@
+{
+  "name": "Wellspring",
+  "displayName": "WELLSPRING",
+  "description": "A slow bloom that burns everything while it opens.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "swell",
+    "retick": 0.3
+  },
+  "weapon": {
+    "damage": { "amount": 4, "damageType": "Resource White" },
+    "cost": 4,
+    "fireRate": 0.5,
+    "projectileRadius": 3.5,
+    "projectileSpeed": 1.4,
+    "projectileCount": 1,
+    "spread": 0,
+    "burn": { "Min": 1, "Max": 2 },
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_27",
+    "color": "#b6ff7a"
+  }
+}

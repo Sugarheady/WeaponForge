@@ -1,0 +1,24 @@
+{
+  "name": "CourierDecoy",
+  "displayName": "COURIER DECOY",
+  "description": "A test: a decoy drone enemies choose to aim at, firing five times before it leaves.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "shootable": "decoy",
+    "health": 20,
+    "shots": 5,
+    "interval": 0.8,
+    "windup": 0.5
+  },
+  "weapon": {
+    "fireRate": 0.5
+  },
+  "module": {
+    "icon": "HUD_GridTiles_19",
+    "color": "#ffc8a0"
+  }
+}

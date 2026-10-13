@@ -1,0 +1,9 @@
+{
+  "name": "R19_Mixed",
+  "displayName": "R19 MIXED",
+  "primary": "R19_Tollgate",
+  "secondary": "SHOTGUN",
+  "gadget1": "DRONE WING",
+  "gadget2": "Crossfire",
+  "gadget3": "AIR MINE"
+}

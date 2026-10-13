@@ -1,0 +1,36 @@
+{
+  "name": "Backstop",
+  "displayName": "BACKSTOP",
+  "description": "A close bubble that swallows incoming fire and returns it.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "absorb": true,
+    "deflect": true,
+    "ring": "always",
+    "ringColor": "#9effc84d"
+  },
+  "rally": {
+    "enabled": true,
+    "maxStacks": 4,
+    "damagePerReflect": 1.5,
+    "speedPerReflect": 1.15
+  },
+  "weapon": {
+    "damage": { "amount": 7, "damageType": "Resource White" },
+    "cost": 2,
+    "fireRate": 0.9,
+    "projectileRadius": 2.2,
+    "projectileSpeed": 2,
+    "projectileCount": 1,
+    "spread": 0,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_33",
+    "color": "#9effc8"
+  }
+}

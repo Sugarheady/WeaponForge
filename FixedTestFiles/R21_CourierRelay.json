@@ -1,0 +1,21 @@
+{
+  "name": "CourierRelay",
+  "displayName": "COURIER RELAY",
+  "description": "A test: a Popper whose drones fire the game's Shotgun instead of its own shot.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "weapon": "Weapon White Shotgun",
+    "launchSfx": "none"
+  },
+  "weapon": {
+    "fireRate": 1
+  },
+  "module": {
+    "icon": "HUD_GridTiles_19",
+    "color": "#e0d0ff"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "BloomTurn",
+  "displayName": "BLOOM TURN",
+  "description": "BLOOM STILL's cross of four shots, turned 15 degrees further round every time you fire.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "inward"
+  },
+  "spiral": {
+    "step": 15
+  },
+  "weapon": {
+    "projectileSpeed": 20,
+    "projectileCount": 4,
+    "spread": 30
+  }
+}

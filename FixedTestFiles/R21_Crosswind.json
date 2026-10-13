@@ -1,0 +1,22 @@
+{
+  "name": "Crosswind",
+  "displayName": "CROSSWIND",
+  "description": "A shotgun drone flies to your cursor and fires four ways at once.",
+  "template": "Module Weapon White Shotgun",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "ring": "outOfRange",
+    "pattern": "cross",
+    "windup": 0.3
+  },
+  "weapon": {
+    "fireRate": 0.8
+  },
+  "module": {
+    "icon": "HUD_GridTiles_43",
+    "color": "#c8ffd0"
+  }
+}

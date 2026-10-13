@@ -1,0 +1,45 @@
+{
+  "name": "CurveCourier",
+  "displayName": "CURVE COURIER",
+  "description": "A laser drone appears by your cursor and fires a curve beam that bends round walls and threads up to five enemies.",
+  "template": "Module Weapon Caps Laser",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "weapon": {
+    "fireRate": 1,
+    "cost": 4,
+    "damage": {
+      "amount": 1,
+      "damageType": "Resource Caps"
+    }
+  },
+  "module": {
+    "icon": "HUD_GridTiles_26",
+    "color": "#9fe8ff"
+  },
+  "curveBeam": {
+    "lock": "forward",
+    "lockRange": 15,
+    "lockCone": 90,
+    "objectsToo": true,
+    "turnRate": 120,
+    "maxLength": 20,
+    "weave": true,
+    "weaveRange": 10,
+    "weaveMax": 5,
+    "lookAhead": 6,
+    "bystander": 1,
+    "maxTargets": 5,
+    "thickness": 0.85
+  },
+  "courier": {
+    "enabled": true,
+    "entry": "fly",
+    "windup": 0.4,
+    "beamTime": 0.75,
+    "aim": "enemy",
+    "exit": "recoil",
+    "ring": "outOfRange"
+  }
+}

@@ -1687,8 +1687,8 @@ THE KEY
                                fire while Y is held.
   U, or hold Y about a second  everything back on NORMAL.
 
-  The cycle:  NORMAL > ORBIT > DRAG > PROTECTOR > REAR GUARD > SEEKER >
-              SENTRY > NORMAL
+  The cycle:  NORMAL > ORBIT > DRAG > PROTECTOR > INTERCEPTOR >
+              REAR GUARD > SEEKER > SENTRY > NORMAL
 
   A fading alert names what you chose: "DRONES: ORBIT", "GADGET 2:
   SEEKER", "DRONES: NORMAL". Pressing with nothing to command says
@@ -1708,25 +1708,42 @@ THE MODES
   PROTECTOR    a short row close in FRONT of where you aim. A drone
                there takes the shots coming at you.
   REAR GUARD   a longer, wider row further BEHIND where you aim.
-  SEEKER       drones hunt further out (SeekRange, 40 by default - the
-               game's own leash is 20) and come back when nothing is left.
+  SEEKER       drones HUNT: each flies at the nearest enemy within
+               SeekRange of you (40 by default - the game's own leash is
+               20), seen or not, round rock by the game's own pathfinder,
+               until its AI sees it and fights. With nothing in range they
+               WANDER a slow loop round you at about half SeekRange.
   SENTRY       drones guard the spot your ship was at when you pressed.
                Fly SentryRecall (60) away and they come back to you:
                "SENTRY RECALLED", and that gadget is on NORMAL again.
                Fast travel takes the post with you.
-  INTERCEPTOR  drones go for enemy shots heading at you and take them.
-               NOT in the default cycle yet - add "Interceptor" to Cycle
-               to try it. Explosive shots are met outside their own blast.
-               Drones lose health doing it; InterceptorNoDamage = true is
-               a test switch where they lose none, and wingman orbs join
-               in by deleting the shots they meet.
+  INTERCEPTOR  drones go for enemy shots heading at you and take them,
+               waiting on a still ring round you. In the default cycle
+               since it passed (R21). Explosive shots are met outside
+               their own blast. Drones lose health doing it;
+               InterceptorNoDamage = true is a test switch where they lose
+               none, and wingman orbs join in by deleting the shots they
+               meet. InterceptSpeed (and the GAME MODE FORGE tab's
+               "Interceptor snap speed" slider) sets how eagerly they snap.
+  INTERCEPT FRONT  INTERCEPTOR waiting in the PROTECTOR row instead.
+  INTERCEPT REAR   INTERCEPTOR waiting in the REAR GUARD row instead.
+  STRIKER      companions dive at the nearest enemies within StrikeRange
+               of you (20) and sit StrikeDistance (2.5) from them - point
+               blank. Wingmen shoot THAT enemy when you fire; a drone is
+               pointed at it. One enemy gets the whole squad.
+  VENGEANCE    the same, at the enemies shooting at you (their AI is on
+               your ship and can see it).
+  The last four are not in the default cycle until they pass their tests -
+  add InterceptFront, InterceptRear, Striker and Vengeance to Cycle to try
+  them, or join them from a file (below).
 
   Every companion of yours in one mode is ONE formation - two gadgets on
   ORBIT make one ring, wingmen and drones together.
 
-  Wingmen do the four formations, and INTERCEPTOR with drone bodies. A
-  wingman ring keeps its own motion under SEEKER and SENTRY (Y + its
-  button skips those). Drones do every mode. The game's SUICIDE drone
+  Wingmen do the four formations, the three INTERCEPT modes with drone
+  bodies, and STRIKER / VENGEANCE (orbs too). A wingman ring keeps its own
+  motion under SEEKER and SENTRY (Y + its button skips those). Drones do
+  every mode. The game's SUICIDE drone
   joins every mode too; it cannot touch you or be hit by enemy fire, so
   it only goes off on walls and enemies.
 
@@ -1753,15 +1770,38 @@ THE SETTINGS - [Drone modes] in the mod's config
                                    works too.
   NormalKey = U                    everything back on NORMAL.
   HoldForNormal = true             holding Y about a second does too.
-  Cycle = Orbit, Drag, Protector, RearGuard, Seeker, Sentry
+  Cycle = Orbit, Drag, Protector, Interceptor, RearGuard, Seeker, Sentry
                                    reorder, or leave modes out - a mode
-                                   not listed is never offered.
+                                   not listed is never offered by Y alone.
+                                   Every mode, to try them all:
+                                   Orbit, Drag, Protector, Interceptor,
+                                   InterceptFront, InterceptRear, RearGuard,
+                                   Seeker, Sentry, Striker, Vengeance
   Formation = Loose                Loose: drones fly to their place at
                                    their own speed and lag a boost.
                                    Locked: they hold it like wingmen.
   SeekRange = 40, SentryRadius = 8, SentryRecall = 60
+                                   SeekRange stops at 80: the game keeps the
+                                   world loaded only about 75 units round
+                                   you (25-unit squares, three out from the
+                                   camera), so there is nothing to find past
+                                   it, and a drone that crosses into an
+                                   unloaded square is deleted.
   AlertSeconds = 2.5
   InterceptorNoDamage = false      the INTERCEPTOR test switch.
+  InterceptSpeed = 100             how eagerly the three INTERCEPT modes
+                                   snap, in percent (50 to 400; 400 is the
+                                   extreme). The GAME MODE FORGE tab's
+                                   "Interceptor snap speed" slider writes
+                                   this, and it takes effect at once.
+  StrikeRange = 20, StrikeDistance = 2.5
+                                   STRIKER / VENGEANCE: how far from you an
+                                   enemy may be, and how close they sit.
+  ForgetTargetOnChange = true      every mode change makes a drone drop
+                                   the enemy it was fighting and any
+                                   grudge it held, and pick again from
+                                   its new place (your R21 idea). false
+                                   keeps fighting what it was fighting.
   OrbitRadius 3.5, OrbitSpin 60, DragSpacing 1.6, ProtectorDistance 2.6,
   RearGuardDistance 4.5, Spacing 1.3
                                    the shapes' default numbers.
@@ -1782,14 +1822,27 @@ ONE GADGET'S OWN NUMBERS - the "modes" block
   join               which modes this gadget takes part in. Blank or
                      "all" = every mode it can do; "none" = it keeps its
                      own behaviour whatever the key says. Its Y + button
-                     steps it through only these.
+                     steps it through EVERY mode it joins - even one the
+                     config's Cycle leaves out (your R21 ask), and the log
+                     says so: "added to THIS gadget's steps". Y alone still
+                     reads Cycle.
   orbitRadius, dragSpacing, protectorDistance, rearGuardDistance,
   spacing, interceptRadius
                      its own shape numbers (the config's otherwise).
+  interceptSpeed     the three INTERCEPT modes' snap speed for THIS gadget,
+                     50 to 400 percent. Left out, it follows the config's
+                     InterceptSpeed - and the tab's slider - live.
+  strikeRange, strikeDistance
+                     STRIKER / VENGEANCE for this gadget.
   seekRange, sentryRadius
                      drone files only.
 
   The log prints one "modes -" line per file saying what it read.
+
+  Two seconds after every press of the mode key, the log takes a CENSUS:
+  every drone and companion of yours, which gadget it belongs to, and
+  either what it is doing ("acting ORBIT ... ship found") or why it is
+  not taking the modes. Copy those lines if a drone ignores the key.
 
 WHAT IS SAVED
 -------------
@@ -5301,6 +5354,191 @@ WHAT IT DOES
 
 
 ----------------------------------------------------------------
+ 4u. COURIER - A DRONE THAT FLIES TO YOUR CURSOR AND FIRES
+----------------------------------------------------------------
+
+TOP-LEVEL "courier" block. Bullet, grenade, rocket and beam weapons,
+in a weapon slot or a gadget.
+
+Each pull of the trigger sends a DRONE from your barrel to where your
+cursor was. It winds up (a short warning), fires the gun from there -
+its damage, pellets, spread, modules and every block on it - as many
+times as "shots" says, then fades. Inspired by Undertale's Gaster
+Blaster.
+
+  NO CAP. The gun's fireRate and ammo are the only limit. The ammo is
+  paid at the trigger (one shot's cost per pull), so a drone's own
+  shots are free.
+
+      "courier": true            every default: one drone, one shot
+      "courier": {
+        "shots": 3, "aim": "enemy", "windup": 0.3
+      }
+
+WHAT IT FIRES
+  weapon      empty (default) = the gun's OWN shot. Name another weapon
+              file ("name") and each drone fires that instead - built
+              with THIS gun's modules, and its kills are paid to this gun
+              (rank, onKill, leech, surge). Looked up when a drone first
+              fires, so file order never matters.
+  shots       how many times each drone fires before it leaves (its
+              ammo count). Default 1.
+  interval    seconds between a drone's shots. Default: the gun's own
+              rhythm (1 / fireRate).
+  beamTime    BEAMS: how long each shot holds the beam. Default 0.75.
+              Half a second to a full second suits most beams; it
+              depends on the beam's damage per second.
+  beamRate    BEAMS: damage ticks a second while a drone holds its
+              beam. Default 12. Its own number because on a courier gun
+              "fireRate" is how often the trigger LAUNCHES - a courier
+              laser wants a fireRate of about 1, while the stock Caps
+              Laser ticks 13 times a second.
+
+THE TRIP
+  speed       units a second it flies at. Default 30.
+  reach       how far it can fly. A cursor further away is pulled in to
+              the reach - it lands nearer rather than wasting the shot.
+              Default: the gun's own range (20 if it has none, like a
+              grenade).
+  follow      true = it chases the cursor until it arrives. Default
+              false: it flies to where the cursor was when you fired.
+  overWalls   true (default) = flies over walls to the cursor, the way
+              bloom shoots round corners. false = it stops at the first
+              wall and fires from there.
+  entry       "fly" (default) or "appear" - fades in at the cursor
+              instead of flying there (the Gaster Blaster's entrance).
+
+THE REACH RING - the same circle bloom draws, at the drone's reach
+  The reach is invisible otherwise: point past it and the drone does
+  not miss, it quietly stops nearer than you asked. The ring is drawn
+  round your ship at exactly the reach the drone flies by (measured
+  from the ship, so the circle is where a drone can go). Off by default
+  - a permanent circle is clutter once you know the range.
+  ring        "off" (default), "held" (while the trigger is down),
+              "always" (whenever the gun is out) or "outOfRange" (only
+              when your cursor is past the reach).
+  ringSprite  empty = a clean ring drawn by the mod; or any sprite.
+  ringColor   colour name or hex, alpha included. Default a faint cyan.
+  ringFade    seconds to fade in and out. Default 0 (instant).
+  ringOpacity 0-1, multiplied into the colour's alpha. Default 1.
+  ringWidth   the line's thickness in world units. Default 0 (the
+              drawn ring's own proportion).
+  Draws nothing in a GADGET slot - it is driven from the Shooter, which
+  a gadget never touches. The drones still work; the log says so.
+
+AIM - where each shot goes
+  windup      seconds it holds, facing its aim, before the first shot.
+              Default 0.25; 0 fires on arrival. On a BEAM this is when
+              the beam's own warm-up art shows - the thin warning beam.
+  aim         "outward" (default) - on along the line from your ship
+                through the drone, worked out when it fires.
+              "enemy"  - at the nearest enemy in the gun's range, else
+                outward (never a wasted shot).
+              "back"   - toward your ship.
+              "launch" - along the line it flew, fixed when you fired.
+              "centre" - at the middle of its ring (the ring's default).
+  snap        rounds the aim to clean angles: 90 = the nearest of up,
+              down, left, right; 45 adds the diagonals. Default 0 (exact).
+              The Gaster look: beams that line up with the screen.
+  pattern     how many ways each shot goes at once: "single" (default),
+              "sides" (both ways at right angles - a T), "cross" (four
+              at 90 degrees), "x" (the four diagonals), "star" (all
+              eight). Each way is the FULL shot: a Shotgun on "cross"
+              fires four shotgun blasts.
+  turn        degrees each shot turns from the last. With "shots": 4,
+              90 draws a cross one arm at a time.
+  formation   "one" (default) - one drone per pull.
+              "ring" - one drone per PELLET, on a ring round your cursor
+              ("spread" sets its size, as for bloom), each firing ONE
+              pellet through the middle, all at once - the Gaster
+              Blasters surrounding their target.
+
+BOOSTED - MORE DRONES A PULL (R21 part 4, his answers)
+  dronesPerLevel  drones added to every pull for each module LEVEL above
+              1 (a BoosterCore beside the gun raises its level). Default
+              1: level 2 sends two drones, level 3 three, at most 12. 0
+              keeps one drone however boosted. Every courier is made
+              boostable for this unless its "module" block says
+              "canBeBoosted": false. With "ring" they join the ring. The
+              weapon card shows DRONES A PULL.
+  spacing     how far apart a boosted pull's drones stand. Default 1.5.
+              They line up SIDE BY SIDE ACROSS YOUR AIM - a short line
+              through the cursor, square to the line from your ship - and
+              all fire the same way, like a firing line.
+  wingmanDrones  "mirror" (default) - a wingman carrying your courier
+              gun lands its drone beside your cursor the way that wingman
+              sits beside your ship, so the shots are easy to tell apart.
+              "stack" - on top of yours, the old way. A wingman's copy
+              sends one drone a pull; the boost is your gun's.
+
+LEAVING
+  exit        "fade" (default) or "recoil" - pushed back from its last
+              shot while it fades (the Gaster Blaster pulling away).
+  fadeTime    seconds to fade. Default 0.3.
+
+ITS BODY
+  shootable   false (default) - enemies cannot hit it.
+              "hit" (or true) - enemy bullets, lasers and explosions
+                that REACH it damage it, and it stops them: a drone in
+                the line of fire shields you. Enemies keep aiming at you.
+              "decoy" - a real game unit (the game's combat drone), so
+                enemies can CHOOSE to aim at it. Heavier: at most 16 are
+                out per ship, and they are taken out of the world before
+                a save so one can never come back as a stray drone.
+              Shot down, a drone never fires again.
+  health      with "shootable". Default 10. A decoy cannot go above the
+              stock drone's own health (the log says if it was lowered).
+  contact     true = hurts enemies it flies through (the gun's damage,
+              once per enemy every 0.4 s). Default false.
+  faceAim     true (default) = turns to face its aim. The game's drone
+              turns its gun; a sprite of your own turns as a whole, so
+              draw it pointing right.
+
+ITS LOOK AND SOUND
+  visual      found the way a wingman's is: YOUR OWN SPRITE from the
+              sprites folder (":0-7" or "@12" animates it), a stock
+              sprite, or a borrowed prefab. Default: the game's combat
+              drone, "Enemy_Fly Variant Drone".
+  scale       size of the look (also a shootable drone's hit circle).
+  color       tints the look.
+  launchSfx   the sound as it leaves your barrel. Default: the game's
+              "Actives/CombatDrone/Deploy". Any name from SOUNDS.txt or
+              a sound of your own; "none" is silent. The gun's own shot
+              sound plays where the drone FIRES.
+
+THE THINGS TO KNOW
+  - ON A GAMEPAD the game's "cursor" is always 5 units from your ship
+    along the right stick (measured: gamepadAimDistance 5 on every
+    ship), so there is no "where". A pad drone flies along the stick
+    to the first enemy within its reach, else to its full reach.
+  - A BEAM LAUNCHER does not hum or warm up at your ship any more: its
+    held sounds move to the drones, and its warmupTime becomes their
+    windup (the log says so). Your ship draws no beam either.
+  - IF THE GUN GOES AWAY while drones are out (swapped, dropped, you
+    die), they fade without firing. Slotting a module rebuilds the gun;
+    a drone in the air then fires the rebuilt one.
+  - WINGMEN fire with the launch, not with each drone shot. A wingman
+    carrying a courier gun launches drones from the companion.
+  - A performance backstop retires a ship's OLDEST drone past 64 out at
+    once (16 decoys), and says so once. It is not a cap.
+  - REFUSED beside "bloom" and "converge" (both decide where the shot
+    starts or lands), "orbit", "charge" (a charged shot would expire
+    before the drone fires), "swipe" (it swings at your ship) and
+    "wingman". The log says which and keeps the other block.
+  - "curveBeam" WORKS in the same file (R21 part 4): each drone's beam
+    is built from this file, so it bends and pierces from the drone;
+    your ship draws nothing. Naming another weapon file in "weapon"
+    still works too.
+
+  Presets: "Howler" (the Gaster look on a laser: it appears, snaps to
+  the straight line nearest an enemy, holds, fires one beam and pulls
+  away), "Courier" (a Popper's shot carried to your cursor), "Picket"
+  (three shots at the nearest enemy), "Crosswind" (a Shotgun firing
+  four ways) and "Pincer" (four drones round your cursor, firing
+  through it).
+
+
+----------------------------------------------------------------
  5. WEAPON FIELDS - ALL WEAPON TYPES
 ----------------------------------------------------------------
 
@@ -6832,8 +7070,8 @@ PROJECTILE templates also accept:
   Pairs naturally with a slow, long-lived, low-damage shot. Projectile
   weapons only, not usePhysics. Preset: "Deflector".
 
-  BLOOM - TOP-LEVEL "bloom" block. Projectile weapons only (and missiles,
-  in bullet mode - see below).
+  BLOOM - TOP-LEVEL "bloom" block. Projectile weapons only (and missiles
+  and grenades, in bullet mode - see below).
 
   The shot APPEARS at your crosshair instead of travelling to it, swells
   into a circle, and pops. Nothing flies, which is the whole feature and
@@ -6918,7 +7156,8 @@ PROJECTILE templates also accept:
                 "swell" - hurts the whole time it grows, over a
                 spreading area.
                 "bullet" - no bubble at all: the gun's own shot is placed
-                on the ring and flies the drift's path. See BULLET MODE
+                on the ring and flies the drift's path (a grenade is
+                thrown in instead). See BULLET MODE and LOBBED BLOOM
                 below.
     pick        "all" (default) - everything inside the circle.
                 "nearest" - only whatever is closest to the centre. Turns
@@ -7098,9 +7337,9 @@ PROJECTILE templates also accept:
 
     atCentre    what a bullet does when it reaches the centre ("inward",
                 "spiral" and "staggered" reach it):
-                "end" (default) - its flight ends there, firing what it
-                would at the end of its range or lifetime. A MISSILE
-                EXPLODES; a Popper simply goes.
+                "end" (default; a GRENADE's default is "burst") - its
+                flight ends there, firing what it would at the end of its
+                range or lifetime. A MISSILE EXPLODES; a Popper simply goes.
                 "through" - it carries on straight, out the other side,
                 for as far as the gun reaches (or until its lifetime).
                 "burst" - it goes off as if it had hit something: its
@@ -7138,10 +7377,83 @@ PROJECTILE templates also accept:
   "pick", "retick", "push", "digThrough", "absorb", "deflect", "fuse",
   "driftSpeed" and "pace".
 
-  GRENADES ARE REFUSED. Steering a falling shot along a path means
-  setting its velocity every step, which cancels its fall and turns a
-  grenade into a missile. The test is the shot's gravityScale, not the
-  "usePhysics" flag - a rocket has usePhysics and no gravity at all.
+  LOBBED BLOOM - A GRENADE IN BULLET MODE (built 2026-10-09).
+
+  A grenade cannot FLY a path: steering a falling shot means setting its
+  velocity every step, which cancels its fall and turns it into a
+  missile. So it is THROWN instead - once, from its slot on the ring, at
+  the centre - and never touched again. Gravity, drag, bouncing, its fuse
+  and its own impact stay the game's the whole way. The throw is worked
+  out from the grenade's real gravity and drag, so it lands ON the
+  centre. A grenade is told apart from a rocket by its gravityScale, not
+  by the "usePhysics" flag (a rocket has usePhysics and no gravity).
+
+      "template": "Module Weapon White Derbis",
+      "bloom": { "when": "bullet", "drift": "inward",
+                 "arrive": "together", "lob": "flat",
+                 "atCentre": "burst" },
+      "weapon": { "projectileCount": 6, "spread": 40,
+                  "rangeData": { "range": 22 } }
+
+    drift       "inward" (default) - thrown at the centre.
+                "outward" - thrown straight AWAY from the centre at
+                projectileSpeed, so the ring bursts open like a cluster
+                bomb; an ordinary grenade from then on, so "arrive",
+                "lob" and "atCentre" do nothing on it.
+                "staggered" - inward, landing one after another (the same
+                as "arrive": "staggered").
+                "spiral", "spin" and "along" cannot be thrown - the log
+                says so and throws it inward instead.
+    arrive      how the ring of grenades lands (inward only):
+                "together" (default) - every throw takes the same time, so
+                they all reach the centre at once. Each gets its own arc
+                to make that work: the top one is mostly dropped, the
+                bottom one thrown up harder.
+                "staggered" - the same, each a little after the last, in
+                the staggered drift's order ("direction" turns it round,
+                "stagger" sets how much later the last one lands, 0.5 by
+                default = half the flight again).
+                "arc" - every grenade is thrown equally HARD, so each lands
+                when its own arc gets there: the one thrown down first. One
+                that cannot reach the centre that softly (thrown upward
+                across a wide ring) is thrown just hard enough instead.
+    lob         how high the throw is: "flat" (default, = 1) - a level
+                throw at the gun's own projectileSpeed, so it flies nearly
+                straight in. "medium" (= 2) takes twice as long and arcs
+                visibly; "high" (= 3) takes three times as long - a slow,
+                high arc, a mortar on a wide ring. Any number from 0.25 to 6
+                works too (below 1 is faster than the gun).
+    atCentre    a GRENADE's default is "burst" - it GOES OFF at the
+                centre as if it hit something: its impact effect, and its
+                explosion / sub-emitter / discharge if it has them. A
+                grenade whose impact is OFF (one that bounces, like Item
+                Bomb) goes off the way it does on its fuse instead.
+                "through" - they cross at the centre and keep falling,
+                ended by their own fuse or impact. Your shots pass through
+                each other, so the grenades never collide.
+                "end" - it vanishes at the centre, firing only what its
+                fuse fires (on a stock White Derbis: nothing).
+
+  GIVE IT SOMETHING TO GO OFF WITH. A stock White Derbis has no
+  explosion, so "burst" at the centre is only a puff - the log warns.
+  Add an "explosion" block and "impactBehaviour": { "spawnExplosion":
+  true } (and it also explodes on whatever it hits on the way in).
+
+  ITS FUSE STILL COUNTS. A White Derbis lives 2 seconds; a throw that
+  takes longer ends early, the way its fuse ends it. The log works the
+  flight out at full reach and warns. A high lob over a wide ring is the
+  usual cause: raise "lifetimeData.time", lower "lob", or shorten
+  "rangeData.range" (still how far out the ring can be placed - a White
+  Derbis ships 0 there, which falls back to 40 units).
+
+  THE GAME'S SPEED LIMIT. No body may fly faster than 100 units/second,
+  so a throw is never harder than 95. When a throw would need more, it
+  is given the nearest flight that fits - it still lands on the centre,
+  a few hundredths of a second off the beat - and the log says so once.
+
+  ANYTHING THAT PUSHES IT IN FLIGHT TAKES IT OFF THE ARC: "guided",
+  "homing", or a template with its own homingData thrust. It then goes
+  off wherever it is when it was due on the centre. The log warns.
 
   ONE BALANCE NOTE. With "pick": "all" and "drift": "inward", four blooms
   all pass through the centre at once - four overlapping damage circles
@@ -7159,7 +7471,10 @@ PROJECTILE templates also accept:
   three rockets spiral in and detonate on the centre) and "Riptide" (the
   same, chased: the rockets' own engines follow the spiral). "Cyclone"
   is spiral AND staggered: six bubbles wind two laps in and land one
-  after another.
+  after another. "Implosion" is the lobbed bloom: six grenades thrown in
+  from a ring, all landing at once and going off on your cursor.
+  "Starburst" throws them the other way - outward from the ring, a
+  cluster bomb where you point.
 
   AN EXPLOSION AT A BLOOM'S END CREDITS THE GUN. Since 2026-10-02 the
   pop's explosion (and a bullet's, at the centre) is fired through the
@@ -9375,6 +9690,10 @@ PROJECTILE templates also accept:
              ResourcePickup_White, ResourcePickup_Tech, and the Caps
              and Purple orbs.
 
+             LEFT OUT, an orb wears FuelPickup (the blue orb) and the log
+             says so. Until R21 part 4 a blank one drew NOTHING: the orbs
+             fired from the right place and could not be seen.
+
              A BORROWED PREFAB KEEPS ITS ART AND LOSES EVERY SCRIPT.
              Renderers, particles, animators and lights come across;
              the collider is switched off and the rigidbody is taken
@@ -9444,8 +9763,31 @@ PROJECTILE templates also accept:
   lead       the same, on the side you are moving TOWARD. Beads that
              scout ahead and fire where you are charging.
 
-  DRAG AND LEAD ONLY. The six keys below are read by "drag" and
-  "lead" and by nothing else - under "orbit" or "trail" they are
+  protector  a short row ACROSS the line to your cursor, in front of
+             you, its ends bowed back toward the ship like a shield.
+             Move the aim and the row swings round. The drone modes'
+             PROTECTOR, as this gadget's own motion (added 2026-10-05,
+             your ask: "it should be its own settings in the wingman").
+  rearguard  the same row, further out BEHIND you (away from your aim)
+             and 1.35 times wider - the drone modes' REAR GUARD.
+
+  THE ROWS' OWN KEYS:
+  distance   how far from your ship the row stands. Left out: 2.6 for
+             protector, 4.5 for rearguard (the drone modes' numbers).
+  spacing    the gap between companions across the row. Left out:
+             1.3 (rearguard spreads it 1.35 times wider).
+  looseness  how slowly each slides to its place, as for the ring.
+  bearing    which way is "in front". The rows default to "aim" -
+             the cursor, which is what makes them swing as you aim.
+             "movement" makes the row face the way you fly, and
+             "signal" then says what movement means, as below.
+  Y still steps a row gadget through the drone modes, and it comes
+  back to its row on NORMAL. Two copies of one row file stand on top
+  of each other (as two trail or drag copies do) - use two files.
+
+  DRAG AND LEAD ONLY (the rows read "bearing" and "signal" too). The
+  six keys below are read by "drag" and "lead" - under "orbit" or
+  "trail" they are
   inert, and the build log now names any of them it finds in a file
   that cannot use them. (R16 set "spread": 90 and "bearing": "aim"
   on an orbit and reasonably concluded the orbit was ignoring them.

@@ -1,0 +1,31 @@
+{
+  "name": "Crossfire",
+  "displayName": "CROSSFIRE",
+  "description": "Four bubbles ring your cursor, then close on it together.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "drift": "inward",
+    "push": true,
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 9, "damageType": "Resource White" },
+    "cost": 3,
+    "fireRate": 1.1,
+    "projectileRadius": 1.1,
+    "projectileSpeed": 2.5,
+    "projectileCount": 4,
+    "spread": 34,
+    "angleVariance": 4,
+    "pushForce": 90,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_18",
+    "color": "#ffb45e"
+  }
+}

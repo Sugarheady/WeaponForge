@@ -1,0 +1,33 @@
+{
+  "name": "R20_Halo",
+  "displayName": "HALO",
+  "description": "Test 289 - a bloom whose reach ring eases in and out, faint and thin.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "bloom": {
+    "enabled": true,
+    "ring": "outOfRange",
+    "ringFade": 0.4,
+    "ringOpacity": 0.6,
+    "ringWidth": 0.08
+  },
+  "weapon": {
+    "damage": { "amount": 16, "damageType": "Resource White" },
+    "cost": 2,
+    "fireRate": 1.8,
+    "projectileRadius": 1.6,
+    "projectileSpeed": 5,
+    "projectileCount": 1,
+    "spread": 0,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_12",
+    "color": "#b6f0ff"
+  }
+}

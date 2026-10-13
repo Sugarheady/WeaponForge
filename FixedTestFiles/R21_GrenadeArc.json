@@ -1,0 +1,45 @@
+{
+  "name": "GrenadeArc",
+  "displayName": "GRENADE ARC",
+  "description": "Grenades thrown equally hard on high lobs, each landing when its arc gets there, ending in a blast.",
+  "template": "Module Weapon White Derbis",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "inward",
+    "arrive": "arc",
+    "lob": "high",
+    "atCentre": "end"
+  },
+  "weapon": {
+    "fireRate": 0.7,
+    "cost": 3,
+    "damage": {
+      "amount": 2,
+      "damageType": "Resource White"
+    },
+    "projectileCount": 6,
+    "spread": 40,
+    "projectileSpeed": 26,
+    "rangeData": {
+      "range": 18
+    },
+    "explosion": {
+      "radius": 1.8,
+      "damages": [
+        {
+          "amount": 4,
+          "damageType": "Resource White"
+        }
+      ]
+    },
+    "lifetimeData": {
+      "enabled": true,
+      "time": 3,
+      "spawnExplosion": true
+    }
+  }
+}

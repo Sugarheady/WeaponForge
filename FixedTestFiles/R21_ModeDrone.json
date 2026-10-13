@@ -1,0 +1,23 @@
+{
+  "name": "R21_ModeDrone",
+  "displayName": "MODE DRONE",
+  "description": "Three combat drones with their own drone-mode numbers: a wider orbit, a longer seek, the two dive modes (STRIKER, VENGEANCE), and no DRAG or REAR GUARD - so those two keep their own AI on purpose.",
+  "template": "Module Active Drone Caps",
+  "slot": "gadget3",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+
+  "drone": {
+    "cap": 3,
+    "cost": 1,
+    "resource": "Caps"
+  },
+
+  "modes": {
+    "join": "orbit, protector, seeker, sentry, interceptor, striker, vengeance",
+    "orbitRadius": 5,
+    "seekRange": 60
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "R17_WingmenBoth",
+  "displayName": "TWIN WINGMEN",
+  "description": "Copies whichever trigger you pull. Burst key. Boostable cap.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+
+  "module": {
+    "color": "ColorBlue",
+    "resourceGain": { "resource": "Resource White", "amount": 2 }
+  },
+
+  "wingman": {
+    "count": 2,
+    "capPerLevel": 1,
+
+    "mirror": "both",
+    "damageScale": 0.5,
+
+    "key": "burst",
+
+    "motion": "orbit",
+    "radius": 2.4,
+    "spinSpeed": 60,
+    "looseness": 0.3,
+
+    "aim": "cursor",
+
+    "visual": "Sprite Particle Butterfly:0-2",
+    "color": "#7fd4ff",
+    "scale": 4,
+    "rotate": "cursor",
+    "pulse": true
+  }
+}

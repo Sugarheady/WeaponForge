@@ -1,0 +1,29 @@
+{
+  "name": "Buzzsaw",
+  "displayName": "BUZZSAW",
+  "description": "Blades appear round your cursor and spiral in through it.",
+  "template": "Module Weapon White Blades",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "spiral",
+    "turns": 2,
+    "atCentre": "through",
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 4, "damageType": "Resource White" },
+    "cost": 2,
+    "fireRate": 1.2,
+    "projectileSpeed": 26,
+    "projectileCount": 4,
+    "spread": 44
+  },
+  "module": {
+    "icon": "HUD_GridTiles_30",
+    "color": "#d8e8ff"
+  }
+}

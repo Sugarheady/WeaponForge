@@ -1,0 +1,35 @@
+{
+  "name": "Gauge Test",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+
+  "damage": 6,
+  "fireRate": 7,
+  "projectileSpeed": 26,
+
+  "overheat": {
+    "max": 100,
+    "perShot": 9,
+    "coolPerSecond": 30,
+    "coolDelay": 0.4,
+    "response": "vent",
+    "ventTo": 20,
+    "hotColor": "#ff5a1f"
+  },
+
+  "gauge": {
+    "show": "heat",
+    "threshold": 0.15,
+    "hideAfter": 3,
+    "color": "#2f9bff",
+    "hotColor": "#ff2f00"
+  },
+
+  "bubble": {
+    "show": "heat",
+    "sprite": "wf_lock",
+    "color": "#ff2f00",
+    "slowAt": 0.6,
+    "fastAt": 0.9
+  }
+}

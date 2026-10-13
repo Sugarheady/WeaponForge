@@ -1,0 +1,32 @@
+{
+  "name": "Corkscrew",
+  "displayName": "CORKSCREW",
+  "description": "Three rockets spiral into your cursor and detonate there.",
+  "template": "Module Weapon Purple Rocket",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "spiral",
+    "turns": 1.5,
+    "ring": "outOfRange"
+  },
+  "onKill": {
+    "resource": "Resource Fuel",
+    "amount": 3,
+    "asPickup": true
+  },
+  "weapon": {
+    "fireRate": 0.8,
+    "projectileSpeed": 16,
+    "projectileCount": 3,
+    "spread": 50,
+    "rangeData": { "range": 22 }
+  },
+  "module": {
+    "icon": "HUD_GridTiles_36",
+    "color": "#e07bff"
+  }
+}

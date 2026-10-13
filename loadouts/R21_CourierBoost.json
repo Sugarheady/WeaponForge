@@ -1,0 +1,8 @@
+{
+  "name": "R21_CourierBoost",
+  "displayName": "R21 COURIER BOOST",
+  "description": "COURIER (boost it for more drones) and CURVE COURIER (a curve beam fired from the drone), with WINGMEN on a gadget: their drones land beside yours.",
+  "primary": "COURIER",
+  "secondary": "CURVE COURIER",
+  "gadget1": "WINGMEN"
+}

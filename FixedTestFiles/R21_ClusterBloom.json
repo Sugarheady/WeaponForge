@@ -1,0 +1,22 @@
+{
+  "name": "ClusterBloom",
+  "displayName": "CLUSTER BLOOM",
+  "description": "Four cluster cubes thrown in together. They bounce, so at your cursor they go off the way their fuse does: a blast and a cluster.",
+  "template": "Module Weapon Purple ClusterCube",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "inward"
+  },
+  "weapon": {
+    "fireRate": 0.6,
+    "projectileCount": 4,
+    "spread": 30,
+    "rangeData": {
+      "range": 16
+    }
+  }
+}

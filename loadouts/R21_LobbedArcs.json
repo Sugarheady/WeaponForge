@@ -1,0 +1,7 @@
+{
+  "name": "R21_LobbedArcs",
+  "displayName": "R21 LOBBED ARCS",
+  "description": "GRENADE ARC (each on its own high arc, ending in a blast) and STARBURST (thrown outward).",
+  "primary": "GRENADE ARC",
+  "secondary": "STARBURST"
+}

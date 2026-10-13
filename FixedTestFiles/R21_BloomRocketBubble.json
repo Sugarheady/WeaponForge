@@ -1,0 +1,13 @@
+{
+  "name": "BloomRocketBubble",
+  "displayName": "BLOOM ROCKET BUBBLE",
+  "description": "A log check: a rocket cannot be a bubble, but can be a bullet.",
+  "template": "Module Weapon Purple Rocket",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "none",
+  "bloom": {
+    "enabled": true,
+    "drift": "inward"
+  }
+}

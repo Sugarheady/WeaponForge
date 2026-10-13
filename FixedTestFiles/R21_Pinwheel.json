@@ -1,0 +1,29 @@
+{
+  "name": "Pinwheel",
+  "displayName": "PINWHEEL",
+  "description": "Six shots appear round your cursor and burst on it one after another.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "staggered",
+    "stagger": 1.5,
+    "atCentre": "burst",
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 3, "damageType": "Resource White" },
+    "cost": 2,
+    "fireRate": 1,
+    "projectileSpeed": 14,
+    "projectileCount": 6,
+    "spread": 40
+  },
+  "module": {
+    "icon": "HUD_GridTiles_27",
+    "color": "#ff9fd0"
+  }
+}

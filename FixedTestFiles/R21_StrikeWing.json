@@ -1,0 +1,36 @@
+{
+  "name": "R21_StrikeWing",
+  "displayName": "STRIKE WING",
+  "description": "Three wingman orbs for the two dive modes: STRIKER (the nearest enemies) and VENGEANCE (the enemies shooting at you). Hold Y and press this gadget's button to step through them; fire your gun and they shoot point blank.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "fireRate": 2,
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+  "module": {
+    "color": "ColorOrange"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "damageScale": 0.5,
+    "key": "recall",
+    "radius": 2.6,
+    "spinSpeed": 60,
+    "aim": "parallel"
+  },
+  "modes": {
+    "join": [
+      "striker",
+      "vengeance"
+    ],
+    "strikeRange": 20,
+    "strikeDistance": 2.5
+  }
+}

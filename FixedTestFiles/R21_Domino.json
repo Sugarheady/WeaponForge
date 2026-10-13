@@ -1,0 +1,30 @@
+{
+  "name": "Domino",
+  "displayName": "DOMINO",
+  "description": "Six bubbles close on your cursor one after another.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "drift": "staggered",
+    "stagger": 1,
+    "push": true
+  },
+  "weapon": {
+    "damage": { "amount": 6, "damageType": "Resource White" },
+    "cost": 3,
+    "fireRate": 0.8,
+    "projectileRadius": 0.9,
+    "projectileSpeed": 1.2,
+    "projectileCount": 6,
+    "spread": 36,
+    "pushForce": 60,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_24",
+    "color": "#ffd86b"
+  }
+}

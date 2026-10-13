@@ -1,0 +1,38 @@
+{
+  "name": "R15_HeatLance",
+  "displayName": "HEAT LANCE",
+  "description": "A beam that cooks itself. Hold it and it cuts out.",
+  "template": "Module Weapon Caps Laser",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+
+  "weapon": {
+    "damage": { "amount": 0.8, "damageType": "Resource Caps" },
+    "fireRate": 12,
+    "resourceUsed": "Resource Caps",
+    "cost": 0
+  },
+
+  "module": {
+    "color": "#ff8a3d",
+    "resourceGain": { "resource": "Resource Caps", "amount": 12 }
+  },
+
+  "beam": {
+    "color": "#ff8a3d",
+    "thickness": 0.35
+  },
+
+  "overheat": {
+    "enabled": true,
+    "response": "vent",
+    "max": 100,
+    "perShot": 0,
+    "perSecond": 34,
+    "coolPerSecond": 45,
+    "coolDelay": 0.4,
+    "hotColor": "#ff3d14",
+    "tintStrength": 1
+  }
+}

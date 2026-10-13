@@ -2038,6 +2038,14 @@ would love to keep rank weapons level intact if possible."* So:
   `paidStations` is cleared (those stations are gone; the new world's can pay again).
 - The held lines live outside `ResetAll`'s list, and a normal run start drops any left over from
   a jump that never arrived. `rankcarrytest.py` pins all of it, and both sides of the contract.
+- **★ R21 305: a carried (or Continued) ranked gun showed no rank in the VAULT until equipped.**
+  A vault card is `WeaponModule.GetPropertyList` → `baseWeapon.GetPropertyList`, and `baseWeapon`
+  is built in the module's CONSTRUCTOR from the shared asset - so its `TemplateData` never leads to
+  the copy, which `Adopt` attached to the MODULE before any gun of its own was built. A prefix on
+  `WeaponModule.GetPropertyList` names the module being drawn (`OnModuleCard.Drawing`, cleared in
+  a finalizer) and the card falls back to that module's copy. Not a rebuild of `baseWeapon`:
+  Salvage Shop rebuilds that field for its own numbers, and a second rebuild without its build
+  hook would drop them.
 
 **The game's own `Pickup` class could not be used for the choice orbs, and the design note said it
 could.** Its shape is right — `OnPickedUp(Unit)`, a public `Rigidbody`, no gravity — but its
@@ -2116,12 +2124,84 @@ the build chose is its **section 14**. The facts that will bite:
 - Saved in `forge-dronemodes.txt` beside the save (deleted when every slot is normal; read in the
   Load postfix), carried across New Game Plus through the `NgCarry` contract rank uses (SENTRY
   arrives on normal). "The gadget changed" is read off the module DATA id, which survives a load.
+- **★ R21 310: "Base game drones still behave the same regardless of which mode i set it too"**
+  (wingman orbs and bodies were perfect). NOT SOURCED: every press line said what the SLOT was set
+  to, and nothing said whether a `ForgeDroneBrain` was ever attached or what it did, so the code
+  was instrumented rather than guessed at. Three lines now: a refusal says why (`will keep its
+  own AI in every mode - ...`), an attach says what it found (`takes the modes - N movement
+  action(s) ... its own regroup speed`), and **2 s into a mode one line per slot** says how far
+  the drone is from its spot, how many physics steps it was steered and how many AI actions are
+  held off (`2 s into ORBIT, gadget 1's '...' is ...`). Those split "never attached" / "attached
+  and not in the roster" / "steered and losing to the AI" / "working but reads as normal".
+- **A mode change drops the drone's target AND its grudge list** (his R21 idea, answered "on by
+  default"; `[Drone modes] ForgetTargetOnChange`). Both are needed: `AIAgent.Update` keeps a
+  visible target, and `enemyBlackList` outranks faction. The list is save-persisted - clearing it
+  is safe because nothing of ours writes to it on a player's drone.
+- **★ The wingman ROWS are a wingman's own `motion` too** (2026-10-05, his answer: "it should be
+  its own settings in the wingman"): `"motion": "protector"` / `"rearguard"`, placed by
+  `ForgeWingmanController.PlaceRow` with the drone modes' own `ForgeDroneModeRules.Screen`, and the
+  file's own `distance` (2.6 / 4.5 when absent), `spacing` (1.3 when absent - its trail default is
+  1.2), `looseness` and `bearing` (**AIM by default for a row**, movement for drag / lead). A drone
+  mode still takes over first (`TickMode`) and hands back to the row. `ParseMotion` forgives
+  "rear guard" / "rear_guard" and SAYS when it does not know a word - `ParseEnum`'s quiet fallback
+  would have turned a typo into an orbit. Two copies of one row file stack, like trail / drag.
+  `wingmanrowtest.py` pins it.
+- **★ R21 PART 2 310: STILL NO `2 s into` LINE, IN THREE LAUNCHES.** MODE DRONE's drones logged
+  `takes the modes`, the slots changed mode on every press, and the report that only a mode change
+  arms never came; the stock COMBAT DRONE (gadget 1) printed neither the attach nor a refusal. NOT
+  SOURCED by reading. Two changes: (1) **the brain finds its ship in `ForgeKeyBinding.Ships()`
+  first** (by `ForgeWingmanSave.IdOf`, the key's own route), the entity map only after - measured,
+  `EntityGameObjectManager.UnloadEntity` REMOVES a dictionary entry whenever its entity moves into
+  a segment not in `activeSegments`, and only then asks `IsUnloadable` (a ship is kept alive and
+  left unlisted), and a brain with no ship can only ever be on NORMAL; it says
+  `cannot find the ship it belongs to` after 3 s. (2) **THE CENSUS**: 2 s after every press, from
+  the ticker (which is known to run), one line naming every minion in the ship's own
+  `Unit.Data.Minions` - its gadget, and the brain's `Describe` (mode, physics steps run, ship found
+  and how, steered steps) or `WhyNot` (Eligible's own refusals, or "neither attach hook saw it").
+  The steps counter is bumped before any return in `FixedUpdate`, so "0 steps" means it never ran.
+- **A file that joins a mode the Cycle lacks is WARNED** (R21 part 2 315: INTERCEPTOR is not in the
+  default Cycle, two files joined it and nothing said the key could never get there). `join` only
+  chooses from `Cycle`; `ReadShape` names the line to add. `dronemodetest.py` pins all three.
+  **Superseded R21 part 3** (his ask: added "for the gadget cycle (like Y+1 key)"): a gadget's OWN
+  steps are `ForgeDroneModeRules.SlotCycle(Cycle, join)` - the Cycle plus every mode its file joins -
+  read by `StepSlot` AND `Effective` (both, or the mode is entered and never acted on). Y alone
+  still reads the Cycle; the warning is an information line naming the paste-able Cycle.
+- **★ R21 PART 3 (2026-10-09): INTERCEPTOR passed and is in the default cycle; four modes joined it,
+  his answers** - INTERCEPT FRONT / REAR (INTERCEPTOR resting in the PROTECTOR / REAR GUARD row,
+  `GuardRest`), STRIKER / VENGEANCE (dive at the nearest enemies / the ones whose AI targets your
+  ship and sees it, point blank). Added at the END of the enum (a save writes the mode's name; the
+  order is pinned anyway). `IsGuard` / `IsStrike` / `IsPlaced` are the three family tests - every
+  old `m == Mode.Interceptor` became `IsGuard(m)`, so a fourth guard mode cannot be half-wired.
+  `ForgeDroneModeRules` sits outside Unity, so the enemy LIST is the game side's
+  (`ForgeDroneModes.Enemies`: Entities layer, live, has an `AIAgent` - a crate is the Cross enemies'
+  faction and has none - and `ship.IsEnemiesWith`), re-scanned every 0.25 s per formation; everything
+  after the list (`AssignStrike`, `StrikeSpot`) is the probe's.
+- **★ SEEKER HUNTS NOW (R21 part 3, "Hunt + wander").** It used to be only a longer leash and sight,
+  and the AI still waited for an enemy to enter its own view - *"they sort of sit in a spot unless
+  the player sees it first"*. `ForgeDroneBrain.Seek`: hands-off while `HasTarget && IsTargetVisible`
+  (**`HasTarget` alone stays true after a fight** - `currentTarget` is only replaced when another
+  enemy is SEEN); otherwise flies at the nearest enemy within the seek range of the SHIP, else
+  wanders a loop. SEEKER is not in `Steers` (it steers only some of the time), so leaving it releases
+  what it held by hand.
+- **The seek range stays 10-80, and that is the world's edge, not a taste.** Segments are 25 units
+  and kept loaded 3 out from the camera's (`LevelSegmentComponentManager`), so ~75 units round you
+  is guaranteed to exist; an entity that moves into an unloaded segment is `UnloadEntity`'d and a
+  drone prefab ships `destroyWhenUnloaded 1`.
+- **★ THE FIRST TAB ROW THIS MOD OWNS (`ForgeSettingsTab`, R21 part 3).** Game Mode Forge finds it by
+  type name and draws *Interceptor snap speed* under Weapon Forge's switch. It writes this mod's
+  `.cfg` mid-run - and Game Mode Forge writes the same file's `[General] Enabled` from its own copy,
+  while BepInEx saves a WHOLE file from memory. So `Set` calls `Config.Reload()` first; without it a
+  slider move would quietly undo a switch flipped a moment before. The value is live
+  (`Defaults.interceptSpeed`) for every gadget whose file does not name its own
+  (`Shape.interceptSpeedSet`) - a file's `modes` block is a COPY of the defaults, so a flag is the
+  only way to tell "this file chose 100" from "this file said nothing".
 
 ### Bloom spiral, staggered and bullet mode — built 2026-10-02, untested in game
 
 `drift: "spiral"` / `"staggered"`, `pace`, and `"when": "bullet"` (the gun's own shot, a rocket
-included, flies the bloom path). Design and every decision: `Docs/BLOOM SPIRAL - CONCEPT.md`;
-what the build chose is its **section 7**. The facts that will bite:
+included, flies the bloom path; a grenade is THROWN in - the lobbed bloom, 2026-10-09, `arrive` /
+`lob`). Design and every decision: `Docs/BLOOM SPIRAL - CONCEPT.md`; what the build chose is its
+**section 7**, and **section 8** for the lobbed bloom. The facts that will bite:
 
 - **The geometry has no Unity in it, on purpose.** `ForgeBloomPath.cs` is compiled and run by
   `Harness/bloompathprobe.cs` (via `bloompathtest.py`). Keep `UnityEngine` out of it. Change a
@@ -2152,13 +2232,95 @@ what the build chose is its **section 7**. The facts that will bite:
 - **★ WRITING A RIGIDBODY'S VELOCITY EVERY STEP: DAMP IT UP.** Box2D applies
   v x 1/(1 + dt x linearDamping) after the write. A rocket's damping is 3, so a bare write lands 6%
   short of its target every step. `ForgeBloomBullet.Fly` writes v x (1 + dt x damping). This is
-  only legitimate with no gravity: velocity writes cancel a fall, which is why grenades are refused.
+  only legitimate with no gravity: velocity writes cancel a fall, which is why a grenade is THROWN
+  instead (below).
+- **★ A GRENADE IS THROWN ONCE, NEVER FLOWN (lobbed bloom, 2026-10-09; concept doc section 8).**
+  `ForgeBloomPath` solves the launch in closed form: Box2D's step is linear in the launch velocity,
+  so `v0 = (target - p0 - g dt^2 Q(n)) / (dt S(n))` lands it after exactly n steps
+  (S = c + ... + c^n, Q = S(1) + ... + S(n), c = 1/(1 + dt x damping)). The centre is then a
+  COUNT: `TickThrow` runs the centre rule on the n-th physics step and never writes the velocity.
+  The k-th FixedUpdate follows k-1 physics steps for a shot made in Update; a shot made inside a
+  fixed step starts at 1 (`Time.inFixedTimeStep`).
+- **★ THE GAME CAPS A BODY AT 100 UNITS/SECOND** (`Physics2DSettings` `m_MaxTranslationSpeed`).
+  Past it Box2D clips the step, so any solved throw (this one, `converge`'s) lands short. The
+  lobbed bloom caps at 95 and takes the nearest flight that fits.
+- **Two arcs share every throw speed** (the flat one and the lob). Anything choosing a flight by
+  SPEED must say which: `ForgeBloomPath.IsLob` / `ArcSteps(high)`. Arc mode + a high lob threw
+  everything flat until the probe caught it.
+- **A grenade whose impact is OFF (it bounces) goes off on its FUSE.** "Go off as if it hit
+  something" fires the impact's hooks, which do nothing when the impact is off - so `burst` on a
+  thrown grenade fires its lifetime hooks instead (`Finish`).
+- `atCentre` defaults differently per shot (`burst` on a grenade, his answer; `end` elsewhere), so
+  `atCentreSet` records whether the file named it - the `staggerSet` pattern.
 - **★ AN EXPLOSION FIRED BY HAND DOES NOT NAME THE WEAPON.** `ForgeKillsPatch` attributes an
   explosion only while a projectile's own private `SpawnExplosion` is running. Calling
   `ExplosionManager.SpawnExplosion` directly still credits the UNIT (the explosion's `Owner`), but
   per-weapon onKill rewards and rank XP never pay for those kills. `ForgeBloomHooks.Explode` reaches
   the private method by reflection. Bloom's own pop had this gap from 2026-09-19 to 2026-10-02.
   Grep for any other direct `SpawnExplosion(` call before trusting a kill reward on it.
+
+### Courier — built 2026-10-09, untested in game
+
+`"courier"`: the trigger launches a DRONE that flies to your cursor, winds up, fires the gun
+from there (or a named weapon) `shots` times, and fades - his R21 idea, after the Gaster Blaster.
+Design and every decision: `Docs/CURSOR DRONE - CONCEPT.md`; what the build chose is its
+**section 11**. The facts that will bite:
+
+- **The rules have no Unity in them, on purpose.** `ForgeCourierRules.cs` (the words, snap,
+  patterns, turn, reach, flight steps, the gamepad pick, intervals, recoil) is compiled and run by
+  `Harness/courierprobe.cs` via `couriertest.py`. Keep `UnityEngine` out of it.
+- **★ THE LAUNCH IS ON `WeaponBase.Fire`, NOT `DoShoot`.** Harmony runs EVERY prefix and postfix
+  even when one skips the original, and `DoShoot` carries nine of this mod's hooks - skipping it at
+  the launch would still step a spiral, swing a swipe and fire the wingmen. Every pull enters
+  through `Fire`; the drone then calls the gun's PUBLIC `DoShoot` inside `ForgeCourier.Firing`, so
+  every hook sees one real volley, from the drone. (`Fire`'s burst tail runs later, outside any
+  scope; one `DoShoot` is one volley and done.) Anything new hooking a "pull" must decide whether
+  it wants the launch or the drone's shots.
+- **The wingman mirror stands down while a drone fires** and is called once per launch
+  (`ForgeWingmanPatch.Mirror`, public), so wingmen fire with the pull.
+- **★ A COURIER BEAM'S TICK RATE IS ITS OWN (`beamRate`).** A held beam's `fireRate` IS its damage
+  tick rate (Caps Laser: 13), but on a courier gun `fireRate` is the launch rate (about 1).
+- **A drone's beam is its own weapon object** (visuals belong to one), owner set through the
+  property setter and NOT `Equip` - rank's `Equip` hook would treat it as the gun. It copies the
+  live gun's numbers. Its `WarmupTime` is the windup, so the stock warm-up art is the Gaster tell.
+  The launcher's own beam is held off in a `HitscanWeapon.OnBarrelMoved` prefix, and its held
+  sounds and warm-up are moved to the drones at build time (taken from the inherited registration
+  on a rank re-run).
+- **Stand-ins credit the gun**: `ForgeKillsPatch.CreditTo(standIn, gun)`, resolved at the
+  `DoShoot` stamp and a beam's hit. Any future feature that fires through a weapon object it built
+  should register the same way, or its kills pay nobody's rank.
+- **A gun's weapon object dies on every rebuild.** A `Dispose` prefix marks it (a weak table); the
+  drone asks for the live one (same weapon file on the ship) at each shot and fades if there is none.
+- **★ "SHOOTABLE" NEEDS NO UNIT.** Enemy bullets and lasers search the Player layer, hit triggers
+  (`m_QueriesHitTriggers: 1`) and call `IProjectileListener` / `IHitscanWeaponListener` on the
+  collider; explosions reach every collider and call `IExplosionListener`. A trigger on layer 6
+  with those three is hittable by enemies and unreachable by your own shots. It also BLOCKS what it
+  catches. Filter explosions by owner: they hit every layer, yours included.
+- **★ A RUNTIME-SPAWNED ENTITY IS SAVED.** The `decoy` (a real unit, so enemy AI targets it) is
+  destroyed out of the entity manager in a `GameSaver.Save` prefix with `EntityData.Destroy()` and
+  its `SavableEntity.EntityData` nulled, because `OnDestroy` would run at the end of the frame -
+  after the save.
+- **On a gamepad the "cursor" is 5 units out** (`ShipInput.gamepadAimDistance`), so a pad drone
+  flies along the stick to the first enemy within reach. Bloom and converge share the limit.
+- **The reach ring is bloom's** (`ForgeBloomRingPatch` serves both). `ForgeCourier.ReachOf` is the
+  ONE reach - the drone flies by it and the ring draws it - and it is measured from the SHIP, where
+  the ring is centred, not from the barrel the drone leaves from. Change one and the circle lies.
+- **★ R21 part 4 (2026-10-12): `curveBeam` works in the same file.** It was refused because the
+  curve's `OnBarrelMoved` POSTFIX runs on the launcher whatever the courier's prefix skipped, and the
+  courier takes the launcher's warm-up to 0 - so it curved a beam out of the ship. The postfix now
+  treats a launcher (`ForgeCourier.IsLauncher`) as not firing; a drone's beam is built from the same
+  file, so the curve is the drone's.
+- **Boosted: +`dronesPerLevel` drones a pull** (his answers: +1 a level, side by side across the
+  aim, wingmen mirrored). Read off `ForgeSwarm.LevelOf(gun)`, so `ApplyBoostability` turns
+  `canBeBoosted` on for every courier (the level-flag trap, fourth feature). The line is
+  `ForgeCourierRules.LineOffset` (square to ship -> centre, `spacing` apart), and the drones fire
+  PARALLEL: `AimNow` measures outward from the line's centre. A wingman's copy is in no weapon slot,
+  so it reads level 1; its drone is shifted by (barrel - ship), where that wingman sits.
+- **★ A borrowed prefab is built SWITCHED OFF, then stripped** (`ForgeWingmanArt.BuildDisarmed`).
+  Made live, destroying the stock drone's `StateMachine` ran its `OnDisable`, which changed state into
+  `MoveAroundOwnerAction` and threw `FindPath` NREs inside our Destroy - three in his R21 part 4 log,
+  one per courier drone. Under an inactive holder nothing wakes; scripts go with `DestroyImmediate` in
+  `[RequireComponent]` order.
 
 ### Modules & levels
 
@@ -2675,6 +2837,26 @@ never appear in the panel. Two rules fall out of `.idx-on`:
   all of them already end in. It is reached across the IIFE boundary as `window.__syncIndexGates`,
   and it short-circuits on a signature of the 76 gates, because `refresh()` runs on every keystroke
   in ~930 fields and almost none of them touch a gate.
+
+**★ The index finds each entry's block from a TABLE (`byIdx`), never a page search** (2026-10-06).
+`target()` used to be `form.querySelector('[data-idx="…"]')` — instant in a browser, ~35 ms in
+jsdom over this ~1,300-field page — and it runs for ~95 entries at load, after every template
+change, and on every gate tick. A CPU profile put **11 of a boot-and-pick's 14 seconds** on that
+one line, which is how `crosstypetest.js` reached 163 s and passed `run.py`'s 300 s timeout under
+parallel load (reported BROKEN). `buildIndex` stamps every `data-idx`, so it fills the table as it
+stamps; `byIdx` checks the entry is still the form's element under that id and falls back to the
+search if not. A page boot went 8.8 s → 1.3 s **for every harness that loads the page**.
+`indexontest.js` pins it by COUNT (no `[data-idx=` search on a tick or a template change), since
+behaviour is identical either way and a timing would be flaky. **If a page harness gets slow,
+profile before guessing:** `node --cpu-prof <harness>.js` shows the page's functions by name.
+
+> **A harness assertion read `window.FIELD_PROBLEMS`, and it was never on `window`** — it is a
+> `var` inside the page's script. So it read undefined, `|| []` turned that into a clean audit, and
+> "the page's own field audit is clean" could not fail, in `crosstypetest.js` AND
+> `r16buildertest.js`. Both read the warnings box now (`⚠ BUILDER PAGE BUG - …`, what the person
+> sees), and a duplicate path and a prefix clash injected into the page fail both. **A fallback on
+> a read (`|| []`) is a silent-fallback bug in a test**: when the thing read is missing, the test
+> must fail, not pass.
 
 `#f-search` is `type="search"`, whose native clear X exists in Chrome and not in Firefox; it is
 suppressed and replaced by a real `#f-clear` button. **Clearing must cancel the pending 120 ms

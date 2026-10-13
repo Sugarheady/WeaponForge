@@ -1,0 +1,7 @@
+{
+  "name": "R21_CourierBodies",
+  "displayName": "R21 COURIER BODIES",
+  "description": "COURIER SHIELD (enemy fire can hit it) and COURIER DECOY (enemies aim at it).",
+  "primary": "COURIER SHIELD",
+  "secondary": "COURIER DECOY"
+}

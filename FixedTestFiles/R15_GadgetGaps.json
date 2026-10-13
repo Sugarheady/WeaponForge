@@ -1,0 +1,40 @@
+{
+  "name": "R15_GadgetGaps",
+  "displayName": "GADGET GAPS",
+  "description": "A deliberately wrong file. Three blocks that do nothing in a gadget slot - it exists to make the log say so.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "target": "enemies",
+  "source": "starter",
+
+  "weapon": {
+    "damage": { "amount": 1 },
+    "fireRate": 3,
+    "projectileCount": 1,
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+
+  "module": {
+    "color": "#ff5544",
+    "resourceGain": { "resource": "Resource White", "amount": 10 }
+  },
+
+  "sticky": {
+    "enabled": true,
+    "detonate": "refire"
+  },
+
+  "spiral": {
+    "enabled": true,
+    "step": 14,
+    "reset": "pull"
+  },
+
+  "tractor": {
+    "enabled": true,
+    "mode": "hold",
+    "range": 16,
+    "force": 400
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "Picket",
+  "displayName": "PICKET",
+  "description": "A drone flies to your cursor and fires three shots at the nearest enemy.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "ring": "outOfRange",
+    "shots": 3,
+    "interval": 0.3,
+    "aim": "enemy"
+  },
+  "weapon": {
+    "fireRate": 1
+  },
+  "module": {
+    "icon": "HUD_GridTiles_19",
+    "color": "#ffe08a"
+  }
+}

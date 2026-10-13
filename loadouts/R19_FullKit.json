@@ -1,0 +1,10 @@
+{
+  "name": "R19_FullKit",
+  "displayName": "R19 FULL KIT",
+  "description": "All five slots, stock modules only.",
+  "primary": "Module Weapon White Bolt",
+  "secondary": "Module Weapon Caps Flame",
+  "gadget1": "Module Active Purple AirMines",
+  "gadget2": "Module Active Caps Vial",
+  "gadget3": "Module Active Drone Caps"
+}

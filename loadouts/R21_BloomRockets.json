@@ -1,0 +1,7 @@
+{
+  "name": "R21_BloomRockets",
+  "displayName": "R21 BLOOM ROCKETS",
+  "description": "Bloom missiles: CORKSCREW (flown) and RIPTIDE (chased).",
+  "primary": "CORKSCREW",
+  "secondary": "RIPTIDE"
+}

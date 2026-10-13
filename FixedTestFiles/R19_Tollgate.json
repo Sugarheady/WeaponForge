@@ -1,0 +1,29 @@
+{
+  "name": "R19_Tollgate",
+  "displayName": "TOLLGATE",
+  "description": "Cheap in money, expensive in parts. The price climbs every time you buy one.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "source": "none",
+  "shop": true,
+  "shopPrice": 200,
+  "shopPriceIncrement": 150,
+  "shopCost": {
+    "Fiber": 1,
+    "Chip": 1
+  },
+  "shopCostIncrement": {
+    "Fiber": 1
+  },
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "damage": 14,
+    "fireRate": 5,
+    "projectileSpeed": 70,
+    "projectileCount": 2,
+    "spread": 8
+  },
+  "module": {
+    "color": "ColorYellow"
+  }
+}

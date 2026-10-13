@@ -1,0 +1,7 @@
+{
+  "name": "R21_CourierRing",
+  "displayName": "R21 COURIER RING",
+  "description": "PINCER (four drones round your cursor) and COURIER WALL (stops at walls, turns each shot).",
+  "primary": "PINCER",
+  "secondary": "COURIER WALL"
+}

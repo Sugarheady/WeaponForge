@@ -1,0 +1,7 @@
+{
+  "name": "R21_BloomBullets",
+  "displayName": "R21 BLOOM BULLETS",
+  "description": "Bloom bullet mode: BUZZSAW (blades spiral in and through) and PINWHEEL (shots land one after another and burst).",
+  "primary": "BUZZSAW",
+  "secondary": "PINWHEEL"
+}

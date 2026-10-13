@@ -1,0 +1,7 @@
+{
+  "name": "R21_CourierAims",
+  "displayName": "R21 COURIER AIMS",
+  "description": "PICKET (three shots at the nearest enemy) and CROSSWIND (a shotgun drone firing four ways).",
+  "primary": "PICKET",
+  "secondary": "CROSSWIND"
+}

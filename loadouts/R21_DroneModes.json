@@ -1,0 +1,9 @@
+{
+  "name": "R21_DroneModes",
+  "displayName": "R21 DRONE MODES",
+  "description": "Drone modes: the game's own combat drone, wingman orbs, and a Forge drone with its own modes block.",
+  "primary": "SHOTGUN",
+  "gadget1": "Module Active Drone Caps",
+  "gadget2": "WINGMEN",
+  "gadget3": "MODE DRONE"
+}

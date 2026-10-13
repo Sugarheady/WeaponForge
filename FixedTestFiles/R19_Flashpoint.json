@@ -1,0 +1,27 @@
+{
+  "name": "Flashpoint",
+  "displayName": "FLASHPOINT",
+  "description": "Detonates where you point. Walls are not in the way.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "ring": "held"
+  },
+  "weapon": {
+    "damage": { "amount": 16, "damageType": "Resource White" },
+    "cost": 2,
+    "fireRate": 1.8,
+    "projectileRadius": 1.6,
+    "projectileSpeed": 5,
+    "projectileCount": 1,
+    "spread": 0,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_12",
+    "color": "#7fe0ff"
+  }
+}

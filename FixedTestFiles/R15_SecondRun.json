@@ -1,0 +1,34 @@
+{
+  "name": "R15_SecondRun",
+  "displayName": "SECOND RUN",
+  "description": "Spawns one drone per second. Its spawn-time log lines are the ones that used to go quiet after run 1.",
+  "template": "Weapon Minion CrossSmallCaps",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+
+  "weapon": {
+    "minionPrefab": "Enemy_Fly Variant Drone Suicide",
+    "warmupTime": 0,
+    "burstSize": 1,
+    "projectileCount": 1,
+    "fireRate": 1,
+    "angleVariance": 0,
+    "projectileSpeed": 12,
+    "projectileSpeedVariance": 0,
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+
+  "module": {
+    "color": "#66ddaa",
+    "resourceGain": { "resource": "Resource White", "amount": 10 }
+  },
+
+  "minion": {
+    "seek": true,
+    "cap": 3,
+    "capMode": "block",
+    "lifetime": 8
+  }
+}

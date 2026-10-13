@@ -1,0 +1,23 @@
+{
+  "name": "R20_Collector",
+  "displayName": "COLLECTOR",
+  "description": "Test 286 - ranks up from the things you pick up, not only from damage.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "rank": {
+    "enabled": true,
+    "maxRank": 5,
+    "curve": "static",
+    "xp": 300,
+    "stations": false,
+    "pickupXp": 150,
+    "stats": {
+      "damage": [1, 1.2, 1.4, 1.6, 1.8, 2]
+    }
+  }
+}

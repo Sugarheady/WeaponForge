@@ -1,0 +1,8 @@
+{
+  "name": "R21_Guards",
+  "displayName": "R21 GUARDS",
+  "description": "Wingman rows as their own motion: BODYGUARD in front of your aim (1), REARGUARD behind it (2).",
+  "primary": "SHOTGUN",
+  "gadget1": "R21_Bodyguard",
+  "gadget2": "R21_Rearguard"
+}

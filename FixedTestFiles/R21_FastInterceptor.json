@@ -1,0 +1,44 @@
+{
+  "name": "R21_FastInterceptor",
+  "displayName": "FAST INTERCEPTOR",
+  "description": "INTERCEPTOR WING at the extreme: interceptSpeed 400, so they notice shots twice as early, take near misses too and snap four times as fast. Hold Y and press this gadget's button to step its three guard modes.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget2",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "fireRate": 2,
+    "resourceUsed": "Resource White",
+    "cost": 1
+  },
+  "module": {
+    "color": "ColorPurple"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "damageScale": 0.5,
+    "key": "recall",
+    "radius": 2.6,
+    "spinSpeed": 60,
+    "looseness": 0.3,
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone",
+      "health": 200,
+      "respawn": 5,
+      "healthBar": "hide"
+    }
+  },
+  "modes": {
+    "join": [
+      "interceptor",
+      "interceptfront",
+      "interceptrear"
+    ],
+    "interceptRadius": 6,
+    "interceptSpeed": 400
+  }
+}

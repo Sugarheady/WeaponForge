@@ -1,0 +1,37 @@
+{
+  "name": "R20_DroneBars",
+  "displayName": "BAR TEST",
+  "description": "Test 278 - three tough companions whose health bars get out of the way.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget2",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 2,
+    "fireRate": 2
+  },
+  "module": {
+    "color": "ColorLevelUp"
+  },
+  "wingman": {
+    "count": 3,
+    "mirror": "primary",
+    "damageScale": 0.5,
+    "key": "deploy",
+    "radius": 2.6,
+    "spinSpeed": 90,
+    "aim": "outward",
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone",
+      "health": 120,
+      "healthBar": "flash",
+      "healthBarSeconds": 3,
+      "healthBarRows": 2,
+      "healthBarScale": 0.6
+    }
+  }
+}

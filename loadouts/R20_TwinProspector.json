@@ -1,0 +1,7 @@
+{
+  "name": "R20_TwinProspector",
+  "displayName": "R20 TWIN PROSPECTOR",
+  "description": "Tests 252 and 256 - two copies of one ranked gun, each with its own rank.",
+  "primary": "Prospector",
+  "secondary": "Prospector"
+}

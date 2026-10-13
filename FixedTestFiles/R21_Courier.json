@@ -1,0 +1,20 @@
+{
+  "name": "Courier",
+  "displayName": "COURIER",
+  "description": "A drone carries your shot to the cursor and fires it from there.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "fireRate": 2
+  },
+  "module": {
+    "icon": "HUD_GridTiles_19",
+    "color": "#d8f0ff"
+  }
+}

@@ -355,6 +355,13 @@
           <option value="Buzzsaw">Buzzsaw (bloom bullet &mdash; blades spiral in through your cursor)</option>
           <option value="Corkscrew">Corkscrew (bloom bullet &mdash; rockets spiral in and detonate)</option>
           <option value="Riptide">Riptide (bloom bullet &mdash; rockets chase a spiral in)</option>
+          <option value="Implosion">Implosion (lobbed bloom &mdash; six grenades thrown in, all landing at once)</option>
+          <option value="Starburst">Starburst (lobbed bloom &mdash; grenades thrown outward from your cursor)</option>
+          <option value="Howler">Howler (courier &mdash; a laser drone appears, snaps to a straight line and fires)</option>
+          <option value="Courier">Courier (courier &mdash; a drone carries your shot to the cursor)</option>
+          <option value="Picket">Picket (courier &mdash; a drone fires three shots at the nearest enemy)</option>
+          <option value="Crosswind">Crosswind (courier &mdash; a shotgun drone fires four ways at once)</option>
+          <option value="Pincer">Pincer (courier &mdash; four drones surround your cursor and fire through it)</option>
           <option value="OrbitRing">Orbit Ring (orbiting projectiles)</option>
           <option value="WingmenRing">Wingmen: Ring (GADGET &mdash; orbiting copies of your gun)</option>
           <option value="WingmenRearGuard">Wingmen: Rear Guard (GADGET &mdash; drag + outward)</option>
@@ -3612,8 +3619,10 @@
               two features quietly cancelling. (<code>grow</code> is fine with
               <code>"when": "bullet"</code>, which does not swell.) A
               <code>usePhysics</code> bubble is refused too &mdash; a rigidbody
-              with no velocity is a dropped object &mdash; but a <b>missile</b>
-              flies a bloom's path as itself with <code>"when": "bullet"</code>.
+              with no velocity is a dropped object &mdash; but with
+              <code>"when": "bullet"</code> a <b>missile</b> flies a bloom's path
+              as itself, and a <b>grenade</b> is thrown in at the centre (the
+              lobbed bloom: <code>arrive</code> and <code>lob</code> below).
               <br><br><b>Two different spirals.</b> <code>"drift": "spiral"</code>
               here curves each shot's path into the centre. The separate
               top-level <code>spiral</code> block turns where each trigger
@@ -3644,11 +3653,16 @@
               a <b>missile</b> too (White Dart, Purple / Caps / Electron Rocket).
               <code>projectileSpeed</code> goes back to being its flight speed and
               <code>projectileRadius</code> its hit size; <code>rangeData.range</code>
-              is still how far out it can be placed. Not a grenade &mdash; flying
-              one along a path would stop it falling.</em></label>
+              is still how far out it can be placed.
+              <br><br>A <b>grenade</b> (White Derbis and the other templates that
+              fall) cannot fly a path &mdash; steering it would stop it falling
+              &mdash; so it is <b>thrown</b> instead: once, from its slot on the
+              ring, at the centre, and never touched again. Gravity, drag,
+              bouncing, its fuse and its impact stay the game's. See
+              <code>arrive</code> and <code>lob</code>.</em></label>
         <label class="field"><span>atCentre</span>
           <select data-path="bloom.atCentre">
-            <option value="">end (default)</option>
+            <option value="">end (default; burst on a grenade)</option>
             <option value="end">end - its flight ends at the centre</option>
             <option value="through">through - carries on straight out the other side</option>
             <option value="burst">burst - goes off as if it hit something</option>
@@ -3659,7 +3673,45 @@
               Popper simply goes. <b>through</b> flies on for as far as the gun
               reaches (or until its own lifetime ends). <b>burst</b> fires its
               impact: the impact effect, explosion, sub-emitter and discharge.
-              For a missile, end and burst look the same.</em></label>
+              For a missile, end and burst look the same.
+              <br><br>A <b>grenade</b> defaults to <b>burst</b>: it goes off at
+              the centre (a bouncing one, whose impact is off, goes off the way it
+              does on its fuse). <b>through</b> lets the grenades cross and keep
+              falling &mdash; your shots never hit each other &mdash; and
+              <b>end</b> makes them vanish there. A stock White Derbis has no
+              explosion, so give it an <code>explosion</code> and
+              <code>impactBehaviour.spawnExplosion</code> or burst is only a
+              puff; the log warns.</em></label>
+        <label class="field"><span>arrive</span>
+          <select data-path="bloom.arrive">
+            <option value="">together (default)</option>
+            <option value="together">together - every grenade reaches the centre at once</option>
+            <option value="staggered">staggered - one after another round the ring</option>
+            <option value="arc">arc - each on its own arc, thrown equally hard</option>
+          </select>
+          <em><code>bullet</code> on a <b>grenade</b> only, thrown
+              <b>inward</b>. <b>together</b>: every throw takes the same time, so
+              the ring meets at once &mdash; each gets its own arc to make that
+              work (the top one is mostly dropped, the bottom one thrown up
+              harder). <b>staggered</b>: the same, each a little after the last,
+              in the staggered drift's order (<code>direction</code> and
+              <code>stagger</code> apply). <b>arc</b>: every grenade is thrown
+              as hard as the level one, so each lands when its own arc gets
+              there &mdash; the one thrown down first. One that cannot reach the
+              centre that softly (thrown upward across a wide ring) is thrown
+              just hard enough instead.</em></label>
+        <label class="field"><span>lob</span>
+          <input type="number" min="0.25" max="6" step="any" data-path="bloom.lob"
+                 placeholder="1">
+          <em><code>bullet</code> on a <b>grenade</b> only. How high the throw
+              is: <b>1</b> (default) is <b>flat and fast</b> &mdash; a level throw
+              at the gun's own <code>projectileSpeed</code>, nearly straight in.
+              <b>2</b> takes twice as long and arcs visibly; <b>3</b> takes three
+              times as long &mdash; a slow, high arc, a mortar on a wide ring.
+              Below 1 is faster than the gun. (A hand-written file may also say "flat", "medium" or
+              "high".) Its fuse still counts: a White Derbis lives 2 seconds,
+              and the log warns when the throw in at full reach takes
+              longer.</em></label>
         <label class="field"><span>missile</span>
           <select data-path="bloom.missile">
             <option value="">fly (default)</option>
@@ -3726,7 +3778,13 @@
               <b>spiral</b> or <b>staggered</b> to mean anything &mdash; with
               everything already on the crosshair there is nowhere to close in
               from. A <b>bullet</b> must have a drift: with <b>none</b> it would
-              never move, so it flies inward.</em></label>
+              never move, so it flies inward.
+              <br><br>A <b>grenade</b> is thrown, never flown, so it takes
+              <b>inward</b> (the default) or <b>outward</b> &mdash; thrown straight
+              away from the centre at <code>projectileSpeed</code>, a cluster bomb
+              at the cursor. <b>staggered</b> means <code>arrive</code>
+              "staggered"; spiral, spin and along are thrown inward, and the log
+              says so.</em></label>
         <label class="field"><span>turns</span>
           <input type="number" min="0" max="20" step="any" data-path="bloom.turns"
                  placeholder="1">
@@ -11571,6 +11629,289 @@
   </section>
 
   <section>
+    <h2>Courier &mdash; a drone that fires at your cursor (optional) &mdash; bullet and beam weapons</h2>
+    <details class="block">
+      <summary><input type="checkbox" class="gate">courier
+        <span class="tag">new</span></summary>
+      <div class="fields">
+        <label class="field"><span>courier.enabled</span>
+          <select data-path="courier.enabled" data-type="bool">
+            <option value="">true (default)</option>
+            <option value="true">true</option>
+            <option value="false">false - off, keeping the settings below</option>
+          </select>
+          <em>Ticking the box above is enough. Hand-written JSON can also just
+              say <code>"courier": true</code> for every default.</em></label>
+        <label class="field full"><span>COURIER &mdash; the trigger launches a drone instead of a shot</span>
+          <em>Each pull sends a <b>drone</b> from your barrel to where your
+              cursor was. It winds up, fires the gun from there &mdash; its
+              damage, pellets, spread, modules and every block on it &mdash; as
+              many times as <code>shots</code> says, then fades. <b>No cap</b>:
+              the gun's <code>fireRate</code> and ammo are the only limit. The
+              ammo is paid at the trigger, so the drone's own shots are free.
+              <br><br>Inspired by the Gaster Blaster: <code>aim</code>
+              <code>"enemy"</code>, <code>snap</code> 90, a <code>windup</code>,
+              <code>entry</code> <code>"appear"</code> and <code>exit</code>
+              <code>"recoil"</code> on a laser is that look &mdash; see the
+              <b>Howler</b> preset. On a <b>beam</b> the drone shows the beam's
+              own warm-up art while it winds up.
+              <br><br><b>Works on</b> bullet, grenade, rocket and beam guns, in a
+              weapon slot or a gadget. <b>Refused</b> beside <code>bloom</code>,
+              <code>converge</code>, <code>orbit</code>, <code>charge</code>,
+              <code>swipe</code>, <code>curveBeam</code> and
+              <code>wingman</code> &mdash; each fights it over the same moment
+              &mdash; and the log says why. A wingman carrying a courier gun
+              launches drones from the companion.</em></label>
+        <label class="field"><span>courier.weapon</span>
+          <input type="text" data-path="courier.weapon"
+                 placeholder="(the gun's own shot)">
+          <em>Leave empty and the drone fires <b>the gun's own shot</b>. Name
+              another weapon file (its <code>name</code>) and it fires that
+              instead &mdash; built with this gun's modules, its kills paid to
+              this gun. Looked up when a drone first fires, so file order never
+              matters.</em></label>
+        <label class="field"><span>courier.shots</span>
+          <input type="number" min="1" max="50" step="1" data-path="courier.shots"
+                 placeholder="1">
+          <em>How many times each drone fires before it leaves &mdash; its ammo
+              count. 1 is one shot and gone.</em></label>
+        <label class="field"><span>courier.interval</span>
+          <input type="number" min="0" step="any" data-path="courier.interval"
+                 placeholder="(the gun's own)">
+          <em>Seconds between a drone's shots. Empty: the gun's own rhythm
+              (1 / fireRate). For a beam, counted from the end of one beam to the
+              start of the next.</em></label>
+        <label class="field"><span>courier.beamTime</span>
+          <input type="number" min="0.05" max="10" step="any" data-path="courier.beamTime"
+                 placeholder="0.75">
+          <em><b>Beams only.</b> How long each shot holds the beam, in seconds.
+              Half a second to a full second suits most beams &mdash; it depends
+              on the beam's damage per second.</em></label>
+        <label class="field"><span>courier.beamRate</span>
+          <input type="number" min="1" max="60" step="any" data-path="courier.beamRate"
+                 placeholder="12">
+          <em><b>Beams only.</b> Damage ticks a second while a drone holds its
+              beam. Its own number because on a courier gun
+              <code>fireRate</code> is how often the trigger <i>launches</i>
+              &mdash; a courier laser wants a fireRate of about 1, while the
+              stock laser ticks 13 times a second.</em></label>
+        <label class="field"><span>courier.speed</span>
+          <input type="number" min="1" max="200" step="any" data-path="courier.speed"
+                 placeholder="30">
+          <em>How fast it flies to the cursor, in units per second.</em></label>
+        <label class="field"><span>courier.reach</span>
+          <input type="number" min="0" max="75" step="any" data-path="courier.reach"
+                 placeholder="(the gun's range)">
+          <em>How far it can fly. A cursor further than this is pulled in to
+              the reach, so it lands nearer rather than wasting the shot. Empty:
+              the gun's own range (20 if it has none, like a grenade).</em></label>
+        <label class="field"><span>courier.ring</span>
+          <select data-path="courier.ring">
+            <option value="">off (default)</option>
+            <option value="off">off - no reach indicator</option>
+            <option value="held">held - only while the trigger is down</option>
+            <option value="always">always - whenever the weapon is out</option>
+            <option value="outOfRange">outOfRange - only when you are pointing too far</option>
+          </select>
+          <em>A circle round your ship at the drone's <code>reach</code> &mdash; the
+              same ring bloom draws, for the same reason: point past the reach
+              and the drone does not miss, it quietly stops nearer than you
+              asked. Off by default because a permanent circle is clutter once
+              you have learned the range. <b>Draws nothing in a gadget
+              slot</b> &mdash; it is driven from the Shooter, which gadgets never
+              touch; the drones still work.</em></label>
+        <label class="field"><span>courier.ringSprite</span>
+          <input type="text" data-path="courier.ringSprite"
+                 placeholder="(empty = a clean drawn ring)">
+          <em>Empty for a clean ring drawn by the mod, or any custom or stock
+              sprite. One that resolves to nothing is skipped with a warning.</em></label>
+        <label class="field"><span>courier.ringColor</span>
+          <input type="text" data-path="courier.ringColor"
+                 placeholder="#59D9FF4D">
+          <em>Colour name or hex, alpha included. Keep it faint.</em></label>
+        <label class="field"><span>courier.ringFade</span>
+          <input type="number" min="0" max="5" step="any" data-path="courier.ringFade"
+                 placeholder="0 (instant)">
+          <em>Seconds to fade the ring in and out as it is shown and put
+              away.</em></label>
+        <label class="field"><span>courier.ringOpacity</span>
+          <input type="number" min="0" max="1" step="any" data-path="courier.ringOpacity"
+                 placeholder="1">
+          <em>0&ndash;1, multiplied into the colour's own alpha.</em></label>
+        <label class="field"><span>courier.ringWidth</span>
+          <input type="number" min="0" max="4" step="any" data-path="courier.ringWidth"
+                 placeholder="0 (the ring's own proportion)">
+          <em>The line's thickness in world units, the same at any reach. Only
+              the ring the mod draws.</em></label>
+        <label class="field"><span>courier.follow</span>
+          <select data-path="courier.follow" data-type="bool">
+            <option value="">false (default)</option>
+            <option value="false">false - flies to where the cursor was</option>
+            <option value="true">true - chases the cursor until it arrives</option>
+          </select>
+          <em>Most guns want <code>false</code>: you aim, it goes there.</em></label>
+        <label class="field"><span>courier.overWalls</span>
+          <select data-path="courier.overWalls" data-type="bool">
+            <option value="">true (default)</option>
+            <option value="true">true - flies over walls to the cursor</option>
+            <option value="false">false - stops at the first wall and fires from there</option>
+          </select>
+          <em>Over walls by default, the way bloom shoots round corners. A
+              cursor inside rock gets a drone inside rock, whose shots hit the
+              rock at once.</em></label>
+        <label class="field"><span>courier.entry</span>
+          <select data-path="courier.entry">
+            <option value="">fly (default)</option>
+            <option value="fly">fly - leaves your barrel and flies there</option>
+            <option value="appear">appear - fades in at the cursor</option>
+          </select>
+          <em><b>appear</b> is the Gaster Blaster's entrance: it is simply
+              there, a moment later.</em></label>
+        <label class="field"><span>courier.windup</span>
+          <input type="number" min="0" max="5" step="any" data-path="courier.windup"
+                 placeholder="0.25">
+          <em>Seconds it holds, facing its aim, before the first shot &mdash; the
+              warning. 0 fires the moment it arrives. On a beam this is when the
+              beam's warm-up art shows.</em></label>
+        <label class="field"><span>courier.aim</span>
+          <select data-path="courier.aim">
+            <option value="">outward (default)</option>
+            <option value="outward">outward - on along the line from you through the drone</option>
+            <option value="enemy">enemy - at the nearest enemy in range, else outward</option>
+            <option value="back">back - toward your ship</option>
+            <option value="launch">launch - along the line it flew, fixed when you fired</option>
+            <option value="centre">centre - at the middle of its ring</option>
+          </select>
+          <em>Where each shot points. <b>outward</b> is worked out when it
+              fires, from where your ship is then. <b>centre</b> is the ring
+              formation's default.</em></label>
+        <label class="field"><span>courier.snap</span>
+          <input type="number" min="0" max="180" step="45" data-path="courier.snap"
+                 placeholder="0">
+          <em>Rounds the aim to clean angles. <b>90</b>: the nearest of up, down,
+              left and right. <b>45</b>: the diagonals too. 0 (empty) leaves it
+              exact. This is the Gaster look &mdash; beams that line up with the
+              screen whatever the exact angle to the enemy was.</em></label>
+        <label class="field"><span>courier.pattern</span>
+          <select data-path="courier.pattern">
+            <option value="">single (default)</option>
+            <option value="single">single - one way, along the aim</option>
+            <option value="sides">sides - both ways at right angles to the aim (a T)</option>
+            <option value="cross">cross - four ways at 90 degrees</option>
+            <option value="x">x - the four diagonals of the aim</option>
+            <option value="star">star - all eight</option>
+          </select>
+          <em>How many ways each shot goes at once. Each way is the full shot:
+              a Shotgun on <b>cross</b> fires four shotgun blasts.</em></label>
+        <label class="field"><span>courier.turn</span>
+          <input type="number" step="any" data-path="courier.turn"
+                 placeholder="0">
+          <em>Degrees each shot turns from the last. With <code>shots</code> 4,
+              90 draws a cross one arm at a time.</em></label>
+        <label class="field"><span>courier.formation</span>
+          <select data-path="courier.formation">
+            <option value="">one (default)</option>
+            <option value="one">one - one drone per pull</option>
+            <option value="ring">ring - one drone per pellet, round the cursor, firing through it</option>
+          </select>
+          <em><b>ring</b> surrounds your cursor the way Gaster Blasters surround
+              their target: a gun with <code>projectileCount</code> 4 sends four
+              drones to a ring round the cursor (<code>spread</code> sets its
+              size, as for bloom), each firing one pellet through the middle,
+              all at once.</em></label>
+        <label class="field"><span>courier.dronesPerLevel</span>
+          <input type="number" min="0" max="10" step="1" data-path="courier.dronesPerLevel" placeholder="1">
+          <em>Drones a pull <b>added for each module level above 1</b> - a BoosterCore
+              beside the gun raises its level. 1 (the default): level 2 sends two
+              drones, level 3 three (at most 12). 0 keeps one drone however boosted.
+              With <code>ring</code> they join the ring. The weapon card shows
+              <b>DRONES A PULL</b>.</em></label>
+        <label class="field"><span>courier.spacing</span>
+          <input type="number" min="0" max="20" step="0.1" data-path="courier.spacing" placeholder="1.5">
+          <em>How far apart a boosted pull's drones stand. They line up <b>side by
+              side across your aim</b> - square to the line from your ship to the
+              cursor - and fire the same way, like a firing line.</em></label>
+        <label class="field"><span>courier.wingmanDrones</span>
+          <select data-path="courier.wingmanDrones">
+            <option value="">mirror (default)</option>
+            <option value="mirror">mirror - each wingman's drone lands where that wingman sits beside your ship</option>
+            <option value="stack">stack - wingmen's drones land on top of yours</option>
+          </select>
+          <em>Wingmen copy your gun, so they launch drones too. <b>mirror</b> sets
+              each one beside your cursor the way that wingman sits beside your
+              ship, so their shots are easy to tell apart.</em></label>
+        <label class="field"><span>courier.exit</span>
+          <select data-path="courier.exit">
+            <option value="">fade (default)</option>
+            <option value="fade">fade - fades where it is</option>
+            <option value="recoil">recoil - pushed back from its last shot while it fades</option>
+          </select>
+          <em><b>recoil</b> is the Gaster Blaster pulling away.</em></label>
+        <label class="field"><span>courier.fadeTime</span>
+          <input type="number" min="0" max="5" step="any" data-path="courier.fadeTime"
+                 placeholder="0.3">
+          <em>Seconds it takes to fade out.</em></label>
+        <label class="field"><span>courier.shootable</span>
+          <select data-path="courier.shootable">
+            <option value="">false (default) - enemies cannot hit it</option>
+            <option value="false">false - untouchable</option>
+            <option value="hit">hit - enemy fire that reaches it hurts it (and it blocks that fire)</option>
+            <option value="decoy">decoy - enemies choose to aim at it</option>
+          </select>
+          <em><b>hit</b>: enemy bullets, lasers and explosions that reach it
+              damage it, and it stops them &mdash; a drone in the line of fire
+              shields you; enemies keep aiming at you. <b>decoy</b>: it is a real
+              game unit (the game's combat drone), so enemies can pick it instead
+              of you; heavier, and at most 16 are out per ship. Shot down, it
+              never fires again.</em></label>
+        <label class="field"><span>courier.health</span>
+          <input type="number" min="1" step="any" data-path="courier.health"
+                 placeholder="10">
+          <em>With <code>shootable</code> only. A decoy cannot go above the stock
+              drone's own health, and the log says if it was lowered.</em></label>
+        <label class="field"><span>courier.contact</span>
+          <select data-path="courier.contact" data-type="bool">
+            <option value="">false (default)</option>
+            <option value="false">false</option>
+            <option value="true">true - hurts enemies it flies through</option>
+          </select>
+          <em>The gun's own damage, once per enemy every 0.4 seconds, while it
+              flies.</em></label>
+        <label class="field"><span>courier.faceAim</span>
+          <select data-path="courier.faceAim" data-type="bool">
+            <option value="">true (default)</option>
+            <option value="true">true - turns to face its aim</option>
+            <option value="false">false - never turns</option>
+          </select>
+          <em>The game's drone turns its gun (its "Head"); your own sprite turns
+              as a whole &mdash; so draw it pointing right.</em></label>
+        <label class="field"><span>courier.visual</span>
+          <input type="text" data-path="courier.visual"
+                 placeholder="Enemy_Fly Variant Drone">
+          <em>Its look, found the way a wingman's is: <b>your own sprite</b> from
+              the <code>sprites</code> folder (a frame range like
+              <code>:0-7</code> or <code>@12</code> animates it), a stock sprite,
+              or a borrowed prefab. Empty: the game's combat drone.</em></label>
+        <label class="field"><span>courier.scale</span>
+          <input type="number" min="0.1" max="10" step="any" data-path="courier.scale"
+                 placeholder="1">
+          <em>Size of the look. Also sizes a shootable drone's hit circle.</em></label>
+        <label class="field"><span>courier.color</span>
+          <input type="text" data-path="courier.color"
+                 placeholder="#ffffff">
+          <em>Tints the look (a colour name or #hex).</em></label>
+        <label class="field"><span>courier.launchSfx</span>
+          <input type="text" data-path="courier.launchSfx"
+                 placeholder="Actives/CombatDrone/Deploy">
+          <em>The sound as a drone leaves your barrel. Empty: the game's combat
+              drone deploy sound. Any sound name from <code>SOUNDS.txt</code> or a
+              sound of your own works; <code>none</code> is silent. The gun's own
+              shot sound plays where the drone fires.</em></label>
+      </div>
+    </details>
+  </section>
+
+  <section>
     <h2>Overheat / jam (optional) &mdash; all weapon types</h2>
 
     <details class="block">
@@ -14517,11 +14858,20 @@
             <option value="trail">trail &mdash; behind you, along the path you flew</option>
             <option value="drag">drag &mdash; beads sliding OPPOSITE your movement</option>
             <option value="lead">lead &mdash; beads running AHEAD of your movement</option>
+            <option value="protector">protector &mdash; a row IN FRONT of your aim</option>
+            <option value="rearguard">rearguard &mdash; a wider row BEHIND your aim</option>
           </select>
           <em><b>drag</b> is beads on a hoop: move right and they gather on your
               left. With <code>aim: outward</code> that is a rear guard covering
               your retreat. <b>lead</b> is the same one sign flipped &mdash; they
-              scout ahead and fire where you are charging.</em></label>
+              scout ahead and fire where you are charging.
+              <br><br><b>protector</b> and <b>rearguard</b> are the drone modes'
+              PROTECTOR and REAR GUARD rows as this gadget's own motion: a short
+              row across the line to your cursor, in front of you, or a longer
+              one further behind. Move the aim and the row swings round. Their
+              own numbers are <code>distance</code> and <code>spacing</code>
+              below. Y still steps them through the drone modes, and they come
+              back to this row on NORMAL.</em></label>
 
         <label class="field"><span>wingman.aim</span>
           <select data-path="wingman.aim">
@@ -14606,7 +14956,9 @@
 
         <label class="field"><span>wingman.visual</span>
           <input type="text" data-path="wingman.visual" placeholder="FuelPickup">
-          <em>tries one of YOUR sprites, then a sprite in the game, then a PREFAB
+          <em><b>Blank = <code>FuelPickup</code></b>, the blue orb (it used to
+              draw nothing at all - R21's STRIKE WING). It
+              tries one of YOUR sprites, then a sprite in the game, then a PREFAB
               borrowed for its look. That last one is how you get the orbs &mdash;
               <code>FuelPickup</code> (blue), <code>ResourcePickup_Red</code>
               (health, red), <code>ResourcePickup_White</code>,
@@ -15216,7 +15568,8 @@
         <label class="field"><span>wingman.radius</span>
           <input type="number" step="any" data-path="wingman.radius" placeholder="2.2">
           <em>ring size. orbit / drag / lead only &mdash; in <code>trail</code>,
-              <code>spacing</code> is what sets how far back they sit.</em></label>
+              <code>spacing</code> is what sets how far back they sit, and in
+              the rows <code>distance</code> is how far out the row stands.</em></label>
 
         <label class="field"><span>wingman.spinSpeed</span>
           <input type="number" step="any" data-path="wingman.spinSpeed" placeholder="60">
@@ -15226,7 +15579,16 @@
 
         <label class="field"><span>wingman.spacing</span>
           <input type="number" step="any" data-path="wingman.spacing" placeholder="1.2">
-          <em>trail only: the gap between them along the path you flew</em></label>
+          <em><b>trail</b>: the gap between them along the path you flew.
+              <b>protector / rearguard</b>: the gap between them across the row
+              (1.3 when left empty; rearguard spreads it 1.35 times wider).</em></label>
+
+        <label class="field"><span>wingman.distance</span>
+          <input type="number" step="any" data-path="wingman.distance" placeholder="2.6 / 4.5">
+          <em><b>protector / rearguard only</b>: how far from your ship the row
+              stands &mdash; in front of your aim for protector (2.6 when left
+              empty), behind it for rearguard (4.5). The log names it if you set
+              it on any other motion.</em></label>
 
         <label class="field"><span>wingman.smoothing</span>
           <input type="number" step="any" data-path="wingman.smoothing" placeholder="0.15">
@@ -15239,9 +15601,10 @@
             <option value="aim">aim &mdash; measured from your CURSOR</option>
             <option value="both">both &mdash; the bisector</option>
           </select>
-          <em>drag/lead only: what "ahead" and "behind" are measured from.
-              <code>lead</code> + <code>aim</code> gathers them between you and
-              where you are pointing.</em></label>
+          <em>drag / lead and the rows: what "ahead" and "behind" are measured
+              from. <code>lead</code> + <code>aim</code> gathers them between you
+              and where you are pointing. <b>protector and rearguard default to
+              aim</b> &mdash; set movement to have the row face the way you fly.</em></label>
 
         <label class="field"><span>wingman.signal</span>
           <select data-path="wingman.signal">
@@ -15249,7 +15612,7 @@
             <option value="velocity">velocity only</option>
             <option value="input">input only</option>
           </select>
-          <em>drag/lead only: what "movement" means. <b>both</b> gives crisp
+          <em>drag / lead and the rows: what "movement" means. <b>both</b> gives crisp
               response to what you press AND still swings them when an explosion
               throws you across the room &mdash; knockback, gravity wells and
               dashes show in velocity and in nothing else.</em></label>
@@ -15269,7 +15632,8 @@
         <label class="field"><span>wingman.looseness</span>
           <input type="number" step="any" data-path="wingman.looseness" placeholder="0.25">
           <em>how slowly a companion slides to its place &mdash; the "loose beads"
-              feel; higher is lazier. Used by <b>every ring motion</b>: in
+              feel; higher is lazier. Used by <b>every ring motion and the
+              rows</b>: in
               <code>orbit</code> it is how quickly the ring re-spreads when one
               arrives or leaves. <code>trail</code> has <code>smoothing</code>
               instead.</em></label>
@@ -15365,8 +15729,8 @@
           <em><b>Drone modes work with no block at all.</b> Press <b>Y</b> (gamepad
               <b>D-pad right</b>) and every gadget's companions step to the next
               mode, and the game's own five drone gadgets join in too:
-              <br>&nbsp;&nbsp;<b>NORMAL &gt; ORBIT &gt; DRAG &gt; PROTECTOR &gt; REAR
-              GUARD &gt; SEEKER &gt; SENTRY &gt; NORMAL</b>
+              <br>&nbsp;&nbsp;<b>NORMAL &gt; ORBIT &gt; DRAG &gt; PROTECTOR &gt;
+              INTERCEPTOR &gt; REAR GUARD &gt; SEEKER &gt; SENTRY &gt; NORMAL</b>
               <br>The key acts when you <b>let go</b>. <b>Hold Y and press a
               gadget's own button</b> (1, 2 or 3 &mdash; whatever fires that
               gadget) to step that gadget alone. <b>U</b>, or holding Y about a
@@ -15377,17 +15741,27 @@
               in <code>BepInEx\config\com.sugarheady.weaponforge.cfg</code>
               (<code>Key</code>, <code>PadButton</code>, <code>NormalKey</code>,
               <code>Cycle</code>, <code>Formation</code>, <code>SeekRange</code>,
-              <code>SentryRadius</code>, <code>SentryRecall</code>&hellip;).
-              Leave a mode out of <code>Cycle</code> and it is never offered.
-              <code>Interceptor</code> is not in the default cycle yet &mdash;
-              add it to try it.
+              <code>SentryRadius</code>, <code>SentryRecall</code>,
+              <code>InterceptSpeed</code>, <code>StrikeRange</code>&hellip;).
+              Leave a mode out of <code>Cycle</code> and Y alone never offers it.
+              Four modes are not in the default cycle until they pass their
+              tests &mdash; <code>InterceptFront</code>,
+              <code>InterceptRear</code>, <code>Striker</code> and
+              <code>Vengeance</code>; add them to try them. <b>A gadget whose
+              file joins a mode the cycle leaves out still gets it on its own
+              Y + button.</b>
               <br><br><b>The shapes:</b> ORBIT a turning ring round you; DRAG a
               line along the path you flew; PROTECTOR a short row close in front
               of where you aim; REAR GUARD a longer, wider row further behind
-              where you aim; SEEKER hunts further out and comes back; SENTRY
-              guards the spot you were at when you pressed; INTERCEPTOR goes for
-              enemy shots heading at you. <b>Wingmen do the four formations and
-              INTERCEPTOR</b> (bodies only); SEEKER and SENTRY are for drones,
+              where you aim; SEEKER hunts the nearest enemy within its range
+              (seen or not) and sweeps a loop round you when there is none;
+              SENTRY guards the spot you were at when you pressed; INTERCEPTOR
+              goes for enemy shots heading at you from a still ring, INTERCEPT
+              FRONT from the PROTECTOR row and INTERCEPT REAR from the REAR
+              GUARD row; STRIKER dives at the nearest enemies and VENGEANCE at
+              the ones shooting at you, to fire point blank. <b>Wingmen do the
+              four formations, the three INTERCEPT modes</b> (bodies only)
+              <b>and the two dive modes</b>; SEEKER and SENTRY are for drones,
               and a wingman ring keeps its own motion under them.
               <br><br><b>This block is for one gadget's own numbers</b>, on a
               <code>wingman</code> file or a <code>drone</code> gadget file. Every
@@ -15401,8 +15775,10 @@
           <em>which modes this gadget takes part in. Blank or <code>all</code>
               is every mode its companions can do; <code>none</code> keeps it on
               its own behaviour whatever the key says. A list: <code>orbit,
-              drag, protector, rearGuard, seeker, sentry, interceptor</code>.
-              Its own <b>Y + button</b> steps it through only these.</em></label>
+              drag, protector, rearGuard, seeker, sentry, interceptor,
+              interceptFront, interceptRear, striker, vengeance</code>. Its own
+              <b>Y + button</b> steps it through only these &mdash; including
+              any the config's <code>Cycle</code> leaves out.</em></label>
 
         <label class="field"><span>modes.orbitRadius</span>
           <input type="number" step="any" data-path="modes.orbitRadius" placeholder="3.5">
@@ -15432,6 +15808,25 @@
           <em>INTERCEPTOR: the guard ring the interceptors wait on and meet
               shots at. An explosive shot is met further out than its own
               blast, whatever this says.</em></label>
+
+        <label class="field"><span>modes.interceptSpeed</span>
+          <input type="number" step="25" min="50" max="400" data-path="modes.interceptSpeed" placeholder="100">
+          <em>All three INTERCEPT modes: how eagerly they snap to shots, in
+              percent. <b>100</b> is normal; higher notices shots sooner, takes
+              near misses too and gets there faster &mdash; <b>400</b> is the
+              extreme. Blank = the config's <code>InterceptSpeed</code>, which
+              the GAME MODE FORGE tab's slider moves while you play.</em></label>
+
+        <label class="field"><span>modes.strikeRange</span>
+          <input type="number" step="any" data-path="modes.strikeRange" placeholder="20">
+          <em>STRIKER and VENGEANCE: how far from YOU an enemy may be for these
+              companions to dive at it (6 to 40).</em></label>
+
+        <label class="field"><span>modes.strikeDistance</span>
+          <input type="number" step="any" data-path="modes.strikeDistance" placeholder="2.5">
+          <em>STRIKER and VENGEANCE: how close they sit to the enemy they dive
+              at &mdash; point blank (1 to 8). Wingmen fire when you fire, at
+              that enemy.</em></label>
 
         <label class="field"><span>modes.seekRange</span>
           <input type="number" step="any" data-path="modes.seekRange" placeholder="40">
@@ -17353,6 +17748,18 @@
         (cc.length === 1) ? String(cc[0]) : JSON.stringify(cc);
     }
 
+    // bloom "lob" may be one of his three words in a hand-written file; the
+    // box is a number, which would silently refuse the word and load empty.
+    if (d.bloom && typeof d.bloom.lob === "string") {
+      var lobWords = { flat: 1, fast: 1, low: 1, medium: 2, mid: 2, arc: 2,
+                       high: 3, lob: 3, mortar: 3 };
+      var lw = d.bloom.lob.trim().toLowerCase();
+      var ln = (lw in lobWords) ? lobWords[lw] : parseFloat(lw);
+
+      if (isNaN(ln)) delete d.bloom.lob;
+      else d.bloom.lob = ln;
+    }
+
     // "fade": 0.2 is the shorthand for the same fade at both ends. The loop
     // below skips non-object values against a dotted path, so unfold it or a
     // hand-written file would load with both fade boxes empty.
@@ -17841,6 +18248,217 @@
       module: {
         icon: "HUD_GridTiles_39",
         color: "#7ff0ff"
+      }
+    },
+
+    // THE LOBBED BLOOM: "when": "bullet" on a GRENADE. Six White Derbis
+    // grenades appear on a ring round your cursor and are THROWN in, once -
+    // all landing at once (arrive "together", the default), flat and fast
+    // (lob 1, the default) - and go off there (a grenade's default
+    // atCentre is "burst"). The stock grenade has no explosion, so this one
+    // carries one; it also explodes on whatever it hits on the way in.
+    // rangeData.range is the placement reach - the grenade ships 0 there.
+    "Implosion": {
+      name: "Implosion",
+      displayName: "IMPLOSION",
+      description: "Six grenades are thrown in from a ring and go off together on your cursor.",
+      template: "Module Weapon White Derbis",
+      slot: "secondary",
+      target: "enemies",
+      bloom: {
+        enabled: true,
+        when: "bullet",
+        drift: "inward",
+        arrive: "together",
+        atCentre: "burst",
+        ring: "outOfRange"
+      },
+      weapon: {
+        fireRate: 0.9,
+        cost: 3,
+        damage: { amount: 2, damageType: "Resource White" },
+        projectileCount: 6,
+        spread: 40,
+        projectileSpeed: 26,
+        rangeData: { range: 22 },
+        explosion: {
+          radius: 1.8,
+          damages: [{ amount: 4, damageType: "Resource White" }]
+        },
+        impactBehaviour: { enabled: true, spawnExplosion: true }
+      },
+      module: {
+        icon: "HUD_GridTiles_41",
+        color: "#ffd27a"
+      }
+    },
+
+    // The other way: "drift": "outward" throws each grenade straight AWAY
+    // from the cursor at projectileSpeed, so the ring bursts open like a
+    // cluster bomb. After the throw each is an ordinary grenade - its
+    // explosion goes off on whatever it hits, or on its 1.5 s fuse.
+    "Starburst": {
+      name: "Starburst",
+      displayName: "STARBURST",
+      description: "Grenades appear round your cursor and are thrown outward, a cluster bomb where you point.",
+      template: "Module Weapon White Derbis",
+      slot: "secondary",
+      target: "enemies",
+      bloom: {
+        enabled: true,
+        when: "bullet",
+        drift: "outward",
+        ring: "outOfRange"
+      },
+      weapon: {
+        fireRate: 0.8,
+        cost: 3,
+        damage: { amount: 2, damageType: "Resource White" },
+        projectileCount: 8,
+        spread: 20,
+        projectileSpeed: 14,
+        rangeData: { range: 20 },
+        explosion: {
+          radius: 1.6,
+          damages: [{ amount: 3, damageType: "Resource White" }]
+        },
+        impactBehaviour: { enabled: true, spawnExplosion: true },
+        lifetimeData: { enabled: true, time: 1.5, spawnExplosion: true }
+      },
+      module: {
+        icon: "HUD_GridTiles_42",
+        color: "#ffb36b"
+      }
+    },
+
+    // COURIER: the trigger launches a drone that flies to your cursor, fires
+    // the gun from there, and fades. This is the Gaster Blaster look on a
+    // laser: it APPEARS by your cursor, turns to the straight line (snap 90)
+    // nearest the enemy, holds 0.4 s showing the beam's warm-up, fires one
+    // beam for 0.75 s and pulls away. fireRate is how often a pull launches,
+    // so a courier laser wants about 1; beamRate is the beam's own ticks.
+    "Howler": {
+      name: "Howler",
+      displayName: "HOWLER",
+      description: "A laser drone appears by your cursor, snaps to a straight line at the nearest enemy, and fires.",
+      template: "Module Weapon Caps Laser",
+      slot: "secondary",
+      target: "enemies",
+      courier: {
+        enabled: true,
+        ring: "held",
+        entry: "appear",
+        aim: "enemy",
+        snap: 90,
+        windup: 0.4,
+        beamTime: 0.75,
+        exit: "recoil"
+      },
+      weapon: {
+        fireRate: 1,
+        cost: 4,
+        damage: { amount: 1.5, damageType: "Resource Caps" }
+      },
+      module: {
+        icon: "HUD_GridTiles_26",
+        color: "#9fe8ff"
+      }
+    },
+
+    // The plainest courier: a Popper whose shot is carried to your cursor by
+    // a drone and fired from there, on along the line from you.
+    "Courier": {
+      name: "Courier",
+      displayName: "COURIER",
+      description: "A drone carries your shot to the cursor and fires it from there.",
+      template: "Module Weapon White Popper",
+      slot: "primary",
+      target: "enemies",
+      courier: {
+        enabled: true,
+        ring: "outOfRange"
+      },
+      weapon: {
+        fireRate: 2
+      },
+      module: {
+        icon: "HUD_GridTiles_19",
+        color: "#d8f0ff"
+      }
+    },
+
+    // His ammo count: three shots each, at the nearest enemy in range.
+    "Picket": {
+      name: "Picket",
+      displayName: "PICKET",
+      description: "A drone flies to your cursor and fires three shots at the nearest enemy.",
+      template: "Module Weapon White Popper",
+      slot: "primary",
+      target: "enemies",
+      courier: {
+        enabled: true,
+        ring: "outOfRange",
+        shots: 3,
+        interval: 0.3,
+        aim: "enemy"
+      },
+      weapon: {
+        fireRate: 1
+      },
+      module: {
+        icon: "HUD_GridTiles_19",
+        color: "#ffe08a"
+      }
+    },
+
+    // pattern "cross": each shot goes four ways at once - four shotgun
+    // blasts from the cursor.
+    "Crosswind": {
+      name: "Crosswind",
+      displayName: "CROSSWIND",
+      description: "A shotgun drone flies to your cursor and fires four ways at once.",
+      template: "Module Weapon White Shotgun",
+      slot: "secondary",
+      target: "enemies",
+      courier: {
+        enabled: true,
+        ring: "outOfRange",
+        pattern: "cross",
+        windup: 0.3
+      },
+      weapon: {
+        fireRate: 0.8
+      },
+      module: {
+        icon: "HUD_GridTiles_43",
+        color: "#c8ffd0"
+      }
+    },
+
+    // formation "ring": one drone per pellet on a ring round the cursor
+    // (spread sets its size, as for bloom), all firing through the middle
+    // at once - the Gaster Blasters surrounding their target.
+    "Pincer": {
+      name: "Pincer",
+      displayName: "PINCER",
+      description: "Four drones surround your cursor and fire through it at once.",
+      template: "Module Weapon White Popper",
+      slot: "primary",
+      target: "enemies",
+      courier: {
+        enabled: true,
+        ring: "outOfRange",
+        formation: "ring",
+        windup: 0.35
+      },
+      weapon: {
+        fireRate: 1,
+        projectileCount: 4,
+        spread: 50
+      },
+      module: {
+        icon: "HUD_GridTiles_44",
+        color: "#ffb0d8"
       }
     },
 
@@ -21702,6 +22320,7 @@
   // which is exactly the bug the tests page had.
   function buildIndex() {
     var html = "";
+    idxTargets = {};
 
     sections.forEach(function (sec, si) {
       var h2 = sec.querySelector("h2");
@@ -21710,6 +22329,7 @@
       var secBlocks = [].slice.call(sec.querySelectorAll("details.block"));
       var id = "sec-idx-" + si;
       sec.setAttribute("data-idx", id);
+      idxTargets[id] = sec;
 
       html += '<div class="idx-group" data-for="' + id + '">';
       html += '<div class="idx-sec">' + esc(h2.textContent.trim()) +
@@ -21721,6 +22341,7 @@
       secBlocks.forEach(function (b, bi) {
         var bid = id + "-b" + bi;
         b.setAttribute("data-idx", bid);
+        idxTargets[bid] = b;
         var lab = label(b);
         html += '<a data-go="' + bid + '" data-label="' + esc(lab) + '">' +
                 esc(lab) + "</a>";
@@ -21732,8 +22353,30 @@
     panel.innerHTML = html;
   }
 
+  // ★ EACH INDEX ENTRY'S BLOCK COMES FROM A TABLE, NOT A WHOLE-PAGE SEARCH.
+  // `target` is called for every one of ~95 entries on every syncIndex (at
+  // load, after every template change, while searching) and every
+  // syncIndexGates that sees a gate move, and each call used to be an
+  // attribute querySelector over the whole ~1,300-field form. Measured
+  // 2026-10-06 in the jsdom harnesses: 11 of a boot-and-pick's 14 seconds were
+  // this one line (a browser does it in microseconds, but the harnesses boot
+  // this page dozens of times). buildIndex stamps every data-idx itself, so it
+  // fills the table as it stamps; the check below falls back to the old search
+  // if an entry ever stops being the element the form holds under that id.
+  var idxTargets = {};
+
+  function byIdx(id) {
+    var el = idxTargets[id];
+
+    if (el && form.contains(el) && el.getAttribute("data-idx") === id) return el;
+
+    el = form.querySelector('[data-idx="' + id + '"]');
+    if (el) idxTargets[id] = el;
+    return el;
+  }
+
   function target(a) {
-    return form.querySelector('[data-idx="' + a.getAttribute("data-go") + '"]');
+    return byIdx(a.getAttribute("data-go"));
   }
 
   // Why an element cannot be scrolled to: "" = it can.
@@ -21892,7 +22535,7 @@
   window.__syncIndexGates = syncIndexGates;
 
   function jump(id) {
-    var el = form.querySelector('[data-idx="' + id + '"]');
+    var el = byIdx(id);
     if (!el) return;
 
     var why = blockedBy(el);

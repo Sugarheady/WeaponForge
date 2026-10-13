@@ -1,0 +1,36 @@
+{
+  "name": "R19_DroneSentry",
+  "displayName": "SENTRY WING",
+  "description": "Three drones that are always out. The gadget key stows them. They come back from a save on the health you left them with, and there are still only three.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 1,
+    "fireRate": 2
+  },
+  "module": {
+    "color": "ColorPurple"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "mirror": "primary",
+    "damageScale": 0.5,
+    "key": "recall",
+    "radius": 2.6,
+    "spinSpeed": 40,
+    "looseness": 0.3,
+    "aim": "nearest",
+    "rotate": "fire",
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone",
+      "health": 120
+    }
+  }
+}

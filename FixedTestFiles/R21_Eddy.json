@@ -1,0 +1,31 @@
+{
+  "name": "Eddy",
+  "displayName": "EDDY",
+  "description": "Three bubbles turn counter-clockwise into your cursor, easing in.",
+  "template": "Module Weapon White Popper",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "bloom": {
+    "enabled": true,
+    "drift": "spiral",
+    "turns": 2,
+    "direction": "counter",
+    "pace": "even",
+    "ring": "outOfRange"
+  },
+  "weapon": {
+    "damage": { "amount": 10, "damageType": "Resource White" },
+    "cost": 3,
+    "fireRate": 0.6,
+    "projectileRadius": 1,
+    "projectileSpeed": 0.4,
+    "projectileCount": 3,
+    "spread": 40,
+    "projectileSprite": "part_cyrcle_0"
+  },
+  "module": {
+    "icon": "HUD_GridTiles_22",
+    "color": "#9fffd8"
+  }
+}

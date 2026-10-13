@@ -1,0 +1,40 @@
+{
+  "name": "R16_HeatSink",
+  "displayName": "HEAT SINK",
+  "description": "Jams if you miss. Keeps firing if you do not.",
+  "template": "Module Weapon White Popper",
+  "slot": "primary",
+  "target": "enemies",
+  "source": "starter",
+  "weapon": {
+    "damage": {
+      "amount": 1.2,
+      "damageType": "Resource White"
+    },
+    "fireRate": 5,
+    "resourceUsed": "Resource White",
+    "cost": 0.3
+  },
+  "module": {
+    "color": "#ff9a3d",
+    "resourceGain": {
+      "resource": "Resource White",
+      "amount": 12
+    }
+  },
+  "overheat": {
+    "enabled": true,
+    "response": "vent",
+    "max": 100,
+    "perShot": 10,
+    "coolPerSecond": 12,
+    "coolDelay": 0.8,
+    "tintStrength": 1,
+    "hotColor": "#ff3d14"
+  },
+  "onKill": {
+    "enabled": true,
+    "coolHeat": 35,
+    "coolHeatFrom": "any"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Howler",
+  "displayName": "HOWLER",
+  "description": "A laser drone appears by your cursor, snaps to a straight line at the nearest enemy, and fires.",
+  "template": "Module Weapon Caps Laser",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "starterAndLoot",
+  "courier": {
+    "enabled": true,
+    "ring": "held",
+    "entry": "appear",
+    "aim": "enemy",
+    "snap": 90,
+    "windup": 0.4,
+    "beamTime": 0.75,
+    "exit": "recoil"
+  },
+  "weapon": {
+    "fireRate": 1,
+    "cost": 4,
+    "damage": {
+      "amount": 1.5,
+      "damageType": "Resource Caps"
+    }
+  },
+  "module": {
+    "icon": "HUD_GridTiles_26",
+    "color": "#9fe8ff"
+  }
+}

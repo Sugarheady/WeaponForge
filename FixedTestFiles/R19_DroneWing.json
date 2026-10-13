@@ -1,0 +1,36 @@
+{
+  "name": "R19_DroneWing",
+  "displayName": "DRONE WING",
+  "description": "Real drones fly your wing. They can be shot down, and they come back from a save as you left them.",
+  "template": "Module Weapon White Popper",
+  "slot": "gadget1",
+  "source": "starter",
+  "shop": true,
+  "shopPrice": 0,
+  "shopUnlockLevel": 0,
+  "weapon": {
+    "resourceUsed": "Resource White",
+    "cost": 1,
+    "fireRate": 2
+  },
+  "module": {
+    "color": "ColorBlue"
+  },
+  "wingman": {
+    "count": 3,
+    "capPerLevel": 1,
+    "mirror": "primary",
+    "damageScale": 0.6,
+    "key": "deploy",
+    "atCap": "refuse",
+    "radius": 2.6,
+    "spinSpeed": 60,
+    "looseness": 0.3,
+    "aim": "parallel",
+    "rotate": "fire",
+    "body": "drone",
+    "drone": {
+      "minion": "Enemy_Fly Variant Drone"
+    }
+  }
+}

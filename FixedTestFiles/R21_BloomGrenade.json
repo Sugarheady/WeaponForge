@@ -1,0 +1,14 @@
+{
+  "name": "BloomGrenade",
+  "displayName": "BLOOM GRENADE",
+  "description": "A log check: a grenade cannot fly a spiral, so it is thrown in at the centre instead.",
+  "template": "Module Weapon White Derbis",
+  "slot": "secondary",
+  "target": "enemies",
+  "source": "none",
+  "bloom": {
+    "enabled": true,
+    "when": "bullet",
+    "drift": "spiral"
+  }
+}

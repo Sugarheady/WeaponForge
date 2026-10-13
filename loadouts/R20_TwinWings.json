@@ -1,0 +1,8 @@
+{
+  "name": "R20_TwinWings",
+  "displayName": "R20 TWIN WINGS",
+  "description": "Test 267 - the SAME drone gadget in two slots. Two gadgets, two caps.",
+  "primary": "SHOTGUN",
+  "gadget1": "DRONE WING",
+  "gadget3": "DRONE WING"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "R21_Strikers",
+  "displayName": "R21 STRIKERS",
+  "description": "STRIKE WING (wingman orbs) on gadget 1, the stock COMBAT DRONE on gadget 2 and MODE DRONE on gadget 3, with the stock Shotgun - for STRIKER, VENGEANCE and SEEKER.",
+  "primary": "SHOTGUN",
+  "gadget1": "R21_StrikeWing",
+  "gadget2": "Module Active Drone Caps",
+  "gadget3": "R21_ModeDrone"
+}

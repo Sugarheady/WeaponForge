@@ -1,0 +1,8 @@
+{
+  "name": "R21_Interceptors",
+  "displayName": "R21 INTERCEPTORS",
+  "description": "INTERCEPTOR WING on gadget 1 (wingman drones that only guard) and FAST INTERCEPTOR on gadget 2 (the same at interceptSpeed 400), with the stock Shotgun. Y + a gadget's button steps it through INTERCEPTOR, INTERCEPT FRONT and INTERCEPT REAR - no Cycle change needed.",
+  "primary": "SHOTGUN",
+  "gadget1": "R21_Interceptor",
+  "gadget2": "R21_FastInterceptor"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "R21_CourierRelay",
+  "displayName": "R21 COURIER RELAY",
+  "description": "COURIER RELAY (drones fire the Shotgun) with WINGMEN on a gadget: the companions launch drones too.",
+  "primary": "COURIER RELAY",
+  "gadget1": "WINGMEN"
+}
