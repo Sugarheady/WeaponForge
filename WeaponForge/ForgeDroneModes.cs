@@ -61,6 +61,10 @@ namespace WeaponForge
         public static float OrbitSpin = 60f;
         public static bool InterceptorNoDamage;
 
+        // [Drone modes] ForgetTargetOnChange (his R21 part 1 note): a mode
+        // change drops a drone's target and grudges (ForgeDroneBrain.Switch).
+        public static bool ForgetTargetOnChange = true;
+
         public static Shape Defaults = new Shape();
 
         // The feature is on while the mode key has something bound. "Key =
@@ -119,8 +123,10 @@ namespace WeaponForge
 
             // INTERCEPTOR needs the enemy shots, which no physics query can
             // see (their colliders ship disabled) - the tracker registers them
-            // at fire time, and only while something asks.
-            if (Cycle.Contains(Mode.Interceptor))
+            // at fire time, and only while something asks. Any of the three
+            // shot-guarding modes asks (a file that joins one asks too, in
+            // ReadShape).
+            if (Cycle.Exists(ForgeDroneModeRules.IsGuard))
                 ForgeProjectileTracker.Enabled = true;
 
             var words = new List<string>();
@@ -138,7 +144,9 @@ namespace WeaponForge
                       ". Formation: " + (Locked ? "Locked" : "Loose") + ", seek range " +
                       SeekRange.ToString("0.#", CultureInfo.InvariantCulture) + ", sentry radius " +
                       SentryRadius.ToString("0.#", CultureInfo.InvariantCulture) + ", recall at " +
-                      SentryRecall.ToString("0.#", CultureInfo.InvariantCulture) + "." +
+                      SentryRecall.ToString("0.#", CultureInfo.InvariantCulture) + ", intercept speed " +
+                      Defaults.interceptSpeed.ToString("0", CultureInfo.InvariantCulture) + "%, strike range " +
+                      Defaults.strikeRange.ToString("0.#", CultureInfo.InvariantCulture) + "." +
                       (InterceptorNoDamage ? " INTERCEPTOR TEST OPTION ON: interceptors take no damage." : "")
                     : "off - [Drone modes] Key and PadButton are both none, so the gadget buttons " +
                       "work as they always did."));
@@ -160,7 +168,8 @@ namespace WeaponForge
         private static readonly string[] ShapeKeys =
         {
             "join", "orbitRadius", "dragSpacing", "protectorDistance", "rearGuardDistance",
-            "spacing", "interceptRadius", "seekRange", "sentryRadius"
+            "spacing", "interceptRadius", "interceptSpeed", "strikeRange", "strikeDistance",
+            "seekRange", "sentryRadius"
         };
 
         // A wingman or drone file's `modes` block (concept 8): which modes this
@@ -216,6 +225,13 @@ namespace WeaponForge
             s.rearGuardDistance = Mathf.Clamp((float?)o["rearGuardDistance"] ?? s.rearGuardDistance, 1f, 12f);
             s.spacing = Mathf.Clamp((float?)o["spacing"] ?? s.spacing, 0.5f, 5f);
             s.interceptRadius = Mathf.Clamp((float?)o["interceptRadius"] ?? s.interceptRadius, 1.5f, 8f);
+            s.interceptSpeed = Mathf.Clamp((float?)o["interceptSpeed"] ?? s.interceptSpeed,
+                ForgeDroneModeRules.InterceptSpeedMin, ForgeDroneModeRules.InterceptSpeedMax);
+            s.interceptSpeedSet = o["interceptSpeed"] != null;
+            s.strikeRange = Mathf.Clamp((float?)o["strikeRange"] ?? s.strikeRange,
+                ForgeDroneModeRules.StrikeRangeMin, ForgeDroneModeRules.StrikeRangeMax);
+            s.strikeDistance = Mathf.Clamp((float?)o["strikeDistance"] ?? s.strikeDistance,
+                ForgeDroneModeRules.StrikeDistanceMin, ForgeDroneModeRules.StrikeDistanceMax);
 
             float? seek = (float?)o["seekRange"];
             float? sentry = (float?)o["sentryRadius"];
@@ -262,14 +278,66 @@ namespace WeaponForge
                 ", protector " + s.protectorDistance.ToString("0.##", CultureInfo.InvariantCulture) +
                 ", rear guard " + s.rearGuardDistance.ToString("0.##", CultureInfo.InvariantCulture) +
                 ", row gap " + s.spacing.ToString("0.##", CultureInfo.InvariantCulture) +
+                (s.join == null || s.join.Overlaps(GuardModes)
+                    ? ", intercept speed " + s.interceptSpeed.ToString("0", CultureInfo.InvariantCulture) + "%" : "") +
+                (s.join == null || s.join.Overlaps(StrikeModes)
+                    ? ", strike range " + s.strikeRange.ToString("0.#", CultureInfo.InvariantCulture) +
+                      " (" + s.strikeDistance.ToString("0.#", CultureInfo.InvariantCulture) + " from the enemy)" : "") +
                 (drone && s.seekRange > 0f
                     ? ", seek " + s.seekRange.ToString("0.#", CultureInfo.InvariantCulture) : "") +
                 (drone && s.sentryRadius > 0f
                     ? ", sentry radius " + s.sentryRadius.ToString("0.#", CultureInfo.InvariantCulture) : "") +
                 ".");
 
+            // ★ A MODE A FILE JOINS THAT THE CYCLE LEAVES OUT (R21 part 2,
+            // 315: "i couldnt get interceptor to show up with my mode drone").
+            // Part 2 warned that the key never reached it. Part 3 (his ask:
+            // "it gets added to the drone modes list for that gadget ... not
+            // for the global y button but for the gadget cycle (like Y+1
+            // key)") made it reachable: the gadget's OWN steps add every mode
+            // its file joins (ForgeDroneModeRules.SlotCycle), and Y alone still
+            // reads the Cycle. So this is information now, not a warning.
+            if (s.join != null)
+            {
+                var own = new List<string>();
+
+                foreach (Mode m in ForgeDroneModeRules.SlotCycle(null, s.join))
+                    if (!Cycle.Contains(m))
+                        own.Add(ForgeDroneModeRules.Word(m));
+
+                if (own.Count > 0)
+                {
+                    // The line to paste: the default cycle with this file's
+                    // own modes added where they belong.
+                    var example = new List<string>();
+
+                    foreach (Mode m in ForgeDroneModeRules.SlotCycle(ForgeDroneModeRules.DefaultCycle, s.join))
+                        example.Add(ForgeDroneModeRules.Token(m));
+
+                    Log.LogInfo(
+                        fileName + ": modes - joins " + string.Join(", ", own.ToArray()) +
+                        ", which " + (own.Count == 1 ? "is" : "are") + " not in [Drone modes] Cycle " +
+                        "(BepInEx\\config\\com.sugarheady.weaponforge.cfg) - so Y alone never steps there, " +
+                        "but Y + this gadget's own button does: " + (own.Count == 1 ? "it is" : "they are") +
+                        " added to THIS gadget's steps. To have Y alone step every gadget there too, add " +
+                        (own.Count == 1 ? "it" : "them") + " to Cycle - for example: Cycle = " +
+                        string.Join(", ", example.ToArray()) + " - then restart.");
+                }
+
+                // The shot-guarding modes need the enemy-shot tracker, which
+                // Configure only switched on for the Cycle.
+                if (s.join.Overlaps(GuardModes))
+                    ForgeProjectileTracker.Enabled = true;
+            }
+
             return s;
         }
+
+        private static readonly HashSet<Mode> GuardModes =
+            new HashSet<Mode> { Mode.Interceptor, Mode.InterceptFront, Mode.InterceptRear };
+
+        private static readonly HashSet<Mode> StrikeModes =
+            new HashSet<Mode> { Mode.Striker, Mode.Vengeance };
 
         // ------------------------------------------------------------------
         // The run's state
@@ -317,6 +385,9 @@ namespace WeaponForge
             public ModuleGridOwner gridOwner;
 
             public string alertKey;
+
+            // The census, 2 s after a press (R21 part 2, 310).
+            public float censusAt = -1f;
         }
 
         private static readonly Dictionary<int, Ship> _ships = new Dictionary<int, Ship>();
@@ -496,10 +567,17 @@ namespace WeaponForge
                 slot.kind, slot.shape != null ? slot.shape.join : null, m, InterceptorNoDamage);
         }
 
+        // The modes Y + this gadget's button steps through: the Cycle, plus
+        // whatever its file joins that the Cycle leaves out (R21 part 3).
+        private static List<Mode> StepsOf(Slot slot)
+        {
+            return ForgeDroneModeRules.SlotCycle(Cycle, slot.shape != null ? slot.shape.join : null);
+        }
+
         // ★ THE MODE A SLOT'S COMPANIONS ACT ON RIGHT NOW. A slot holds the
         // mode it was put in; it ACTS on it only if its companions can do it
         // (a wingman slot on SEEKER keeps its normal behaviour - 12.1 gaps)
-        // and the mode is still in the cycle (a .cfg changed under a save).
+        // and the mode is still one of ITS steps (a .cfg changed under a save).
         public static Mode Effective(Unit unit, int slot)
         {
             // Key = none and PadButton = none switch the whole feature off -
@@ -516,7 +594,7 @@ namespace WeaponForge
 
             Slot sl = s.slots[slot - 1];
 
-            if (sl.mode == Mode.Base || !Cycle.Contains(sl.mode) || !Can(sl, sl.mode))
+            if (sl.mode == Mode.Base || !StepsOf(sl).Contains(sl.mode) || !Can(sl, sl.mode))
                 return Mode.Base;
 
             return sl.mode;
@@ -605,7 +683,7 @@ namespace WeaponForge
                 return;
             }
 
-            Mode next = ForgeDroneModeRules.NextForSlot(Cycle, slot.mode, m => Can(slot, m));
+            Mode next = ForgeDroneModeRules.NextForSlot(StepsOf(slot), slot.mode, m => Can(slot, m));
 
             Enter(s, n - 1, next);
 
@@ -699,6 +777,71 @@ namespace WeaponForge
             }
 
             Log.LogInfo(sb.ToString());
+
+            // Two seconds on, every drone is asked what it did with that.
+            s.censusAt = Time.time + 2f;
+        }
+
+        // ★ THE CENSUS (R21 part 2, 310 - "it doesn't seem to change the basic
+        // drone behavior at all", and still no "2 s into" line from any drone).
+        // Every minion of yours, by the game's own list, with the gadget it
+        // belongs to and either what its brain is doing or why it has none.
+        // Read from here - the ticker the press lines come from - so it is
+        // printed whether or not any brain ever runs. One line a press.
+        private static void Census(Ship s)
+        {
+            try
+            {
+                if (s.unit == null || s.unit.ComponentData == null)
+                    return;
+
+                IReadOnlyCollection<Unit.Data> minions = s.unit.ComponentData.Minions;
+                EntityGameObjectManager m;
+                ServiceLocator.TryGet<EntityGameObjectManager>(out m);
+
+                var sb = new StringBuilder();
+                sb.Append("drone modes: CENSUS 2 s after the press - ");
+
+                int count = 0;
+
+                if (minions != null)
+                {
+                    foreach (Unit.Data md in minions)
+                    {
+                        if (md == null || md.entity == null)
+                            continue;
+
+                        count++;
+
+                        int slot = SlotOf(md.ConnectionToOwner);
+                        SavableEntity se = null;
+                        bool live = m != null && m.TryGetSavableEntity(md.entity.instanceId, out se) && se != null;
+                        Unit unit = live ? se.GetComponent<Unit>() : null;
+                        ForgeDroneBrain brain = live ? se.GetComponent<ForgeDroneBrain>() : null;
+
+                        sb.Append(slot > 0 ? "gadget " + slot : "no gadget").Append(" '")
+                          .Append(md.entity.entityId).Append("' #").Append(md.entity.instanceId).Append(": ");
+
+                        if (!live)
+                            sb.Append("NOT IN THE SCENE (no object for its saved data)");
+                        else if (brain != null)
+                            sb.Append(brain.Describe(Effective(s.unit, slot)));
+                        else
+                            sb.Append("no brain - ").Append(ForgeDroneBrain.WhyNot(unit));
+
+                        sb.Append("; ");
+                    }
+                }
+
+                if (count == 0)
+                    sb.Append("you have no drones or companions out.");
+
+                Log.LogInfo(sb.ToString());
+            }
+            catch (Exception e)
+            {
+                Log.LogInfo("drone modes: the census could not be taken (" + e.GetType().Name + ": " + e.Message + ").");
+            }
         }
 
         private static string KindWord(Kind k)
@@ -811,6 +954,12 @@ namespace WeaponForge
 
             s.last = here;
             s.hasLast = true;
+
+            if (s.censusAt > 0f && Time.time >= s.censusAt)
+            {
+                s.censusAt = -1f;
+                Census(s);
+            }
 
             // DRAG follows the path you FLEW, like a tail.
             P p = new P(here.x, here.y);
@@ -958,10 +1107,22 @@ namespace WeaponForge
         private sealed class Formation
         {
             public readonly List<Member> members = new List<Member>();
-            public int[] taken;                           // INTERCEPTOR
+            public int[] taken;                           // INTERCEPTOR & co.
             public readonly List<ForgeDroneModeRules.Incoming> shots =
                 new List<ForgeDroneModeRules.Incoming>();
+
+            // STRIKER / VENGEANCE: the enemies (rescanned every StrikeScan
+            // seconds - they are units, so a scan per frame per ship is waste),
+            // where each is this frame, and who is on which.
+            public readonly List<Unit> targets = new List<Unit>();
+            public readonly List<P> targetAt = new List<P>();
+            public float scanAt;
+            public int[] on;
+            public int[] rank;
+            public int[] count;
         }
+
+        private const float StrikeScan = 0.25f;
 
         // ship id -> mode -> its formation, rebuilt once a frame on demand.
         private static readonly Dictionary<int, Dictionary<Mode, Formation>> _roster =
@@ -987,6 +1148,8 @@ namespace WeaponForge
                 f.members.Clear();
                 f.shots.Clear();
                 f.taken = null;
+                f.targetAt.Clear();
+                f.on = f.rank = f.count = null;
             }
 
             // Slot order, wingmen before AI drones within a slot, AI drones by
@@ -996,7 +1159,7 @@ namespace WeaponForge
             {
                 Mode m = Effective(s.unit, n);
 
-                if (!ForgeDroneModeRules.IsFormation(m) && m != Mode.Interceptor)
+                if (!ForgeDroneModeRules.IsPlaced(m))
                     continue;
 
                 Formation f;
@@ -1014,9 +1177,10 @@ namespace WeaponForge
                 {
                     for (int w = 0; w < c.WingCount; w++)
                     {
-                        // INTERCEPTOR without the test option: an orb has no
-                        // hitbox and cannot block, so it keeps its own ring.
-                        if (m == Mode.Interceptor && !c.WingHasBody(w) && !InterceptorNoDamage)
+                        // INTERCEPTOR (any of the three) without the test
+                        // option: an orb has no hitbox and cannot block, so it
+                        // keeps its own ring.
+                        if (ForgeDroneModeRules.IsGuard(m) && !c.WingHasBody(w) && !InterceptorNoDamage)
                             continue;
 
                         f.members.Add(new Member
@@ -1028,10 +1192,16 @@ namespace WeaponForge
                     f.members.Add(new Member { who = b, sub = 0, shape = shape, pos = b.Position }));
             }
 
-            Formation guard;
+            foreach (var pair in r)
+            {
+                if (pair.Value.members.Count == 0)
+                    continue;
 
-            if (r.TryGetValue(Mode.Interceptor, out guard) && guard.members.Count > 0)
-                Intercept(s, guard);
+                if (ForgeDroneModeRules.IsGuard(pair.Key))
+                    Intercept(s, pair.Value);
+                else if (ForgeDroneModeRules.IsStrike(pair.Key))
+                    Strike(s, pair.Value, pair.Key == Mode.Vengeance);
+            }
 
             return r;
         }
@@ -1095,6 +1265,8 @@ namespace WeaponForge
                     break;
 
                 case Mode.Interceptor:
+                case Mode.InterceptFront:
+                case Mode.InterceptRear:
                     if (f.taken != null && i < f.taken.Length && f.taken[i] >= 0 &&
                         f.taken[i] < f.shots.Count)
                     {
@@ -1102,7 +1274,20 @@ namespace WeaponForge
                     }
                     else
                     {
-                        at = ForgeDroneModeRules.GuardIdle(ship, aim, i, count, sh.interceptRadius);
+                        at = ForgeDroneModeRules.GuardRest(m, ship, aim, i, count, sh);
+                    }
+                    break;
+
+                case Mode.Striker:
+                case Mode.Vengeance:
+                    if (f.on != null && i < f.on.Length && f.on[i] >= 0 && f.on[i] < f.targetAt.Count)
+                    {
+                        at = ForgeDroneModeRules.StrikeSpot(
+                            f.targetAt[f.on[i]], ship, f.rank[i], f.count[i], sh.strikeDistance);
+                    }
+                    else
+                    {
+                        at = ForgeDroneModeRules.StrikeRest(ship, aim, i, count, sh);
                     }
                     break;
 
@@ -1112,6 +1297,53 @@ namespace WeaponForge
 
             spot = new Vector2(at.x, at.y);
             return true;
+        }
+
+        // STRIKER / VENGEANCE: the enemy companion (who, sub) is on this frame,
+        // for the wingman's aim and an AI drone's target. False with nothing
+        // to dive at.
+        public static bool StrikeTargetFor(Unit unit, Mode m, object who, int sub, out Unit target)
+        {
+            target = null;
+
+            if (!ForgeDroneModeRules.IsStrike(m))
+                return false;
+
+            Ship s = Get(unit, false);
+            Formation f;
+
+            if (s == null || !Roster(s).TryGetValue(m, out f) || f.on == null)
+                return false;
+
+            for (int k = 0; k < f.members.Count && k < f.on.Length; k++)
+            {
+                if (!ReferenceEquals(f.members[k].who, who) || f.members[k].sub != sub)
+                    continue;
+
+                int t = f.on[k];
+
+                if (t < 0 || t >= f.targets.Count || f.targets[t] == null)
+                    return false;
+
+                target = f.targets[t];
+                return true;
+            }
+
+            return false;
+        }
+
+        // How quickly the companions of slot `slot` snap in a shot-guarding
+        // mode (the interceptSpeed slider).
+        public static ForgeDroneModeRules.Tuning TuningOf(Unit unit, int slot)
+        {
+            return ForgeDroneModeRules.InterceptTuning(SpeedOf(ShapeOf(unit, slot)));
+        }
+
+        // A file's own interceptSpeed if it named one, else the live default
+        // (the .cfg's, which the settings tab's slider moves mid-run).
+        public static float SpeedOf(Shape sh)
+        {
+            return sh != null && sh.interceptSpeedSet ? sh.interceptSpeed : Defaults.interceptSpeed;
         }
 
         // ------------------------------------------------------------------
@@ -1135,7 +1367,13 @@ namespace WeaponForge
                 return;
 
             P ship = new P(here.x, here.y);
-            float guard = (f.members[0].shape ?? Defaults).interceptRadius;
+            Shape first = f.members[0].shape ?? Defaults;
+            float guard = first.interceptRadius;
+
+            // The interceptSpeed slider (R21 part 3): how far ahead a shot is
+            // noticed, how wide a line counts as "at you", how fast an
+            // interceptor is assumed to get there.
+            ForgeDroneModeRules.Tuning tune = ForgeDroneModeRules.InterceptTuning(SpeedOf(first));
 
             foreach (Component c in _near)
             {
@@ -1162,7 +1400,7 @@ namespace WeaponForge
 
                 // Only shots heading AT you (answer C: "only shots heading at
                 // you, nearest first, one drone per shot").
-                if (!ForgeDroneModeRules.Threat(ship, 2.2f, from, vel, 2.5f, out tc))
+                if (!ForgeDroneModeRules.Threat(ship, tune.corridor, from, vel, tune.horizon, out tc))
                     continue;
 
                 // ★ AN EXPLOSIVE SHOT IS MET OUTSIDE ITS OWN BLAST (4.1, 11):
@@ -1188,7 +1426,154 @@ namespace WeaponForge
             foreach (Member m in f.members)
                 mine.Add(new P(m.pos.x, m.pos.y));
 
-            f.taken = ForgeDroneModeRules.Assign(mine, f.shots, InterceptReach);
+            f.taken = ForgeDroneModeRules.Assign(mine, f.shots, InterceptReach * tune.reachScale);
+        }
+
+        // ------------------------------------------------------------------
+        // STRIKER / VENGEANCE - his shoot-em-up idea (R21 part 3, 315)
+        // ------------------------------------------------------------------
+        //
+        // "a mode for wingman to snap to nearby enemies ... with them super
+        // close and sort of locking on ... firing point blank." Two modes, his
+        // names: STRIKER for the nearest enemies, VENGEANCE for the enemies
+        // shooting at you. The same code with a different list - only WHICH
+        // enemies differs.
+        private static void Strike(Ship s, Formation f, bool vengeance)
+        {
+            Shape sh = f.members[0].shape ?? Defaults;
+            Vector2 here = s.unit.transform.position;
+
+            if (Time.time >= f.scanAt)
+            {
+                f.scanAt = Time.time + StrikeScan;
+                Enemies(s.unit, here, sh.strikeRange, vengeance, f.targets);
+            }
+
+            // Every frame: the dead and the ones that left the range drop out
+            // (a little beyond it, so one on the edge does not flicker), and
+            // the rest are read where they are now.
+            float keep = sh.strikeRange + 4f;
+
+            for (int t = f.targets.Count - 1; t >= 0; t--)
+            {
+                Unit u = f.targets[t];
+
+                if (!Alive(u) || ((Vector2)u.transform.position - here).sqrMagnitude > keep * keep)
+                    f.targets.RemoveAt(t);
+            }
+
+            if (f.targets.Count == 0)
+                return;
+
+            foreach (Unit u in f.targets)
+            {
+                Vector2 p = u.transform.position;
+                f.targetAt.Add(new P(p.x, p.y));
+            }
+
+            var mine = new List<P>();
+
+            foreach (Member m in f.members)
+                mine.Add(new P(m.pos.x, m.pos.y));
+
+            int[] rank, count;
+            f.on = ForgeDroneModeRules.AssignStrike(mine, f.targetAt, out rank, out count);
+            f.rank = rank;
+            f.count = count;
+        }
+
+        // ------------------------------------------------------------------
+        // Enemies - for STRIKER / VENGEANCE and for SEEKER's hunt
+        // ------------------------------------------------------------------
+
+        private static readonly Collider2D[] _hits = new Collider2D[96];
+        private static readonly HashSet<Unit> _seen = new HashSet<Unit>();
+        private static ContactFilter2D _enemyFilter;
+        private static bool _enemyFilterReady;
+
+        // Every unit is on Entities - except your ship and your own drones,
+        // which are on Player and so are never in this list.
+        private static ContactFilter2D EnemyFilter
+        {
+            get
+            {
+                if (!_enemyFilterReady)
+                {
+                    _enemyFilterReady = true;
+                    _enemyFilter = new ContactFilter2D();
+                    _enemyFilter.useTriggers = true;
+
+                    int layer = LayerMask.NameToLayer("Entities");
+                    _enemyFilter.SetLayerMask(1 << (layer >= 0 ? layer : 7));
+                }
+
+                return _enemyFilter;
+            }
+        }
+
+        // A unit that is still in the fight.
+        public static bool Alive(Unit u)
+        {
+            if (u == null || !u.isActiveAndEnabled)
+                return false;
+
+            try
+            {
+                DamagableResource dr = u.GetComponentInChildren<DamagableResource>();
+                return dr == null || !dr.IsDead;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        // Every live ENEMY of `ship` within `range` of `centre`, nearest to the
+        // centre first. An enemy is a unit with an AI (a crate is the same
+        // faction as the Cross enemies and has none - the `objectsToo`
+        // discriminator) that the ship's faction calls an enemy. `vengeance`:
+        // only the ones whose AI is on YOUR ship and can see it - the ones
+        // shooting at you.
+        public static void Enemies(Unit ship, Vector2 centre, float range, bool vengeance, List<Unit> into)
+        {
+            into.Clear();
+
+            if (ship == null)
+                return;
+
+            _seen.Clear();
+
+            try
+            {
+                int n = Physics2D.OverlapCircle(centre, range, EnemyFilter, _hits);
+
+                for (int i = 0; i < n; i++)
+                {
+                    Collider2D c = _hits[i];
+                    Unit u = c != null ? c.GetComponentInParent<Unit>() : null;
+
+                    if (u == null || u == ship || !_seen.Add(u) || !Alive(u))
+                        continue;
+
+                    AIAgent agent = u.GetComponentInChildren<AIAgent>();
+
+                    if (agent == null || !ship.IsEnemiesWith(u))
+                        continue;
+
+                    if (vengeance && (agent.Target != ship || !agent.IsTargetVisible))
+                        continue;
+
+                    into.Add(u);
+                }
+            }
+            catch (Exception)
+            {
+                // A scan that fails finds nothing this time.
+            }
+
+            into.Sort((a, b) =>
+                ((Vector2)a.transform.position - centre).sqrMagnitude.CompareTo(
+                    ((Vector2)b.transform.position - centre).sqrMagnitude));
         }
 
         // How far a shot's explosion reaches, or 0 if it does not explode.

@@ -502,8 +502,18 @@ namespace WeaponForge
                     // that the weapon is spinning up and has not chosen a
                     // target yet; curving it would say the beam is already
                     // tracking when it is not.
+                    //
+                    // ★ A COURIER LAUNCHER NEVER DRAWS ITS OWN (R21 part 4, his
+                    // MegaLazor: "just fires the beam from the player"). The
+                    // courier's prefix skips the launcher's OnBarrelMoved, but a
+                    // postfix runs whatever a prefix skipped - and the courier
+                    // takes the launcher's warm-up to 0, so this saw a pulled,
+                    // warmed-up trigger and curved a beam out of your ship. The
+                    // drones' beams are built from this same file, so the curve
+                    // is theirs.
                     bool firing =
-                        __instance.IsTriggerPulled && __instance.IsWarmedUp;
+                        __instance.IsTriggerPulled && __instance.IsWarmedUp &&
+                        !ForgeCourier.IsLauncher(__instance);
 
                     if (!firing)
                     {

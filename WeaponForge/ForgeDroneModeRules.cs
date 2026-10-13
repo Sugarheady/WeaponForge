@@ -27,7 +27,14 @@ namespace WeaponForge
             RearGuard,
             Seeker,
             Sentry,
-            Interceptor
+            Interceptor,
+
+            // R21 part 3 (his answers, 2026-10-09). Added at the END: the
+            // save file writes a mode by its NAME, so nothing saved moves.
+            InterceptFront,   // INTERCEPTOR resting in the PROTECTOR row
+            InterceptRear,    // INTERCEPTOR resting in the REAR GUARD row
+            Striker,          // dive at the nearest enemies, fire point blank
+            Vengeance         // dive at the enemies shooting at you
         }
 
         // What a gadget slot holds, as far as modes care. Two kinds of
@@ -44,15 +51,24 @@ namespace WeaponForge
 
         // His cycle (answer 3, 2026-09-29) plus SENTRY (answer B).
         // INTERCEPTOR joins after PROTECTOR once it has passed its tests
-        // (answer C); until then it is in the cycle only if he adds it.
+        // (answer C) - and it did, R21 part 3 test 315: "Pass absolute pass!".
+        // The four modes of R21 part 3 (INTERCEPT FRONT / REAR, STRIKER,
+        // VENGEANCE) join the same way, once they pass; until then a file
+        // that joins one gets it on its OWN gadget's steps (SlotCycle), and
+        // the Cycle line can name them.
         public static readonly Mode[] DefaultCycle =
         {
-            Mode.Orbit, Mode.Drag, Mode.Protector, Mode.RearGuard,
+            Mode.Orbit, Mode.Drag, Mode.Protector, Mode.Interceptor, Mode.RearGuard,
             Mode.Seeker, Mode.Sentry
         };
 
         public const string DefaultCycleText =
-            "Orbit, Drag, Protector, RearGuard, Seeker, Sentry";
+            "Orbit, Drag, Protector, Interceptor, RearGuard, Seeker, Sentry";
+
+        // Every mode's name, for the messages that list them.
+        public const string AllModesText =
+            "Orbit, Drag, Protector, RearGuard, Seeker, Sentry, Interceptor, InterceptFront, " +
+            "InterceptRear, Striker and Vengeance";
 
         // The word on the alert: "DRONES: ORBIT", "GADGET 2: NORMAL".
         public static string Word(Mode m)
@@ -66,6 +82,10 @@ namespace WeaponForge
                 case Mode.Seeker: return "SEEKER";
                 case Mode.Sentry: return "SENTRY";
                 case Mode.Interceptor: return "INTERCEPTOR";
+                case Mode.InterceptFront: return "INTERCEPT FRONT";
+                case Mode.InterceptRear: return "INTERCEPT REAR";
+                case Mode.Striker: return "STRIKER";
+                case Mode.Vengeance: return "VENGEANCE";
                 default: return "NORMAL";
             }
         }
@@ -130,6 +150,26 @@ namespace WeaponForge
                 case "intercept":
                     mode = Mode.Interceptor;
                     return true;
+                case "interceptfront":
+                case "interceptorfront":
+                case "frontintercept":
+                    mode = Mode.InterceptFront;
+                    return true;
+                case "interceptrear":
+                case "interceptorrear":
+                case "rearintercept":
+                case "interceptback":
+                    mode = Mode.InterceptRear;
+                    return true;
+                case "striker":
+                case "strike":
+                    mode = Mode.Striker;
+                    return true;
+                case "vengeance":
+                case "revenge":
+                case "avenger":
+                    mode = Mode.Vengeance;
+                    return true;
             }
 
             return false;
@@ -169,7 +209,7 @@ namespace WeaponForge
                 {
                     if (problems != null)
                         problems.Add("Cycle: '" + part + "' is not a mode - left out. The modes are " +
-                                     "Orbit, Drag, Protector, RearGuard, Seeker, Sentry and Interceptor.");
+                                     AllModesText + ".");
                     continue;
                 }
 
@@ -250,7 +290,10 @@ namespace WeaponForge
         // SEEKER and SENTRY are AI-drone only in the first build (a wingman
         // ring is fixed to the ship); INTERCEPTOR needs a body to block with,
         // so wingman ORBS take part only with the no-damage test option, where
-        // an orb deletes the shots it meets.
+        // an orb deletes the shots it meets. INTERCEPT FRONT / REAR are
+        // INTERCEPTOR resting in a row, so the same rule. STRIKER and
+        // VENGEANCE (R21 part 3) are for every companion: an orb or a body
+        // dives in and fires point blank, an AI drone is flown in and fights.
         public static bool Supports(Kind kind, Mode mode, bool orbsIntercept)
         {
             if (kind == Kind.None)
@@ -263,6 +306,8 @@ namespace WeaponForge
                 case Mode.Drag:
                 case Mode.Protector:
                 case Mode.RearGuard:
+                case Mode.Striker:
+                case Mode.Vengeance:
                     return true;
 
                 case Mode.Seeker:
@@ -270,6 +315,8 @@ namespace WeaponForge
                     return kind == Kind.AiDrone;
 
                 case Mode.Interceptor:
+                case Mode.InterceptFront:
+                case Mode.InterceptRear:
                     return kind == Kind.AiDrone || kind == Kind.WingBodies ||
                            (kind == Kind.WingOrbs && orbsIntercept);
             }
@@ -294,6 +341,52 @@ namespace WeaponForge
         {
             return m == Mode.Orbit || m == Mode.Drag || m == Mode.Protector ||
                    m == Mode.RearGuard;
+        }
+
+        // The three that go for enemy SHOTS (their rest shape differs).
+        public static bool IsGuard(Mode m)
+        {
+            return m == Mode.Interceptor || m == Mode.InterceptFront || m == Mode.InterceptRear;
+        }
+
+        // The two that go for enemy UNITS.
+        public static bool IsStrike(Mode m)
+        {
+            return m == Mode.Striker || m == Mode.Vengeance;
+        }
+
+        // Every mode whose companions are PUT somewhere by the formation
+        // roster (as opposed to SEEKER and SENTRY, which steer an AI drone
+        // round its own AI).
+        public static bool IsPlaced(Mode m)
+        {
+            return IsFormation(m) || IsGuard(m) || IsStrike(m);
+        }
+
+        // ★ HIS R21 PART 3 ASK (315): "if the drone or wingman weapon.json
+        // that has modes.join with interceptor ... it gets added to the drone
+        // modes list for that gadget? Maybe not for the global y button but
+        // for the gadget cycle (like Y+1 key)." A gadget's OWN steps are the
+        // Cycle, then any mode its file joins that the Cycle leaves out, in
+        // the order the modes are listed here. The shared key (Y alone) still
+        // reads the Cycle only.
+        public static List<Mode> SlotCycle(IList<Mode> cycle, HashSet<Mode> join)
+        {
+            var list = new List<Mode>();
+
+            if (cycle != null)
+                list.AddRange(cycle);
+
+            if (join == null)
+                return list;
+
+            foreach (Mode m in Enum.GetValues(typeof(Mode)))
+            {
+                if (m != Mode.Base && join.Contains(m) && !list.Contains(m))
+                    list.Add(m);
+            }
+
+            return list;
         }
 
         // ------------------------------------------------------------------
@@ -510,6 +603,23 @@ namespace WeaponForge
             public float spacing = 1.3f;
             public float interceptRadius = 3f;
 
+            // R21 part 3 (his 315 ask: "can we somehow bump up the rate of how
+            // quickly they snap ... what if i wanted a extreme version of
+            // this? Can you make a slider for that?"). A percent: 100 is how
+            // INTERCEPTOR has always snapped, 400 the extreme. See
+            // InterceptTuning for what it turns up.
+            public float interceptSpeed = 100f;
+
+            // True when a FILE named its own interceptSpeed. Otherwise the
+            // gadget follows the .cfg's (and the settings tab's) live value,
+            // not the copy it took when the file was read.
+            public bool interceptSpeedSet;
+
+            // STRIKER / VENGEANCE: how far from YOU an enemy may be to be
+            // dived at, and how close a companion sits to the one it is on.
+            public float strikeRange = 20f;
+            public float strikeDistance = 2.5f;
+
             // Drone files only (wingmen have neither mode). <= 0 = the .cfg's.
             public float seekRange = -1f;
             public float sentryRadius = -1f;
@@ -527,12 +637,24 @@ namespace WeaponForge
                     rearGuardDistance = rearGuardDistance,
                     spacing = spacing,
                     interceptRadius = interceptRadius,
+                    interceptSpeed = interceptSpeed,
+                    interceptSpeedSet = interceptSpeedSet,
+                    strikeRange = strikeRange,
+                    strikeDistance = strikeDistance,
                     seekRange = seekRange,
                     sentryRadius = sentryRadius,
                     join = join == null ? null : new HashSet<Mode>(join)
                 };
             }
         }
+
+        // The ranges the .cfg and a file's `modes` block are clamped to.
+        public const float InterceptSpeedMin = 50f;
+        public const float InterceptSpeedMax = 400f;
+        public const float StrikeRangeMin = 6f;
+        public const float StrikeRangeMax = 40f;
+        public const float StrikeDistanceMin = 1f;
+        public const float StrikeDistanceMax = 8f;
 
         // Companions closer than this round a ring are a clump, so a crowded
         // ring widens to fit (12.2 fill): three slots of boosted drones on one
@@ -635,9 +757,69 @@ namespace WeaponForge
             return ship + new P((float)Math.Cos(a), (float)Math.Sin(a)) * r;
         }
 
+        // Where an interceptor waits for a shot, by mode: INTERCEPTOR on its
+        // still ring, INTERCEPT FRONT in the PROTECTOR row, INTERCEPT REAR in
+        // the REAR GUARD row (his "Two modes" answer, R21 part 3) - each with
+        // that row's own distance and spacing.
+        public static P GuardRest(Mode m, P ship, P aim, int i, int n, Shape sh)
+        {
+            if (sh == null)
+                sh = new Shape();
+
+            switch (m)
+            {
+                case Mode.InterceptFront:
+                    return Screen(ship, aim, i, n, sh.protectorDistance, sh.spacing);
+
+                case Mode.InterceptRear:
+                    return Screen(ship, aim * -1f, i, n, sh.rearGuardDistance,
+                                  sh.spacing * RearGuardWiden);
+
+                default:
+                    return GuardIdle(ship, aim, i, n, sh.interceptRadius);
+            }
+        }
+
         // ------------------------------------------------------------------
         // INTERCEPTOR - which shots, and where to meet them
         // ------------------------------------------------------------------
+
+        // ★ WHAT "HOW QUICKLY THEY SNAP" IS MADE OF (his R21 part 3 question:
+        // "What determines how frequently they snap to projectiles?"). They
+        // re-decide EVERY frame - there is no rate. What decides how often a
+        // shot gets blocked is four numbers, and the slider scales all four:
+        //
+        //   horizon   how far ahead a shot is noticed (2.5 s at 100%)
+        //   corridor  how close to you its line must pass (2.2 units) - wider
+        //             takes near misses too
+        //   reach     how fast an interceptor is assumed to get there (it is
+        //             sent only to shots it can reach in time)
+        //   ease      how long a wingman takes to settle on its spot (0.1 s)
+        //
+        // Square roots on the first two, so 400% is twice the warning and
+        // twice the width, not four times - a 10-second horizon would send
+        // drones after shots that will never arrive.
+        public struct Tuning
+        {
+            public float horizon;
+            public float corridor;
+            public float reachScale;
+            public float ease;
+        }
+
+        public static Tuning InterceptTuning(float speedPercent)
+        {
+            float k = Math.Max(InterceptSpeedMin, Math.Min(InterceptSpeedMax, speedPercent)) / 100f;
+            float root = (float)Math.Sqrt(k);
+
+            return new Tuning
+            {
+                horizon = 2.5f * root,
+                corridor = 2.2f * root,
+                reachScale = k,
+                ease = 0.1f / k
+            };
+        }
 
         // Is a shot at `from` moving at `v` heading AT the ship - passing
         // within `hitRadius` of it inside `horizon` seconds? `t` is when it
@@ -765,6 +947,138 @@ namespace WeaponForge
             }
 
             return taken;
+        }
+
+        // ------------------------------------------------------------------
+        // STRIKER / VENGEANCE - which enemy each companion dives at
+        // ------------------------------------------------------------------
+        //
+        // His shoot-em-up idea (R21 part 3, 315): "snap to nearby enemies ...
+        // with them super close and sort of locking on ... firing point
+        // blank." Two modes, his names: STRIKER takes the nearest enemies,
+        // VENGEANCE the ones shooting at you. WHICH enemies is the game side's
+        // question (it needs the units); everything after the list is here.
+        //
+        // `targets` is nearest-to-you first. Pass 1: each target, in that
+        // order, takes the closest companion still free - so with as many
+        // companions as enemies, everybody gets one. Pass 2: a companion left
+        // over joins the target nearest to IT, so a lone enemy gets the whole
+        // squad. Returns, per member, the index of its target (-1 = none, only
+        // when there are no targets), and in `rank` / `count` its place among
+        // the companions on that target, so they fan round it instead of
+        // stacking.
+        public static int[] AssignStrike(IList<P> members, IList<P> targets, out int[] rank, out int[] count)
+        {
+            int n = members == null ? 0 : members.Count;
+            var on = new int[n];
+            rank = new int[n];
+            count = new int[n];
+
+            for (int i = 0; i < n; i++)
+                on[i] = -1;
+
+            if (n == 0 || targets == null || targets.Count == 0)
+                return on;
+
+            for (int t = 0; t < targets.Count; t++)
+            {
+                int best = -1;
+                float bestD = float.MaxValue;
+
+                for (int m = 0; m < n; m++)
+                {
+                    if (on[m] >= 0)
+                        continue;
+
+                    float d = (members[m] - targets[t]).Length;
+
+                    if (d < bestD)
+                    {
+                        bestD = d;
+                        best = m;
+                    }
+                }
+
+                if (best < 0)
+                    break;
+
+                on[best] = t;
+            }
+
+            for (int m = 0; m < n; m++)
+            {
+                if (on[m] >= 0)
+                    continue;
+
+                int best = 0;
+                float bestD = float.MaxValue;
+
+                for (int t = 0; t < targets.Count; t++)
+                {
+                    float d = (members[m] - targets[t]).Length;
+
+                    if (d < bestD)
+                    {
+                        bestD = d;
+                        best = t;
+                    }
+                }
+
+                on[m] = best;
+            }
+
+            var per = new int[targets.Count];
+
+            for (int m = 0; m < n; m++)
+                rank[m] = per[on[m]]++;
+
+            for (int m = 0; m < n; m++)
+                count[m] = per[on[m]];
+
+            return on;
+        }
+
+        // Where companion `rank` of `count` on one target sits: `distance` from
+        // it on the side facing you, the others fanned round it 40 degrees
+        // apart - close enough to fire point blank, never inside it.
+        public static P StrikeSpot(P target, P ship, int rank, int count, float distance)
+        {
+            P toShip = ship - target;
+            P f = toShip.Length > 1e-4f ? toShip.Unit : new P(-1f, 0f);
+
+            float off = (rank - (Math.Max(1, count) - 1) * 0.5f) * 40f;
+            double a = Math.Atan2(f.y, f.x) + off * Math.PI / 180.0;
+
+            return target + new P((float)Math.Cos(a), (float)Math.Sin(a)) * Math.Max(0.5f, distance);
+        }
+
+        // Where a STRIKER / VENGEANCE companion waits with nothing to dive at:
+        // close round you on a still ring, so the mode reads as "ready".
+        public static P StrikeRest(P ship, P aim, int i, int n, Shape sh)
+        {
+            return GuardIdle(ship, aim, i, n, Math.Max(1.5f, (sh ?? new Shape()).orbitRadius * 0.7f));
+        }
+
+        // ------------------------------------------------------------------
+        // SEEKER - hunt, and wander when there is nothing to hunt
+        // ------------------------------------------------------------------
+        //
+        // His answer (R21 part 3, 312: "Hunt + wander"). The hunt is the game
+        // side's (it needs the enemies); the wander is a slow loop round you
+        // at about half the seek range, each drone on its own point of it.
+        public const float WanderDegreesPerSecond = 24f;
+
+        public static float WanderRadius(float seekRange)
+        {
+            return Math.Max(8f, Math.Min(30f, seekRange * 0.5f));
+        }
+
+        public static P WanderPoint(P ship, float seekRange, float seconds, int i, int n)
+        {
+            float r = WanderRadius(seekRange);
+            double a = (seconds * WanderDegreesPerSecond + i * 360.0 / Math.Max(1, n)) * Math.PI / 180.0;
+
+            return ship + new P((float)Math.Cos(a), (float)Math.Sin(a)) * r;
         }
     }
 }

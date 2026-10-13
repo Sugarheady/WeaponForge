@@ -151,9 +151,9 @@ namespace WeaponForge
                     _saidNoSprite = true;
 
                     Log.LogWarning(
-                        "bloom ringSprite '" + spriteName + "' resolved to " +
-                        "nothing, so the reach circle is not drawn. The " +
-                        "weapon is unaffected. " +
+                        "ringSprite '" + spriteName + "' (bloom or courier) " +
+                        "resolved to nothing, so the reach circle is not " +
+                        "drawn. The weapon is unaffected. " +
                         ForgeSpriteLibrary.NotFoundHint());
                 }
 
@@ -292,6 +292,12 @@ namespace WeaponForge
     // left to be discovered. A gadget calls weapon.Fire(new FakeBarrel(...))
     // directly and never touches Shooter, so a bloom in a gadget slot works
     // perfectly and simply draws no circle.
+    //
+    // TWO WEAPONS USE IT (2026-10-09): bloom (how far out a bloom can be
+    // placed) and the COURIER (how far its drone can fly -
+    // ForgeCourier.ReachOf, the same number the drone itself flies by). Both
+    // are weapons whose range you cannot otherwise see; same keys, same
+    // modes, one circle per ship.
     public static class ForgeBloomRingPatch
     {
         [HarmonyPatch(typeof(Shooter), "Update")]
@@ -299,7 +305,7 @@ namespace WeaponForge
         {
             static void Postfix(Shooter __instance)
             {
-                if (!ForgeBloom.Any)
+                if (!ForgeBloom.Any && !ForgeCourier.Any)
                     return;
 
                 try
@@ -324,13 +330,9 @@ namespace WeaponForge
             if (unit == null)
                 return;
 
-            ForgeBloom.Config cfg = null;
+            Look cfg = new Look();
 
-            bool wants =
-                w != null &&
-                ForgeBloom.TryGet(w.TemplateData, out cfg) &&
-                cfg != null &&
-                cfg.ring != ForgeBloom.RingShow.Off;
+            bool wants = w != null && Wants(w, out cfg);
 
             var ring = unit.GetComponent<ForgeBloomRing>();
 
@@ -354,12 +356,7 @@ namespace WeaponForge
                 return;
             }
 
-            var ranged = w as IHasRangeProperty;
-
-            float range = (ranged != null) ? ranged.Range : cfg.templateRange;
-
-            if (range <= 0f)
-                range = cfg.templateRange;
+            float range = cfg.range;
 
             bool show;
 
@@ -392,6 +389,64 @@ namespace WeaponForge
 
             ring.Drive(show, range, cfg.ringColor, cfg.ringSprite,
                        cfg.ringFade, cfg.ringOpacity, cfg.ringWidth);
+        }
+
+        // What one weapon asks the ring for, whichever feature it comes from.
+        private struct Look
+        {
+            public ForgeBloom.RingShow ring;
+            public float range;
+            public Color ringColor;
+            public string ringSprite;
+            public float ringFade;
+            public float ringOpacity;
+            public float ringWidth;
+        }
+
+        // Bloom first (its placement reach is the gun's live range, else the
+        // template's), then the courier (its drone's reach). A gun cannot be
+        // both - the courier refuses bloom at build time.
+        private static bool Wants(WeaponBase w, out Look look)
+        {
+            look = new Look();
+
+            ForgeBloom.Config b;
+
+            if (ForgeBloom.Any && ForgeBloom.TryGet(w.TemplateData, out b) &&
+                b != null && b.ring != ForgeBloom.RingShow.Off)
+            {
+                var ranged = w as IHasRangeProperty;
+                float range = (ranged != null) ? ranged.Range : b.templateRange;
+
+                if (range <= 0f)
+                    range = b.templateRange;
+
+                look.ring = b.ring;
+                look.range = range;
+                look.ringColor = b.ringColor;
+                look.ringSprite = b.ringSprite;
+                look.ringFade = b.ringFade;
+                look.ringOpacity = b.ringOpacity;
+                look.ringWidth = b.ringWidth;
+                return true;
+            }
+
+            ForgeCourier.Config c;
+
+            if (ForgeCourier.Any && ForgeCourier.TryGet(w.TemplateData, out c) &&
+                c != null && c.ring != ForgeBloom.RingShow.Off)
+            {
+                look.ring = c.ring;
+                look.range = ForgeCourier.ReachOf(w, c);
+                look.ringColor = c.ringColor;
+                look.ringSprite = c.ringSprite;
+                look.ringFade = c.ringFade;
+                look.ringOpacity = c.ringOpacity;
+                look.ringWidth = c.ringWidth;
+                return true;
+            }
+
+            return false;
         }
 
         // The aimer is CACHED, because this runs every frame for the whole time

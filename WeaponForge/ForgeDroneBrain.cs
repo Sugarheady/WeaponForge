@@ -91,6 +91,27 @@ namespace WeaponForge
         private GameObject _blocker;
         private DamagableResource _health;
 
+        // ★ THE 2-SECOND REPORT (R21 310). "Base game drones still behave the
+        // same regardless of which mode i set it too" - and the press lines
+        // only ever said what the SLOT was set to, never what its drones did.
+        // Two seconds into a mode, one line per slot says how far the drone is
+        // from its spot and what it took from the AI, which separates "never
+        // steered" from "steered and lost to the AI" from "working".
+        private float _reportAt = -1f;
+        private int _steerSteps;
+        private float _spotDist = -1f;
+
+        // ★ R21 PART 2: STILL NO "2 s into" LINE, IN THREE SESSIONS. The brain
+        // attached (its line is there) and the slots changed mode (theirs are
+        // there), and the report that only a mode change can arm never came -
+        // so this brain never changed mode, or never ran. Neither can be told
+        // from inside the brain, so the CENSUS (ForgeDroneModes, 2 s after
+        // each press, from the ticker that is known to run) asks every drone
+        // what it is doing, and these are what it reads.
+        private int _thinks;
+        private string _shipFrom;
+        private float _noShipSince = -1f;
+
         public Vector2 Position
         {
             get { return _body != null ? _body.position : (Vector2)transform.position; }
@@ -113,9 +134,18 @@ namespace WeaponForge
                     return;
 
                 int slot, ownerId;
+                string why;
 
-                if (!Eligible(minion, out slot, out ownerId))
+                if (!Eligible(minion, out slot, out ownerId, out why))
+                {
+                    // R21 310: the stock drones kept their own behaviour in
+                    // every mode and nothing in the log could say whether this
+                    // ever took them on. Now a refusal says why, once per kind.
+                    if (why != null && _saidRefused.Add(minion.name + "|" + why))
+                        Log.LogInfo("drone modes: '" + minion.name + "' will keep its own AI in every mode - " + why + ".");
+
                     return;
+                }
 
                 var b = minion.gameObject.AddComponent<ForgeDroneBrain>();
                 b._unit = minion;
@@ -132,6 +162,17 @@ namespace WeaponForge
                 b._agent = minion.GetComponentInChildren<AIAgent>(true);
                 b._cruise = Cruise(b);
 
+                if (_saidAttach.Add(minion.name + "|" + slot))
+                {
+                    Log.LogInfo(
+                        "drone modes: '" + minion.name + "' (gadget " + slot + ") takes the modes - " +
+                        b._actions.Length + " movement action(s) it can be held off, " +
+                        b._movers.Length + " mover(s), " +
+                        (b._body != null ? "a body to steer" : "NO BODY TO STEER") + ", its own regroup " +
+                        "speed " + b._cruise.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) +
+                        " u/s. Said once per drone kind and slot.");
+                }
+
                 ForgeDroneModes.Kick();
             }
             catch (Exception e)
@@ -141,11 +182,13 @@ namespace WeaponForge
         }
 
         // A drone family unit (it has the come-back-to-you action), from a
-        // gadget slot whose gadget is a drone spawner.
-        private static bool Eligible(Unit minion, out int slot, out int ownerId)
+        // gadget slot whose gadget is a drone spawner. `why` names a refusal
+        // worth logging (null for the ordinary "not a gadget minion at all").
+        private static bool Eligible(Unit minion, out int slot, out int ownerId, out string why)
         {
             slot = 0;
             ownerId = 0;
+            why = null;
 
             Unit.Data data = minion.ComponentData;
 
@@ -164,6 +207,7 @@ namespace WeaponForge
             if (!data.Owner.TryGetComponent<ModuleGridOwner.Data>(out grid) || grid == null ||
                 grid.ModuleGrid == null)
             {
+                why = "its owner has no module grid to read the gadget from";
                 return false;
             }
 
@@ -171,10 +215,23 @@ namespace WeaponForge
                 slot == 1 ? ClusterType.Active1 : slot == 2 ? ClusterType.Active2 : ClusterType.Active3);
 
             if (c == null || !c.HasMainModule || !(c.MainModule is SpawnMinionModule))
-                return false;
+                return false;   // a wingman body: its own controller places it
 
-            return ForgeMinionMove.FollowsOwnerItself(minion);
+            if (!ForgeMinionMove.FollowsOwnerItself(minion))
+            {
+                why = "it has no come-back-to-you movement (MoveAroundOwnerAction), so it is not a drone";
+                return false;
+            }
+
+            return true;
         }
+
+        // Once-only log gates, swept at run entry by ForgeDiagnosticGates
+        // (the `_said` naming convention).
+        private static readonly HashSet<string> _saidRefused = new HashSet<string>();
+        private static readonly HashSet<string> _saidAttach = new HashSet<string>();
+        private static readonly Dictionary<int, float> _saidSteer = new Dictionary<int, float>();
+        private static readonly HashSet<int> _saidNoShip = new HashSet<int>();
 
         // The drone's own regroup speed, which is what LOOSE flies at. A push
         // is `AddForce(dir * pushForce * mass)` for one physics step, every
@@ -270,25 +327,111 @@ namespace WeaponForge
 
             try
             {
+                // ★ THE SAME SHIPS THE MODE KEY READS, FIRST. Every mode is
+                // looked up by the ship's entity id, and the key finds its
+                // ships through their ShipInput - so a brain that asks the
+                // same list cannot disagree with the key about who its ship
+                // is. The entity map was the only route before, and nothing
+                // ever said whether it answered: `UnloadEntity` drops an entry
+                // from it whenever its entity moves into a segment that is not
+                // loaded yet, and only then asks whether the object may unload
+                // (a ship may not, so it stays alive and unlisted).
+                foreach (Unit u in ForgeKeyBinding.Ships())
+                {
+                    if (u != null && ForgeWingmanSave.IdOf(u) == _ownerId)
+                    {
+                        _ship = u;
+                        _shipFrom = "the ships the mode key reads";
+                        break;
+                    }
+                }
+
                 EntityGameObjectManager m;
                 SavableEntity se;
 
-                if (ServiceLocator.TryGet<EntityGameObjectManager>(out m) && m != null &&
+                if (_ship == null && ServiceLocator.TryGet<EntityGameObjectManager>(out m) && m != null &&
                     m.TryGetSavableEntity(_ownerId, out se) && se != null)
                 {
                     _ship = se.GetComponent<Unit>() ?? se.GetComponentInChildren<Unit>(true);
-                    _shipBody = _ship != null ? _ship.RigidBody : null;
+                    _shipFrom = "the game's entity map";
                 }
+
+                _shipBody = _ship != null ? _ship.RigidBody : null;
             }
             catch (Exception)
             {
             }
 
+            if (_ship != null)
+            {
+                _noShipSince = -1f;
+            }
+            else if (_noShipSince < 0f)
+            {
+                _noShipSince = Time.time;
+            }
+            else if (Time.time - _noShipSince > 3f && _saidNoShip.Add(_ownerId * 4 + _slot))
+            {
+                // Without its ship a drone can only ever be on NORMAL.
+                Log.LogWarning(
+                    "drone modes: gadget " + _slot + "'s '" + (_unit != null ? _unit.name : "?") +
+                    "' cannot find the ship it belongs to (its owner is entity " + _ownerId +
+                    ", and neither the ships the mode key reads nor the game's entity map has it) - " +
+                    "it keeps its own AI in every mode until it does. Said once per gadget.");
+            }
+
             return _ship;
+        }
+
+        // For the census: what this drone is doing, in a few words.
+        internal string Describe(Mode slotSays)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+            return (isActiveAndEnabled ? "" : "BRAIN SWITCHED OFF, ") +
+                   "acting " + ForgeDroneModeRules.Word(_mode) +
+                   (slotSays != _mode ? " while its gadget says " + ForgeDroneModeRules.Word(slotSays) : "") +
+                   ", " + _thinks.ToString(inv) + " physics step(s) run, ship " +
+                   (_ship != null ? "found (" + _shipFrom + ")" : "NOT FOUND (owner entity " + _ownerId + ")") +
+                   (Steering ? ", steered " + _steerSteps.ToString(inv) + " step(s)" +
+                               (_spotDist >= 0f ? ", " + _spotDist.ToString("0.0", inv) + " from its spot" : "")
+                             : "");
+        }
+
+        // For the census: why a drone of yours has no brain.
+        internal static string WhyNot(Unit minion)
+        {
+            try
+            {
+                if (minion == null)
+                    return "no unit";
+
+                Unit.Data data = minion.ComponentData;
+
+                if (data == null || data.Owner == null)
+                    return "it has no owner";
+
+                if (ForgeDroneModes.SlotOf(data.ConnectionToOwner) == 0)
+                    return "it is not tied to a gadget slot (its link to you is " + data.ConnectionToOwner + ")";
+
+                int slot, ownerId;
+                string why;
+
+                if (Eligible(minion, out slot, out ownerId, out why))
+                    return "it could take the modes, but neither attach hook (a new drone, a drone coming back) saw it";
+
+                return why ?? "its gadget is not a drone spawner (a wingman body - its gadget places it)";
+            }
+            catch (Exception e)
+            {
+                return "could not tell (" + e.GetType().Name + ")";
+            }
         }
 
         private void FixedUpdate()
         {
+            _thinks++;
+
             if (_body == null || _unit == null)
                 return;
 
@@ -329,7 +472,10 @@ namespace WeaponForge
                 if (_mode == Mode.Sentry)
                     return _out;
 
-                return ForgeDroneModeRules.IsFormation(_mode) || _mode == Mode.Interceptor;
+                if (_mode == Mode.Seeker)
+                    return _seekSteer;
+
+                return ForgeDroneModeRules.IsPlaced(_mode);
             }
         }
 
@@ -342,10 +488,13 @@ namespace WeaponForge
             if (want != _mode)
                 Switch(want);
 
+            if (_reportAt > 0f && Time.time >= _reportAt)
+                Report();
+
             if (_mode == Mode.Base || ship == null)
                 return;
 
-            if (ForgeDroneModeRules.IsFormation(_mode) || _mode == Mode.Interceptor)
+            if (ForgeDroneModeRules.IsPlaced(_mode))
             {
                 Formation(ship);
                 return;
@@ -354,8 +503,70 @@ namespace WeaponForge
             if (_mode == Mode.Sentry)
                 Sentry(ship);
 
-            // SEEKER is the AI's own hunting with a longer leash: nothing to
-            // steer, every step.
+            if (_mode == Mode.Seeker)
+                Seek(ship);
+        }
+
+        private void Report()
+        {
+            _reportAt = -1f;
+
+            try
+            {
+                if (_mode == Mode.Base || _unit == null)
+                    return;
+
+                // One line per slot per press, from whichever of its drones
+                // gets there first.
+                int key = _ownerId * 4 + _slot;
+                float last;
+
+                if (_saidSteer.TryGetValue(key, out last) && Time.time - last < 1.5f)
+                    return;
+
+                _saidSteer[key] = Time.time;
+
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                string what;
+
+                if (_mode == Mode.Seeker)
+                {
+                    what = (_hunt != null
+                               ? "HUNTING '" + _hunt.name + "' " +
+                                 ((Vector2)_hunt.transform.position - Position).magnitude.ToString("0", inv) +
+                                 " units away"
+                               : AiBusy() ? "FIGHTING what it can see"
+                               : "WANDERING round you (nothing within the seek range)") +
+                           ", its leash raised on " + _leash.Count + " range check(s)" +
+                           (_visionRaised && _vision != null ? ", sight " + _vision.Range.ToString("0", inv) : "");
+                }
+                else if (_mode == Mode.Sentry)
+                {
+                    what = (_out ? "being walked back to its post" : "inside its post's radius, on its own AI") +
+                           ", leash raised on " + _leash.Count + " range check(s)";
+                }
+                else
+                {
+                    bool locked = FliesLocked(_mode);
+
+                    what = (_spotDist >= 0f
+                               ? _spotDist.ToString("0.0", inv) + " units from its spot"
+                               : "NOT IN THE FORMATION (no spot was found for it)") +
+                           ", steered for " + _steerSteps + " physics steps, " +
+                           new HashSet<MovementAction>(_suspended).Count + " AI movement action(s) held off and " +
+                           _followOff.Count + " come-back action(s) off, flying " +
+                           (locked ? "LOCKED" : "LOOSE at " + _cruise.ToString("0.#", inv) + " u/s");
+                }
+
+                Log.LogInfo(
+                    "drone modes: 2 s into " + ForgeDroneModeRules.Word(_mode) + ", gadget " + _slot +
+                    "'s '" + _unit.name + "' is " + what +
+                    (_forgot ? " (it dropped its target and grudges on the change)" : "") + ".");
+            }
+            catch (Exception)
+            {
+                // A report must never cost the mode.
+            }
         }
 
         // ------------------------------------------------------------------
@@ -364,7 +575,16 @@ namespace WeaponForge
 
         private static bool Steers(Mode m)
         {
-            return ForgeDroneModeRules.IsFormation(m) || m == Mode.Interceptor || m == Mode.Sentry;
+            return ForgeDroneModeRules.IsPlaced(m) || m == Mode.Sentry;
+        }
+
+        // INTERCEPTOR (all three) and the two dive modes always fly LOCKED - a
+        // loose drone at its own speed misses fast shots and never reaches
+        // the enemy it was sent at. The rest follow [Drone modes] Formation.
+        private static bool FliesLocked(Mode m)
+        {
+            return ForgeDroneModeRules.IsGuard(m) || ForgeDroneModeRules.IsStrike(m) ||
+                   ForgeDroneModes.Locked;
         }
 
         private void Switch(Mode to)
@@ -379,10 +599,20 @@ namespace WeaponForge
                 _path = null;
             }
 
+            // SEEKER steers only while it is hunting or wandering, so it is not
+            // in Steers - but whatever it held off goes back the same way.
+            if (from == Mode.Seeker)
+            {
+                ForgeSuspend.Release(_suspended);
+                _seekSteer = false;
+                _hunt = null;
+                _path = null;
+            }
+
             if (from == Mode.Seeker || from == Mode.Sentry)
                 RestoreLeash();
 
-            if (from == Mode.Interceptor)
+            if (ForgeDroneModeRules.IsGuard(from))
                 Unblock();
 
             if (to == Mode.Base)
@@ -410,10 +640,51 @@ namespace WeaponForge
                 RaiseLeash(ForgeDroneModes.SentryRecall + SentryRadiusNow() + 10f, false);
             }
 
-            if (to == Mode.Interceptor && ForgeDroneModes.InterceptorNoDamage)
+            if (ForgeDroneModeRules.IsGuard(to) && ForgeDroneModes.InterceptorNoDamage)
                 Block();
 
+            _forgot = ForgetTarget();
+
             _mode = to;
+
+            _steerSteps = 0;
+            _spotDist = -1f;
+            _reportAt = to == Mode.Base ? -1f : Time.time + 2f;
+        }
+
+        // ★ HIS R21 PART 1 NOTE, answered "on by default": "would it be
+        // possible to reset their revenge or aggro between mode changes? I
+        // think they fixate on a target and dont loose it between modes." Two
+        // things hold a drone on one enemy, and both go: its target
+        // (`AIAgent.Update` keeps a target for as long as it is visible) and
+        // its grudge list (`enemyBlackList` - being hit blacklists the
+        // attacker, and the AI reads that before faction, see the grudge
+        // notes in CLAUDE.md). The AI then picks again from what it sees from
+        // its new place. The list is save-persisted; clearing it is safe
+        // because nothing of ours writes to it on a player's drone.
+        // [Drone modes] ForgetTargetOnChange = false keeps both.
+        private bool _forgot;
+
+        private bool ForgetTarget()
+        {
+            if (!ForgeDroneModes.ForgetTargetOnChange || _agent == null)
+                return false;
+
+            try
+            {
+                _agent.ForgetTarget();
+
+                AIAgent.Data data = _agent.ComponentData;
+
+                if (data != null && data.enemyBlackList != null)
+                    data.enemyBlackList.Clear();
+
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         // Back to its own AI entirely. Normal, disable, destroy, error.
@@ -434,6 +705,8 @@ namespace WeaponForge
             _mode = Mode.Base;
             _out = false;
             _path = null;
+            _seekSteer = false;
+            _hunt = null;
         }
 
         private void OnDisable()
@@ -653,6 +926,9 @@ namespace WeaponForge
 
             Vector2 pos = _body.position;
 
+            _spotDist = (pos - spot).magnitude;
+            _steerSteps++;
+
             if ((pos - shipPos).sqrMagnitude > FarReset * FarReset)
             {
                 _body.position = spot;
@@ -665,10 +941,147 @@ namespace WeaponForge
             }
 
             // ★ INTERCEPTOR ALWAYS FLIES LOCKED (answer C): a loose drone at
-            // its own speed misses fast shots.
-            bool locked = _mode == Mode.Interceptor || ForgeDroneModes.Locked;
+            // its own speed misses fast shots. So do the dive modes.
+            bool locked = FliesLocked(_mode);
 
-            Steer(Route(pos, spot), locked, ShipVelocity());
+            // The interceptSpeed slider pulls a shot-guarding drone onto its
+            // spot harder (still under LockedCap, which is a terrain limit).
+            float gain = ForgeDroneModeRules.IsGuard(_mode)
+                ? ForgeDroneModes.TuningOf(ship, _slot).reachScale
+                : 1f;
+
+            // STRIKER / VENGEANCE: point its gun at the enemy it was sent to.
+            // The AI would pick whatever it sees first; this is the one it is
+            // sitting next to.
+            if (ForgeDroneModeRules.IsStrike(_mode) && _agent != null)
+            {
+                Unit target;
+
+                if (ForgeDroneModes.StrikeTargetFor(ship, _mode, this, 0, out target) &&
+                    target != null && _agent.Target != target)
+                {
+                    _agent.SetTarget(target);
+                }
+            }
+
+            Steer(Route(pos, spot), locked, ShipVelocity(), gain);
+        }
+
+        // ------------------------------------------------------------------
+        // SEEKER - hunt + wander (his answer, R21 part 3, 312)
+        // ------------------------------------------------------------------
+        //
+        // ★ R21 312: "they sort of sit in a spot unless the player sees it
+        // first", and 310: "if i fly ahead it doesnt really notice things until
+        // they're within 10/6 units away from me. Maybe it needs to wander a
+        // bit?" SEEKER used to be only a longer leash and longer sight - the
+        // AI still waited for an enemy to come into its own view. Now:
+        //
+        //   * FIGHTING: while the AI has a target it can see, this does nothing
+        //     at all - the AI chases and shoots as it always did;
+        //   * HUNTING: otherwise it flies at the nearest enemy within the seek
+        //     range of YOU, seen or not (the game's own pathfinder round rock),
+        //     until the AI sees it and takes over;
+        //   * WANDERING: with nothing in range, it sweeps a slow loop round you
+        //     at about half the seek range.
+        //
+        // It only ever hunts what is within the seek range of your ship, and
+        // the seek range is clamped under the edge of the loaded world, so a
+        // seeker never chases something into the part of the map the game has
+        // unloaded (where it would be deleted).
+        private bool _seekSteer;
+        private Unit _hunt;
+        private float _huntAt;
+
+        private static readonly List<Unit> _found = new List<Unit>();
+
+        private bool AiBusy()
+        {
+            try
+            {
+                return _agent != null && _agent.HasTarget && _agent.IsTargetVisible;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private void Seek(Unit ship)
+        {
+            if (AiBusy())
+            {
+                if (_seekSteer)
+                {
+                    ForgeSuspend.Release(_suspended);
+                    _seekSteer = false;
+                    _path = null;
+                }
+
+                _hunt = null;
+                return;
+            }
+
+            ForgeDroneModeRules.Shape sh = ForgeDroneModes.ShapeOf(ship, _slot);
+            float range = sh.seekRange > 0f ? sh.seekRange : ForgeDroneModes.SeekRange;
+            Vector2 shipPos = ship.transform.position;
+
+            if (Time.time >= _huntAt || (_hunt != null && !ForgeDroneModes.Alive(_hunt)))
+            {
+                _huntAt = Time.time + 0.4f;
+                _hunt = null;
+
+                // Every enemy within the seek range of YOU; this drone takes
+                // the one nearest to ITSELF.
+                ForgeDroneModes.Enemies(ship, shipPos, range, false, _found);
+
+                float best = float.MaxValue;
+
+                foreach (Unit u in _found)
+                {
+                    float d = ((Vector2)u.transform.position - Position).sqrMagnitude;
+
+                    if (d < best)
+                    {
+                        best = d;
+                        _hunt = u;
+                    }
+                }
+
+                _found.Clear();
+            }
+
+            Vector2 goal;
+
+            if (_hunt != null)
+            {
+                goal = _hunt.transform.position;
+            }
+            else
+            {
+                // Each drone of the slot on its own point of the loop.
+                int i = 0, n = 0;
+
+                ForSlot(ship, _slot, b =>
+                {
+                    if (ReferenceEquals(b, this))
+                        i = n;
+
+                    n++;
+                });
+
+                var w = ForgeDroneModeRules.WanderPoint(
+                    new ForgeDroneModeRules.P(shipPos.x, shipPos.y), range, Time.time, i, Mathf.Max(1, n));
+
+                goal = ForgeDroneModes.ClearOfRock(new Vector2(w.x, w.y), shipPos);
+            }
+
+            Suspend();
+            _seekSteer = true;
+            _steerSteps++;
+            _spotDist = (Position - goal).magnitude;
+
+            Steer(Route(Position, goal), false, Vector2.zero);
         }
 
         private float SentryRadiusNow()
@@ -725,7 +1138,7 @@ namespace WeaponForge
         // while you cruise - and capped, so a boost leaves it behind for a
         // moment and it catches up. LOCKED: the velocity is set outright, the
         // way a wingman holds its place, capped below the speed that tunnels.
-        private void Steer(Vector2 target, bool locked, Vector2 shipVel)
+        private void Steer(Vector2 target, bool locked, Vector2 shipVel, float gain = 1f)
         {
             Vector2 pos = _body.position;
             Vector2 to = target - pos;
@@ -733,7 +1146,7 @@ namespace WeaponForge
 
             if (locked)
             {
-                Vector2 v = shipVel + to * 8f;
+                Vector2 v = shipVel + to * (8f * Mathf.Max(0.5f, gain));
 
                 if (v.magnitude > LockedCap)
                     v = v.normalized * LockedCap;

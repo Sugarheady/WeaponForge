@@ -2,11 +2,13 @@ using System;
 
 namespace WeaponForge
 {
-    // THE SHAPES A BLOOM'S SHOTS FLY, AS PURE ARITHMETIC.
+    // THE SHAPES A BLOOM'S SHOTS FLY, AS PURE ARITHMETIC - and the one THROW a
+    // grenade gets instead (2026-10-09, at the bottom).
     //
     // NO UNITY IN THIS FILE, ON PURPOSE. `Harness/bloompathprobe.cs` compiles
     // it on its own and runs it - the path lengths, arriving exactly on the
-    // fuse, which way round it turns, the order the staggered shots land in -
+    // fuse, which way round it turns, the order the staggered shots land in,
+    // a grenade landing on the centre on the step it was solved for -
     // the same way `dronemodeprobe.cs` runs `ForgeDroneModeRules`. The game
     // side only ever asks these questions, so the probe tests the real decision
     // code rather than a copy of it. Change a shape here and nowhere else, and
@@ -318,6 +320,269 @@ namespace WeaponForge
         public static double StaggerScale(double share, double stagger)
         {
             return 1.0 + Math.Max(0.0, stagger) * share;
+        }
+
+        // ---- the throw: a GRENADE in bullet mode (2026-10-09) -----------
+        //
+        // His note on R21 321: "give the projectile in the circle thrust
+        // launching towards the center of the circle of the cursor ... Just no
+        // spiral regarding it." A falling shot cannot FLY a path - setting its
+        // velocity every step cancels the fall - so a grenade is THROWN, once,
+        // and gravity, drag and bouncing stay the game's.
+        //
+        // THE STEP IS LINEAR IN THE LAUNCH, so the throw is solved exactly
+        // rather than searched for. Box2D steps a body with gravity g and
+        // linear damping d as (the order ForgeBallistics replicates):
+        //
+        //     v(k) = c * (v(k-1) + g * dt)          c = 1 / (1 + dt * d)
+        //     p(k) = p(k-1) + v(k) * dt
+        //
+        // which unrolls to
+        //
+        //     v(k) = c^k * v0 + g * dt * S(k)       S(k) = c + c^2 + ... + c^k
+        //     p(n) = p0 + dt * S(n) * v0 + g * dt^2 * Q(n)
+        //                                           Q(n) = S(1) + ... + S(n)
+        //
+        // so the launch that puts the body on a point after exactly n steps is
+        //
+        //     v0 = (target - p0 - g * dt^2 * Q(n)) / (dt * S(n))
+        //
+        // Per axis, so gravity may point anywhere (the game's is straight down).
+
+        // His three ways for a ring of grenades to arrive (all three as
+        // choices, "default to all at once").
+        //   Together  - every throw takes the same time, so they meet at once.
+        //   Staggered - the same, each a little later than the last (the
+        //               staggered drift's order and `stagger`).
+        //   Arc       - every grenade is thrown equally HARD, so each lands
+        //               when its own arc gets there: the one thrown upward
+        //               takes longest.
+        public enum Arrival { Together, Staggered, Arc }
+
+        // The game's limit: Physics2DSettings m_MaxTranslationSpeed is 100, and
+        // past it Box2D clips the step, so a throw needing more lands short.
+        public const double ThrowCap = 95.0;
+
+        // 8 seconds of flight at 50 steps a second, as ForgeBallistics.
+        public const int MaxThrowSteps = 400;
+
+        public struct Fall
+        {
+            public double gx, gy;   // gravity on THIS body (Physics2D.gravity x gravityScale)
+            public double c;        // 1 / (1 + dt x linearDamping)
+            public double dt;       // the physics step
+        }
+
+        public static Fall MakeFall(double gx, double gy, double damping, double dt)
+        {
+            var f = new Fall();
+
+            f.gx = gx;
+            f.gy = gy;
+            f.dt = (dt > 1e-6) ? dt : 0.02;
+            f.c = 1.0 / (1.0 + f.dt * Math.Max(0.0, damping));
+
+            return f;
+        }
+
+        // The launch that lands a throw from (fx, fy) on (tx, ty) after exactly
+        // `n` physics steps.
+        public static void ThrowIn(
+            ref Fall f, double fx, double fy, double tx, double ty, int n,
+            out double vx, out double vy)
+        {
+            if (n < 1)
+                n = 1;
+
+            double s = 0.0, q = 0.0, ck = 1.0;
+
+            for (int k = 1; k <= n; k++)
+            {
+                ck *= f.c;
+                s += ck;
+                q += s;
+            }
+
+            double a = f.dt * s;
+            double b = f.dt * f.dt * q;
+
+            vx = (tx - fx - f.gx * b) / a;
+            vy = (ty - fy - f.gy * b) / a;
+        }
+
+        // Where a throw is after `n` steps, stepped the way the engine steps
+        // it. The probe's check on ThrowIn; the game never calls it.
+        public static void After(
+            ref Fall f, double fx, double fy, double vx, double vy, int n,
+            out double x, out double y)
+        {
+            x = fx;
+            y = fy;
+
+            for (int k = 0; k < n; k++)
+            {
+                vx = (vx + f.gx * f.dt) * f.c;
+                vy = (vy + f.gy * f.dt) * f.c;
+                x += vx * f.dt;
+                y += vy * f.dt;
+            }
+        }
+
+        public static double ThrowSpeed(
+            ref Fall f, double fx, double fy, double tx, double ty, int n)
+        {
+            double vx, vy;
+
+            ThrowIn(ref f, fx, fy, tx, ty, n, out vx, out vy);
+
+            return Math.Sqrt(vx * vx + vy * vy);
+        }
+
+        // THE TWO ARCS AT A SPEED. A longer flight needs less speed until the
+        // throw has to go UP to stay in the air that long, so the speed falls
+        // and then rises: the step counts no harder than `speed` are one run,
+        // whose FIRST is the flat throw and whose LAST is the lob. When none is
+        // that soft (straight up, too high for it), the softest there is: it
+        // lands, only harder than asked.
+        public static int ArcSteps(
+            ref Fall f, double fx, double fy, double tx, double ty,
+            double speed, bool high, int maxSteps)
+        {
+            int first = -1, last = -1;
+            int best = 1;
+            double bestSpeed = double.MaxValue;
+            double s = 0.0, q = 0.0, ck = 1.0;
+
+            for (int n = 1; n <= maxSteps; n++)
+            {
+                ck *= f.c;
+                s += ck;
+                q += s;
+
+                double a = f.dt * s;
+                double b = f.dt * f.dt * q;
+                double vx = (tx - fx - f.gx * b) / a;
+                double vy = (ty - fy - f.gy * b) / a;
+                double sp = Math.Sqrt(vx * vx + vy * vy);
+
+                if (sp <= speed)
+                {
+                    if (first < 0)
+                    {
+                        first = n;
+
+                        if (!high)
+                            return n;
+                    }
+
+                    last = n;
+                }
+
+                if (sp < bestSpeed)
+                {
+                    bestSpeed = sp;
+                    best = n;
+                }
+            }
+
+            if (first < 0)
+                return best;
+
+            return high ? last : first;
+        }
+
+        public static int LowArcSteps(
+            ref Fall f, double fx, double fy, double tx, double ty,
+            double speed, int maxSteps)
+        {
+            return ArcSteps(ref f, fx, fy, tx, ty, speed, false, maxSteps);
+        }
+
+        // Is a flight of `n` steps across the ring's radius the LOB of its
+        // speed (past the softest throw, where a longer flight needs more)?
+        public static bool IsLob(ref Fall f, double radius, int n)
+        {
+            return ThrowSpeed(ref f, -radius, 0.0, 0.0, 0.0, n + 1) >
+                   ThrowSpeed(ref f, -radius, 0.0, 0.0, 0.0, n);
+        }
+
+        // THE FLIGHT EVERY THROW IS MEASURED AGAINST: a LEVEL throw across the
+        // ring's radius at the gun's own speed (his pick, "flat and fast"),
+        // times `lob` - 2 takes twice as long and arcs visibly, 3 is a mortar.
+        public static int BaseSteps(
+            ref Fall f, double radius, double speed, double lob, int maxSteps)
+        {
+            int n = LowArcSteps(
+                ref f, -radius, 0.0, 0.0, 0.0,
+                Math.Min(Math.Max(speed, 0.1), ThrowCap), maxSteps);
+
+            int m = (int)Math.Round(n * Math.Max(0.1, lob));
+
+            return Math.Max(1, Math.Min(maxSteps, m));
+        }
+
+        // How many steps THIS grenade's throw takes. `staggerScale` is
+        // StaggerScale(StaggerShare(...)) for a staggered ring, 1 otherwise.
+        public static int ThrowSteps(
+            ref Fall f, double fx, double fy, double tx, double ty,
+            double radius, double speed, double lob, Arrival arrival,
+            double staggerScale, int maxSteps)
+        {
+            int n0 = BaseSteps(ref f, radius, speed, lob, maxSteps);
+
+            switch (arrival)
+            {
+                case Arrival.Staggered:
+                {
+                    int m = (int)Math.Round(n0 * Math.Max(1.0, staggerScale));
+                    return Math.Max(1, Math.Min(maxSteps, m));
+                }
+
+                case Arrival.Arc:
+                {
+                    // Equally hard: as hard as the level throw of that flight,
+                    // and on the same ARC as it - a high lob stays a lob for
+                    // every grenade, where the flat one at the same speed
+                    // would land long before it.
+                    double hard = ThrowSpeed(ref f, -radius, 0.0, 0.0, 0.0, n0);
+
+                    return ArcSteps(
+                        ref f, fx, fy, tx, ty, hard,
+                        IsLob(ref f, radius, n0), maxSteps);
+                }
+
+                default:
+                    return n0;
+            }
+        }
+
+        // A throw harder than `cap` cannot be thrown as planned (it would land
+        // short). The step count nearest `n` whose throw fits, so it still
+        // lands where it was aimed, a little off the beat: LATER for a throw
+        // too fast, EARLIER for a lob too high. (The speed falls and then
+        // rises, so the flights that fit are one run and only one side of `n`
+        // can hold any - the order of the two searches cannot matter.) -1 when
+        // nothing fits; the caller then clips the speed and says so.
+        public static int FitUnderCap(
+            ref Fall f, double fx, double fy, double tx, double ty, int n,
+            double cap, int maxSteps)
+        {
+            if (ThrowSpeed(ref f, fx, fy, tx, ty, n) <= cap)
+                return n;
+
+            for (int m = n + 1; m <= maxSteps; m++)
+            {
+                if (ThrowSpeed(ref f, fx, fy, tx, ty, m) <= cap)
+                    return m;
+            }
+
+            for (int m = n - 1; m >= 1; m--)
+            {
+                if (ThrowSpeed(ref f, fx, fy, tx, ty, m) <= cap)
+                    return m;
+            }
+
+            return -1;
         }
 
         private static void Unit(double x, double y, out double ux, out double uy)

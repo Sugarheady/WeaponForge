@@ -59,6 +59,7 @@ namespace WeaponForge
             // survive into the next run, owned by nothing.
             ForgeWingmanPatch.Reset();
             ForgeWingmanBody.Reset();
+            ForgeCourier.Reset();
             ForgeWingmanShotPatch.Reset();
             ForgeMinionTrimPatch.Reset();
 

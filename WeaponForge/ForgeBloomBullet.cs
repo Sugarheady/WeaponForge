@@ -52,8 +52,18 @@ namespace WeaponForge
     //          (`targetPosition`, the seam `guided` uses). It feels like a
     //          rocket and cuts the laps it cannot turn tightly enough for.
     //
-    // A grenade is refused at build time: steering one along a path would stop
-    // it falling, and a grenade that does not fall is not one.
+    // ---- A GRENADE (gravity) - THROWN, NEVER FLOWN (2026-10-09) -----------
+    //
+    // Steering a grenade along a path would stop it falling, and a grenade
+    // that does not fall is not one - so it gets ONE throw from its slot and
+    // is never touched again (his note on R21 321: "give the projectile in the
+    // circle thrust launching towards the center ... Just no spiral"). The
+    // throw is solved exactly (ForgeBloomPath, "the throw") to land ON the
+    // centre after a whole number of physics steps, and that step is only
+    // COUNTED here: on it, the centre rule applies (`burst` by default for a
+    // grenade). Outward is thrown straight away from the centre at the gun's
+    // speed. Gravity, drag, bouncing, its fuse and its own impact stay the
+    // game's the whole way.
     public class ForgeBloomBullet : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
@@ -61,6 +71,8 @@ namespace WeaponForge
 
         private static bool _saidNoSpeed;
         private static bool _saidHookFail;
+        private static bool _saidThrowLate;
+        private static bool _saidThrowShort;
 
         // ---- serialized (survives Instantiate) - an int, never the Config;
         // see ForgeBloomShot's header for the trap this avoids.
@@ -75,7 +87,7 @@ namespace WeaponForge
         [NonSerialized] public bool live;
         [NonSerialized] public bool placed;
 
-        private enum Kind { Line, Spiral, Orbit, Away }
+        private enum Kind { Line, Spiral, Orbit, Away, Throw }
 
         // Path: still on bloom's path. Through: past the centre, flying out.
         // Free: turned off the path, or never on one that ends.
@@ -115,6 +127,12 @@ namespace WeaponForge
         private bool _final;
         private bool _committed;
 
+        // a grenade: its launch, and the physics step it is due on the centre
+        private bool _grenade;
+        private Vector2 _throw;
+        private int _steps;
+        private int _done;
+
         // The shot's own end-of-life settings, COPIED before bloom switches the
         // range off, so the hooks can still be fired at the end it chooses.
         private ProjectileRangeData _range;
@@ -149,7 +167,14 @@ namespace WeaponForge
                     _rb = GetComponentInChildren<Rigidbody2D>();
 
                 if (_rb != null)
+                {
                     _damping = _rb.linearDamping;
+
+                    // GRAVITY, never the usePhysics flag (a rocket is a
+                    // physics shot with none) - see CLAUDE.md.
+                    _grenade = (Physics2D.gravity * _rb.gravityScale)
+                        .sqrMagnitude > 0.000001f;
+                }
             }
         }
 
@@ -193,6 +218,15 @@ namespace WeaponForge
                 ? axis.normalized : Vector2.right;
 
             Vector2 inward = (_r0 > 0.05f) ? -out_ / _r0 : axisUnit;
+
+            // A GRENADE IS THROWN, not flown - its own branch, and nothing below
+            // it applies (the build has already turned every drift but outward
+            // into inward, and said so).
+            if (_grenade)
+            {
+                SetupThrow(centre, at, out_, inward, axisUnit, index, count);
+                return;
+            }
 
             // No drift means a bullet that does not move, and a still bullet is
             // the IMMORTAL AURA: its zero-length sweep hits whatever it sits in
@@ -289,6 +323,128 @@ namespace WeaponForge
             _lastPos = at;
         }
 
+        // A GRENADE'S ONE THROW (see ForgeBloomPath, "the throw").
+        //
+        // Inward is solved to land ON the centre after a whole number of
+        // physics steps - the step TickThrow counts down to - on the shot's own
+        // gravity and drag, read off its body rather than assumed. Outward is
+        // thrown straight away from the centre at the gun's speed and is the
+        // game's grenade from then on.
+        private void SetupThrow(
+            Vector2 centre, Vector2 at, Vector2 out_, Vector2 inward,
+            Vector2 axisUnit, int index, int count)
+        {
+            _kind = Kind.Throw;
+            _leg = Leg.Path;
+            _lastPos = at;
+
+            float cap = (float)ForgeBloomPath.ThrowCap;
+
+            if (cfg.drift == ForgeBloom.Drift.Outward)
+            {
+                _leg = Leg.Free;
+                _dir = (_r0 > 0.05f) ? out_ / _r0 : axisUnit;
+                _throw = _dir * Mathf.Min(_speed, cap);
+                return;
+            }
+
+            // ALREADY ON THE CENTRE - one grenade, or spread 0. Nothing to
+            // throw it across, so the centre rule applies on the first step: a
+            // `through` grenade simply drops from there.
+            if (_r0 <= 0.05f)
+            {
+                _dir = axisUnit;
+                _throw = Vector2.zero;
+                _arriving = true;
+                return;
+            }
+
+            Vector2 g = Physics2D.gravity * _rb.gravityScale;
+
+            ForgeBloomPath.Fall fall = ForgeBloomPath.MakeFall(
+                g.x, g.y, _damping, Time.fixedDeltaTime);
+
+            // One after another, in the staggered drift's order (and its
+            // `direction`), the last `stagger` x the flight later.
+            double scale = 1.0;
+
+            if (cfg.arrive == ForgeBloomPath.Arrival.Staggered)
+            {
+                scale = ForgeBloomPath.StaggerScale(
+                    ForgeBloomPath.StaggerShare(
+                        index, count,
+                        cfg.Clockwise(ForgeBloom.Drift.Staggered)),
+                    cfg.stagger);
+            }
+
+            int max = ForgeBloomPath.MaxThrowSteps;
+
+            int n = ForgeBloomPath.ThrowSteps(
+                ref fall, at.x, at.y, centre.x, centre.y, _r0, _speed,
+                cfg.lob, cfg.arrive, scale, max);
+
+            // THE GAME'S SPEED LIMIT. Past 100 units/second Box2D clips the
+            // step and the throw lands short - so take the nearest flight
+            // that fits, which still lands on the centre, a little off the
+            // beat. Only when none fits is the throw clipped (and falls short).
+            int fit = ForgeBloomPath.FitUnderCap(
+                ref fall, at.x, at.y, centre.x, centre.y, n, cap, max);
+
+            double vx, vy;
+
+            if (fit > 0)
+            {
+                if (fit != n && !_saidThrowLate)
+                {
+                    _saidThrowLate = true;
+
+                    Log.LogInfo(
+                        "bloom grenade: a throw would have needed more than " +
+                        cap.ToString("0") + " units/second (the game's limit), " +
+                        "so it was given a " +
+                        (fit > n ? "longer" : "shorter") + " flight and lands " +
+                        (Mathf.Abs(fit - n) * Time.fixedDeltaTime * 1000f)
+                            .ToString("0") +
+                        "ms off the beat instead. Said once per run.");
+                }
+
+                n = fit;
+
+                ForgeBloomPath.ThrowIn(
+                    ref fall, at.x, at.y, centre.x, centre.y, n, out vx, out vy);
+            }
+            else
+            {
+                ForgeBloomPath.ThrowIn(
+                    ref fall, at.x, at.y, centre.x, centre.y, n, out vx, out vy);
+
+                double sp = Math.Sqrt(vx * vx + vy * vy);
+
+                if (sp > cap)
+                {
+                    vx *= cap / sp;
+                    vy *= cap / sp;
+                }
+
+                if (!_saidThrowShort)
+                {
+                    _saidThrowShort = true;
+
+                    Log.LogWarning(
+                        "bloom grenade: no throw of up to " + cap.ToString("0") +
+                        " units/second (the game's limit) reaches the centre " +
+                        "from this ring, so it was thrown as hard as allowed " +
+                        "and falls short. A smaller spread or a nearer cursor " +
+                        "fixes it. Said once per run.");
+                }
+            }
+
+            _steps = n;
+            _throw = new Vector2((float)vx, (float)vy);
+
+            _dir = (_throw.sqrMagnitude > 0.000001f) ? _throw.normalized : inward;
+        }
+
         // ---- still from the prefix: move it, aim it, take over its ends ---
         public void Launch()
         {
@@ -345,7 +501,19 @@ namespace WeaponForge
                 transform.rotation = Quaternion.Euler(0f, 0f, deg);
                 _rb.rotation = deg;
                 _rb.angularVelocity = 0f;
-                _rb.linearVelocity = _dir * _speed;
+
+                // A grenade's solved throw (Shoot reads it back as its
+                // Velocity, which IS the body's velocity), a rocket's path.
+                _rb.linearVelocity = (_kind == Kind.Throw)
+                    ? _throw
+                    : _dir * _speed;
+
+                // THE STEPS ALREADY RUN when TickThrow first counts. A shot
+                // made in Update (the gun, almost always) has had none: every
+                // physics step comes after a FixedUpdate. One made inside a
+                // fixed step is simulated in that step before its own first
+                // FixedUpdate, so it starts one in.
+                _done = Time.inFixedTimeStep ? 1 : 0;
             }
         }
 
@@ -453,6 +621,9 @@ namespace WeaponForge
 
             Vector2 pos = _rb.position;
 
+            if (_kind == Kind.Throw)
+                return TickThrow(pos);
+
             if (cfg.missile == ForgeBloom.Missile.Chase)
                 return Chase(pos, dt);
 
@@ -507,6 +678,23 @@ namespace WeaponForge
             }
 
             return false;
+        }
+
+        // A GRENADE'S STEP. Nothing steers it - the step is only COUNTED, and
+        // on the one its throw was solved for it is on the centre. The k-th
+        // call comes after k-1 physics steps (Launch says why), so the centre
+        // rule runs once `_steps` have gone. Its own FixedUpdate always runs:
+        // it is the game's grenade.
+        private bool TickThrow(Vector2 pos)
+        {
+            if (_leg != Leg.Path)
+                return true;
+
+            if (_arriving || _done >= _steps)
+                return AtCentre(pos);
+
+            _done++;
+            return true;
         }
 
         // CHASE: the rocket's own engine follows a point running ahead of it.
@@ -606,6 +794,14 @@ namespace WeaponForge
             {
                 case ForgeBloom.Centre.Through:
                 {
+                    // A grenade simply carries on: it was never steered, and
+                    // its own fuse or impact ends it the way the gun's would.
+                    if (_kind == Kind.Throw)
+                    {
+                        _leg = Leg.Free;
+                        return true;
+                    }
+
                     _leg = Leg.Through;
                     _flown = 0f;
                     _lastPos = pos;
@@ -708,8 +904,8 @@ namespace WeaponForge
         // (ForgeBallistics replicates the same step), and the stock rocket's
         // damping is 3 - so a bare write would land 6% short every step and the
         // rocket would trail behind its own path. Writing the damped-UP value
-        // lands it exactly. A rocket has no gravity, which is why this whole
-        // mode is allowed for it and refused for a grenade.
+        // lands it exactly. A rocket has no gravity, which is why it may be
+        // flown at all - a grenade is thrown instead (SetupThrow).
         private void Fly(Vector2 pos, Vector2 target, float dt)
         {
             Vector2 v = (target - pos) / dt;
@@ -758,6 +954,14 @@ namespace WeaponForge
                 }
 
                 Component shot = (_p != null) ? (Component)_p : _pp;
+
+                // A BOUNCING GRENADE GOES OFF ON ITS FUSE. Its impact is off -
+                // that is what makes it bounce (CLAUDE.md, "Bouncing is two
+                // unrelated systems") - so the impact's hooks would fire
+                // nothing and it would vanish. Going off means what its fuse
+                // fires, for a grenade that only ever goes off that way.
+                if (burst && _kind == Kind.Throw && !_impact.enabled)
+                    burst = false;
 
                 if (burst)
                 {

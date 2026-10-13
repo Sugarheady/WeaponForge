@@ -240,6 +240,21 @@ namespace WeaponForge
             public Centre atCentre = Centre.End;
             public Missile missile = Missile.Fly;
 
+            // Whether the file NAMED `atCentre`. A GRENADE that does not goes
+            // off at the centre (his answer, 2026-10-09: "default to go off
+            // there") while every other bullet keeps `end`, so this is the
+            // only way to tell "chose end" from "said nothing".
+            public bool atCentreSet;
+
+            // ---- a GRENADE in bullet mode (2026-10-09) ------------------
+            // Thrown once from its ring slot, never flown - see ForgeBloomPath
+            // "the throw". How the ring arrives (his three, "default to all at
+            // once"), and how high: 1 is a level throw at the gun's speed (his
+            // pick, "flat and fast"), 2 takes twice as long, 3 is a mortar.
+            public ForgeBloomPath.Arrival arrive = ForgeBloomPath.Arrival.Together;
+            public bool arriveSet;
+            public float lob = 1f;
+
             // ---- the pop -----------------------------------------------
             // Shove what it catches, using the weapon's own pushForce. Off by
             // default: a pop that throws bodies is a large change to how a
@@ -670,6 +685,100 @@ namespace WeaponForge
             }
 
             return false;
+        }
+
+        // A grenade ring's arrival. "staggered" is the staggered drift's word.
+        public static bool ParseArrive(string s, out ForgeBloomPath.Arrival a)
+        {
+            a = ForgeBloomPath.Arrival.Together;
+
+            if (string.IsNullOrEmpty(s))
+                return true;
+
+            switch (s.Trim().ToLowerInvariant().Replace("-", "").Replace(" ", ""))
+            {
+                case "together":
+                case "atonce":
+                case "allatonce":
+                case "all":
+                case "same":
+                    a = ForgeBloomPath.Arrival.Together;
+                    return true;
+
+                case "staggered":
+                case "stagger":
+                case "oneafteranother":
+                case "sequence":
+                case "cascade":
+                    a = ForgeBloomPath.Arrival.Staggered;
+                    return true;
+
+                case "arc":
+                case "ownarc":
+                case "own":
+                case "each":
+                case "eachonitsownarc":
+                    a = ForgeBloomPath.Arrival.Arc;
+                    return true;
+            }
+
+            return false;
+        }
+
+        // `lob` as a word - his three looks, flat and fast by default - or a
+        // number written as text. The caller clamps.
+        public static bool ParseLob(string s, out float lob)
+        {
+            lob = 1f;
+
+            if (string.IsNullOrEmpty(s))
+                return true;
+
+            float v;
+
+            if (float.TryParse(
+                    s.Trim(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out v))
+            {
+                lob = v;
+                return true;
+            }
+
+            switch (s.Trim().ToLowerInvariant())
+            {
+                case "flat":
+                case "fast":
+                case "low":
+                    lob = 1f;
+                    return true;
+
+                case "medium":
+                case "mid":
+                case "arc":
+                    lob = 2f;
+                    return true;
+
+                case "high":
+                case "lob":
+                case "mortar":
+                    lob = 3f;
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static string ArriveWord(ForgeBloomPath.Arrival a)
+        {
+            switch (a)
+            {
+                case ForgeBloomPath.Arrival.Staggered:
+                    return "one after another";
+                case ForgeBloomPath.Arrival.Arc:
+                    return "each on its own arc, thrown equally hard";
+                default:
+                    return "all at once";
+            }
         }
 
         // Does this drift end AT the centre? The ones that do are the ones the
