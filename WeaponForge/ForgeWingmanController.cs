@@ -1521,6 +1521,26 @@ namespace WeaponForge
             if (_cfg.aim == ForgeWingman.Aim.None)
                 return Vector2.zero;
 
+            // ★ STRIKER / VENGEANCE (R21 part 3): "firing point blank". A
+            // companion sent at an enemy shoots THAT enemy, whatever the
+            // file's own aim says - parallel or outward fire from beside an
+            // enemy would miss it.
+            if (_inMode && ForgeDroneModeRules.IsStrike(_modeNow))
+            {
+                Unit target;
+                int index = _wings.IndexOf(w);
+
+                if (index >= 0 &&
+                    ForgeDroneModes.StrikeTargetFor(_unit, _modeNow, this, index, out target) &&
+                    target != null)
+                {
+                    Vector2 d = (Vector2)target.transform.position - from;
+
+                    if (d.sqrMagnitude > 0.000001f)
+                        return d.normalized;
+                }
+            }
+
             switch (_cfg.aim)
             {
                 case ForgeWingman.Aim.Cursor:
@@ -2440,7 +2460,78 @@ namespace WeaponForge
                 return;
             }
 
+            if (_cfg.UsesRow)
+            {
+                PlaceRow();
+                return;
+            }
+
             PlaceBeads();
+        }
+
+        // protector / rearguard - his R21 part 1 answer: "it should be its own
+        // settings in the wingman". The drone modes' PROTECTOR and REAR GUARD
+        // rows as this gadget's NORMAL motion: the same shape function
+        // (ForgeDroneModeRules.Screen), with this file's own "distance",
+        // "spacing", "looseness" and "bearing" (the aim unless it says
+        // otherwise). A drone mode still takes over while its slot is in one
+        // (TickMode, above) and hands back to this.
+        private float _rowBearing;
+        private bool _hasRowBearing;
+
+        private void PlaceRow()
+        {
+            float deg;
+
+            // A bearing that has gone quiet (movement, standing still) keeps
+            // the last one, as drag / lead do, rather than snapping to east.
+            if (TryBearing(out deg))
+            {
+                _rowBearing = deg;
+                _hasRowBearing = true;
+            }
+            else if (!_hasRowBearing)
+            {
+                _rowBearing = 0f;
+            }
+
+            bool rear = _cfg.motion == ForgeWingman.Motion.RearGuard;
+            float a = (_rowBearing + (rear ? 180f : 0f)) * Mathf.Deg2Rad;
+
+            Vector2 here = transform.position;
+            var ship = new ForgeDroneModeRules.P(here.x, here.y);
+            var facing = new ForgeDroneModeRules.P(Mathf.Cos(a), Mathf.Sin(a));
+
+            float gap = Mathf.Max(0.1f, _cfg.spacing) *
+                        (rear ? ForgeDroneModeRules.RearGuardWiden : 1f);
+
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.01f, _cfg.looseness));
+            bool physical = _cfg.IsDrone && _cfg.drone.physics;
+            int n = _wings.Count;
+
+            for (int i = 0; i < n; i++)
+            {
+                Wing w = _wings[i];
+
+                if (w.go == null)
+                    continue;
+
+                ForgeDroneModeRules.P at = ForgeDroneModeRules.Screen(
+                    ship, facing, i, n, _cfg.RowDistance, gap);
+
+                Vector2 spot = new Vector2(at.x, at.y);
+                Vector2 to = w.fresh ? spot : Vector2.Lerp(w.go.transform.position, spot, k);
+
+                // Same split as `Put`: a physical body is pulled to its place
+                // rather than written to it, or a knockback would be erased on
+                // the frame it landed.
+                w.target = physical ? spot : to;
+
+                if (!physical)
+                    w.go.transform.position = to;
+
+                w.fresh = false;
+            }
         }
 
         // ------------------------------------------------------------------
@@ -2458,6 +2549,7 @@ namespace WeaponForge
         // ship in one mode is ONE formation - two slots on ORBIT are one ring,
         // wingmen and AI drones together, never two drawn on top of each other.
         private bool _inMode;
+        private ForgeDroneModeRules.Mode _modeNow = ForgeDroneModeRules.Mode.Base;
         private const float ModeEase = 0.1f;   // seconds-ish to settle
         private const float OrbCatch = 0.8f;   // INTERCEPTOR test option, orbs
 
@@ -2472,8 +2564,7 @@ namespace WeaponForge
             if (slot > 0)
                 m = ForgeDroneModes.Effective(_unit, slot);
 
-            bool placed = ForgeDroneModeRules.IsFormation(m) ||
-                          m == ForgeDroneModeRules.Mode.Interceptor;
+            bool placed = ForgeDroneModeRules.IsPlaced(m);
 
             Vector2 first;
 
@@ -2488,10 +2579,16 @@ namespace WeaponForge
             }
 
             _inMode = true;
+            _modeNow = m;
 
-            float k = 1f - Mathf.Exp(-Time.deltaTime / ModeEase);
+            bool guard = ForgeDroneModeRules.IsGuard(m);
+
+            // The interceptSpeed slider (R21 part 3): a shot-guarding wingman
+            // settles on its spot faster as it goes up - 0.1 s at 100%, a
+            // quarter of that at 400%.
+            float ease = guard ? ForgeDroneModes.TuningOf(_unit, slot).ease : ModeEase;
+            float k = 1f - Mathf.Exp(-Time.deltaTime / Mathf.Max(0.01f, ease));
             bool physical = _cfg.IsDrone && _cfg.drone.physics;
-            bool guard = m == ForgeDroneModeRules.Mode.Interceptor;
 
             for (int i = 0; i < _wings.Count; i++)
             {
@@ -2541,6 +2638,7 @@ namespace WeaponForge
         private void LeaveMode()
         {
             _inMode = false;
+            _modeNow = ForgeDroneModeRules.Mode.Base;
 
             Vector2 here = transform.position;
 

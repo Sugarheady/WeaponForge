@@ -150,8 +150,7 @@ namespace WeaponForge
 
             if (cfg.visualPrefab != null)
             {
-                go = UnityEngine.Object.Instantiate(cfg.visualPrefab);
-                Disarm(go);
+                go = BuildDisarmed(cfg.visualPrefab);
             }
             else
             {
@@ -234,6 +233,36 @@ namespace WeaponForge
         //
         // Renderers, ParticleSystems, Animators and Lights are NOT
         // MonoBehaviours, so the art survives this untouched.
+        // ★ BUILT SWITCHED OFF, THEN STRIPPED (R21 part 4's log: three
+        // NullReferenceExceptions from MoveAroundOwnerAction.FindPath, one per
+        // courier drone). The copy used to be made LIVE and its scripts
+        // destroyed afterwards - and destroying a stock drone's StateMachine
+        // runs its OnDisable, which CHANGES STATE: it switches on a state
+        // object whose MoveAroundOwnerAction.OnEnable looks for an owner the
+        // copy never had, inside our Destroy. Made under an inactive holder,
+        // nothing on the copy ever wakes (no Awake, no OnEnable, so no
+        // OnDisable either), the scripts go with DestroyImmediate, and only
+        // the art is let out. The rank orb's pickup is built the same way.
+        private static GameObject BuildDisarmed(GameObject prefab)
+        {
+            var holder = new GameObject("Forge Wingman Art (building)");
+            holder.SetActive(false);
+
+            try
+            {
+                GameObject go = UnityEngine.Object.Instantiate(prefab, holder.transform);
+
+                Disarm(go);
+
+                go.transform.SetParent(null, true);
+                return go;
+            }
+            finally
+            {
+                UnityEngine.Object.Destroy(holder);
+            }
+        }
+
         private static void Disarm(GameObject go)
         {
             if (go == null)
@@ -241,20 +270,36 @@ namespace WeaponForge
 
             var stripped = new System.Collections.Generic.List<string>();
 
-            foreach (var mb in go.GetComponentsInChildren<MonoBehaviour>(true))
+            // IN DEPENDENCY ORDER, over several passes: Unity refuses to remove
+            // a component another one on the same object [RequireComponent]s,
+            // and DestroyImmediate is not deferred, so the order is real. Each
+            // pass removes what nothing left still needs.
+            for (int pass = 0; pass < 6; pass++)
             {
-                if (mb == null)
-                    continue;
+                int removed = 0;
 
-                string type = mb.GetType().Name;
+                foreach (var mb in go.GetComponentsInChildren<MonoBehaviour>(true))
+                {
+                    if (mb == null)
+                        continue;
 
-                if (System.Array.IndexOf(KeepScripts, type) >= 0)
-                    continue;
+                    string type = mb.GetType().Name;
 
-                if (!stripped.Contains(type))
-                    stripped.Add(type);
+                    if (System.Array.IndexOf(KeepScripts, type) >= 0)
+                        continue;
 
-                UnityEngine.Object.Destroy(mb);
+                    if (RequiredByAnother(mb))
+                        continue;
+
+                    if (!stripped.Contains(type))
+                        stripped.Add(type);
+
+                    UnityEngine.Object.DestroyImmediate(mb);
+                    removed++;
+                }
+
+                if (removed == 0)
+                    break;
             }
 
             foreach (var rb in go.GetComponentsInChildren<Rigidbody2D>(true))
@@ -266,6 +311,30 @@ namespace WeaponForge
                 col.enabled = false;
 
             Say(go.name, stripped);
+        }
+
+        private static bool RequiredByAnother(Component c)
+        {
+            Type mine = c.GetType();
+
+            foreach (Component other in c.GetComponents<Component>())
+            {
+                if (other == null || ReferenceEquals(other, c))
+                    continue;
+
+                foreach (RequireComponent rc in other.GetType().GetCustomAttributes(
+                             typeof(RequireComponent), true))
+                {
+                    if ((rc.m_Type0 != null && rc.m_Type0.IsAssignableFrom(mine)) ||
+                        (rc.m_Type1 != null && rc.m_Type1.IsAssignableFrom(mine)) ||
+                        (rc.m_Type2 != null && rc.m_Type2.IsAssignableFrom(mine)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static void Say(

@@ -57,7 +57,10 @@ namespace WeaponForge
         //   Trail - strung out behind you along the path you actually flew.
         //   Drag  - on the ring, sliding to the side OPPOSITE a bearing.
         //   Lead  - the same, on the side ALONG it.
-        public enum Motion { Orbit, Trail, Drag, Lead }
+        // Protector / RearGuard (2026-10-05, his R21 part 1 answer: "it should
+        // be its own settings in the wingman") are the drone modes' PROTECTOR
+        // and REAR GUARD rows as a wingman's own motion.
+        public enum Motion { Orbit, Trail, Drag, Lead, Protector, RearGuard }
 
         // What `drag` / `lead` measure their side from.
         public enum Bearing { Movement, Aim, Both }
@@ -120,6 +123,10 @@ namespace WeaponForge
         // name. `Module Active Drone *` is the GADGET; the key below names the
         // BODY prefab it spawns.
         public const string DefaultBody = "Enemy_Fly Variant Drone";
+
+        // What an ORB wears when its file names no `visual` (R21 part 4: a
+        // blank one used to draw nothing at all).
+        public const string DefaultOrbVisual = "FuelPickup";
 
         // Refused for a measurable reason rather than a taste one: the suicide
         // drone sits on layer 8 (`PlayerProjectiles`), which `EnemyProjectiles`
@@ -318,8 +325,14 @@ namespace WeaponForge
             public Motion motion = Motion.Orbit;
             public float radius = 2.2f;           // orbit / drag / lead
             public float spinSpeed = 60f;         // ORBIT ONLY: ring deg/sec
-            public float spacing = 1.2f;          // trail: gap along the path
+            public float spacing = 1.2f;          // trail: gap along the path; protector / rearguard:
+                                                  // gap across the row (1.3 when the file names none)
             public float smoothing = 0.15f;       // trail: follow tightness
+
+            // protector / rearguard: how far from the ship the row sits. <= 0 =
+            // the motion's own (2.6 in front, 4.5 behind - the same numbers the
+            // drone modes' rows start from).
+            public float distance;
 
             // drag / lead only.
             public Bearing bearing = Bearing.Movement;
@@ -375,6 +388,27 @@ namespace WeaponForge
                 get
                 {
                     return motion == Motion.Drag || motion == Motion.Lead;
+                }
+            }
+
+            // A row across the bearing (ForgeWingmanController.PlaceRow), in
+            // front of it or behind it. It reads `bearing` / `signal` too.
+            public bool UsesRow
+            {
+                get
+                {
+                    return motion == Motion.Protector || motion == Motion.RearGuard;
+                }
+            }
+
+            public float RowDistance
+            {
+                get
+                {
+                    if (distance > 0f)
+                        return distance;
+
+                    return motion == Motion.RearGuard ? 4.5f : 2.6f;
                 }
             }
 

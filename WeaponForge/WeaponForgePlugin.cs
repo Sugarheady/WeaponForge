@@ -231,8 +231,9 @@ namespace WeaponForge
                 "Drone modes",
                 "Key",
                 "Y",
-                "Steps every gadget's companions (drones and wingmen) to the next mode: " +
-                "NORMAL > ORBIT > DRAG > PROTECTOR > REAR GUARD > SEEKER > SENTRY > NORMAL. " +
+                "Steps every gadget's companions (drones and wingmen) to the next mode in Cycle " +
+                "(by default NORMAL > ORBIT > DRAG > PROTECTOR > INTERCEPTOR > REAR GUARD > SEEKER > " +
+                "SENTRY > NORMAL). " +
                 "It acts when you LET GO. Hold it and press a gadget's own button (1, 2 or 3, " +
                 "or whatever fires that gadget) to step only that gadget. A key name (Y, G, F5, " +
                 "Backquote) or an Input System path (<Keyboard>/y). \"none\" here and in " +
@@ -279,21 +280,26 @@ namespace WeaponForge
                 "Drone modes", "Cycle", ForgeDroneModeRules.DefaultCycleText,
                 "The modes Key steps through, in order - reorder them, or leave any out and " +
                 "it is never offered. NORMAL is always the start and the end. The modes: " +
-                "Orbit, Drag, Protector, RearGuard, Seeker, Sentry, and Interceptor (not in " +
-                "the default list yet - add it to try it).");
+                "Orbit, Drag, Protector, RearGuard, Seeker, Sentry, Interceptor, and four not " +
+                "in the default list until they pass their tests - InterceptFront, InterceptRear, " +
+                "Striker and Vengeance (add them to try them). A gadget whose file joins a mode " +
+                "this list leaves out still gets it with Key + that gadget's own button.");
 
             ConfigEntry<string> droneFormation = Config.Bind(
                 "Drone modes", "Formation", "Loose",
                 "How drones hold ORBIT / DRAG / PROTECTOR / REAR GUARD. Loose: they fly to " +
                 "their place at their own speed and lag a moment when you boost. Locked: " +
-                "they hold their place the way wingmen do. Wingmen are always locked, and " +
-                "INTERCEPTOR always is.");
+                "they hold their place the way wingmen do. Wingmen are always locked, and so " +
+                "are the three INTERCEPTOR modes, STRIKER and VENGEANCE.");
 
             ConfigEntry<float> droneSeek = Config.Bind(
                 "Drone modes", "SeekRange", 40f,
-                "SEEKER: how far from you a drone may go hunting, in units (the game's own " +
-                "fighting leash is 20). It comes back to you when nothing is left to fight. " +
-                "10 to 80.");
+                "SEEKER: how far from you a drone goes hunting, in units (the game's own " +
+                "fighting leash is 20). It flies at the nearest enemy within this range of you, " +
+                "seen or not; with nothing in range it sweeps a loop round you at about half " +
+                "this. 10 to 80 - the game only keeps the world loaded about 75 units round you " +
+                "(25-unit squares, three out from the camera), so past that there is nothing to " +
+                "find, and a drone that crosses into an unloaded square is deleted.");
 
             ConfigEntry<float> droneSentryRadius = Config.Bind(
                 "Drone modes", "SentryRadius", 8f,
@@ -344,14 +350,51 @@ namespace WeaponForge
                 "Drone modes", "Spacing", 1.3f,
                 "PROTECTOR and REAR GUARD: the gap between companions across the row.");
 
+            // R21 part 3, his 315 ask: "Can we somehow bump up the rate of how
+            // quickly they snap to nearby projectiles? ... Can you make a
+            // slider for that?"
+            ConfigEntry<float> droneInterceptSpeed = Config.Bind(
+                "Drone modes", "InterceptSpeed", 100f,
+                "INTERCEPTOR, INTERCEPT FRONT and INTERCEPT REAR: how eagerly they snap to enemy " +
+                "shots, in percent. 100 is how they have always snapped; higher notices shots " +
+                "sooner, takes near misses too, and gets there faster - 400 is the extreme. " +
+                "50 to 400. A wingman or drone file's own \"modes\" block can set its own " +
+                "(interceptSpeed).");
+
+            ConfigEntry<float> droneStrikeRange = Config.Bind(
+                "Drone modes", "StrikeRange", 20f,
+                "STRIKER and VENGEANCE: how far from YOU an enemy may be for your companions to " +
+                "dive at it, in units. 6 to 40.");
+
+            ConfigEntry<float> droneStrikeDistance = Config.Bind(
+                "Drone modes", "StrikeDistance", 2.5f,
+                "STRIKER and VENGEANCE: how close a companion sits to the enemy it dives at " +
+                "(point blank), in units. 1 to 8.");
+
             var droneShapes = new ForgeDroneModeRules.Shape
             {
                 orbitRadius = Mathf.Clamp(droneOrbitRadius.Value, 1f, 12f),
                 dragSpacing = Mathf.Clamp(droneDragSpacing.Value, 0.5f, 6f),
                 protectorDistance = Mathf.Clamp(droneProtector.Value, 1f, 10f),
                 rearGuardDistance = Mathf.Clamp(droneRear.Value, 1f, 12f),
-                spacing = Mathf.Clamp(droneSpacing.Value, 0.5f, 5f)
+                spacing = Mathf.Clamp(droneSpacing.Value, 0.5f, 5f),
+                interceptSpeed = Mathf.Clamp(droneInterceptSpeed.Value,
+                    ForgeDroneModeRules.InterceptSpeedMin, ForgeDroneModeRules.InterceptSpeedMax),
+                strikeRange = Mathf.Clamp(droneStrikeRange.Value,
+                    ForgeDroneModeRules.StrikeRangeMin, ForgeDroneModeRules.StrikeRangeMax),
+                strikeDistance = Mathf.Clamp(droneStrikeDistance.Value,
+                    ForgeDroneModeRules.StrikeDistanceMin, ForgeDroneModeRules.StrikeDistanceMax)
             };
+
+            // His R21 part 1 note, answered "Yes, on by default": "would it be
+            // possible to reset their revenge or aggro between mode changes? I
+            // think they fixate on a target and dont loose it between modes."
+            ConfigEntry<bool> droneForget = Config.Bind(
+                "Drone modes", "ForgetTargetOnChange", true,
+                "true: whenever a drone's mode changes, it drops the enemy it was fighting and " +
+                "any grudge it was holding, and picks again from what it can see from its new " +
+                "place. false: it keeps fighting what it was fighting. Only the game's drones " +
+                "and Forge drone files have a target to drop; wingmen aim on their own.");
 
             ForgeDroneModes.Configure(
                 droneKey.Value, dronePad.Value,
@@ -359,6 +402,12 @@ namespace WeaponForge
                 droneNormal.Value, droneHold.Value, droneCycle.Value, droneFormation.Value,
                 droneSeek.Value, droneSentryRadius.Value, droneRecall.Value, droneAlert.Value,
                 droneNoDamage.Value, droneShapes, droneOrbitSpin.Value);
+
+            ForgeDroneModes.ForgetTargetOnChange = droneForget.Value;
+
+            // The settings tab's slider writes this same line (R21 part 3).
+            ForgeSettingsTab.InterceptSpeed = droneInterceptSpeed;
+            ForgeSettingsTab.File = Config;
 
             string gaugeWord = (gaugeMode.Value ?? "files").Trim().ToLowerInvariant();
 

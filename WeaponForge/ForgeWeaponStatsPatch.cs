@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using HarmonyLib;
+using UnityEngine;
 
 namespace WeaponForge
 {
@@ -62,6 +63,7 @@ namespace WeaponForge
                 }
 
                 Minion(td, results);
+                Courier(__instance, td, results);
             }
             catch (Exception e)
             {
@@ -122,6 +124,28 @@ namespace WeaponForge
         // shows nothing about them - you would have to read the log to find out
         // whether your health setting took. The standing rule is that a stat
         // you can set is a stat you can see.
+        // A courier's drones a pull, boost included (R21 part 4): "+1 drone a
+        // level" is a number you can only see working if the card says it.
+        private static void Courier(
+            WeaponBase w, WeaponData td, List<DisplayableProperty> results)
+        {
+            ForgeCourier.Config cfg;
+
+            if (!ForgeCourier.TryGet(td, out cfg) || cfg == null)
+                return;
+
+            bool ring = cfg.formation == ForgeCourierRules.Formation.Ring;
+            int baseCount = ring ? Mathf.Max(1, Mathf.RoundToInt(w.ProjectileCount)) : 1;
+            int now = ForgeCourierRules.DronesFor(
+                baseCount, cfg.dronesPerLevel, ForgeSwarm.LevelOf(w),
+                ring ? Mathf.Max(baseCount, ForgeCourierRules.MaxLine) : ForgeCourierRules.MaxLine);
+
+            results.Add(new DisplayableProperty(
+                TextFormatter.ColoredText(TextFormatter.capsColor, "DRONES A PULL"),
+                now.ToString() +
+                (cfg.dronesPerLevel > 0 ? " +" + cfg.dronesPerLevel + "/lvl" : "")));
+        }
+
         private static void Minion(
             WeaponData td, List<DisplayableProperty> results)
         {

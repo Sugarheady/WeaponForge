@@ -891,8 +891,25 @@ namespace WeaponForge
 
             cfg.mirror = ParseEnum(j["mirror"], ForgeWingman.Mirror.Primary);
             cfg.body = ParseEnum(j["body"], ForgeWingman.Body.Orb);
-            cfg.motion = ParseEnum(j["motion"], ForgeWingman.Motion.Orbit);
-            cfg.bearing = ParseEnum(j["bearing"], ForgeWingman.Bearing.Movement);
+            cfg.motion = ParseMotion(j["motion"], fileName);
+
+            // ★ THE ROWS FACE YOUR AIM unless the file says otherwise - the
+            // thing he liked about the drone modes' rows: "I really love rear
+            // guard and protector for wingman when they base on the players
+            // aim." drag / lead keep their movement default.
+            cfg.bearing = ParseEnum(
+                j["bearing"],
+                cfg.UsesRow ? ForgeWingman.Bearing.Aim : ForgeWingman.Bearing.Movement);
+
+            if (cfg.UsesRow)
+            {
+                cfg.distance = Mathf.Max(0f, (float?)j["distance"] ?? 0f);
+
+                // The drone modes' row gap, when the file names none (its
+                // `spacing` default is the trail's).
+                if (j["spacing"] == null)
+                    cfg.spacing = 1.3f;
+            }
             cfg.signal = ParseEnum(j["signal"], ForgeWingman.Signal.Both);
             cfg.bunching = ParseEnum(j["bunching"], ForgeWingman.Bunching.Fan);
             cfg.atRest = ParseEnum(j["atRest"], ForgeWingman.AtRest.Relax);
@@ -962,6 +979,22 @@ namespace WeaponForge
                 cfg.visual = null;
             }
 
+            // ★ AN ORB WITH NO "visual" WAS INVISIBLE (R21 part 4, test 363:
+            // "Strike wing orbs are invisiable and I cant tell if they're
+            // moving"). Nothing resolved, so Build made an empty object that
+            // fired from the right place and drew nothing - and nothing said
+            // so. The page's placeholder has always read FuelPickup; now that is
+            // what a blank one gets, said in the log.
+            if (cfg.body != ForgeWingman.Body.Drone && string.IsNullOrEmpty(cfg.visual))
+            {
+                cfg.visual = ForgeWingman.DefaultOrbVisual;
+
+                Log.LogInfo(
+                    fileName + ": wingman has no \"visual\", so its orbs wear '" +
+                    ForgeWingman.DefaultOrbVisual + "' (the blue fuel orb). Name a sprite " +
+                    "or a prefab in \"visual\" to choose another look.");
+            }
+
             ForgeWingmanArt.Resolve(cfg, fileName);
 
             // ---- validation, each saying what it DOES, not just what is wrong
@@ -1000,9 +1033,36 @@ namespace WeaponForge
             if (!cfg.UsesRing && j["radius"] != null)
             {
                 Log.LogWarning(
-                    fileName + ": wingman \"radius\" does nothing in " +
-                    "\"motion\": \"trail\" - the companions follow the path you " +
-                    "flew, so \"spacing\" is what sets how far back they sit.");
+                    cfg.UsesRow
+                        ? fileName + ": wingman \"radius\" does nothing in \"motion\": \"" +
+                          cfg.motion.ToString().ToLowerInvariant() + "\" - the companions " +
+                          "stand in a row, so \"distance\" is how far out the row sits and " +
+                          "\"spacing\" the gap between them."
+                        : fileName + ": wingman \"radius\" does nothing in " +
+                          "\"motion\": \"trail\" - the companions follow the path you " +
+                          "flew, so \"spacing\" is what sets how far back they sit.");
+            }
+
+            if (!cfg.UsesRow && j["distance"] != null)
+            {
+                WarnUnusedWingmanKeys(j, fileName, cfg.motion, new[] { "distance" });
+            }
+
+            if (cfg.UsesRow)
+            {
+                Log.LogInfo(
+                    fileName + ": wingman \"motion\": \"" + cfg.motion.ToString().ToLowerInvariant() +
+                    "\" - a row " + cfg.RowDistance.ToString("0.##") + " units " +
+                    (cfg.motion == ForgeWingman.Motion.RearGuard ? "BEHIND" : "IN FRONT OF") +
+                    " your " + (cfg.bearing == ForgeWingman.Bearing.Aim ? "aim"
+                        : cfg.bearing == ForgeWingman.Bearing.Both ? "aim and movement together"
+                        : "movement") +
+                    ", " + (cfg.spacing * (cfg.motion == ForgeWingman.Motion.RearGuard
+                        ? ForgeDroneModeRules.RearGuardWiden : 1f)).ToString("0.##") +
+                    " apart, the same shape as the drone modes' " +
+                    (cfg.motion == ForgeWingman.Motion.RearGuard ? "REAR GUARD" : "PROTECTOR") +
+                    " but with this file's own \"distance\" and \"spacing\". Two copies of one " +
+                    "row file stand on top of each other, as two trail or drag copies do.");
             }
 
             // THE KEYS THAT BELONG TO A MOTION YOU ARE NOT USING.
@@ -1023,22 +1083,35 @@ namespace WeaponForge
             {
                 // `spread` has a second job - it is the fan width for
                 // `aim: mirrored` - so it is only dead when neither applies.
+                // The rows read `bearing` and `signal` (which way is in front)
+                // and nothing else of the bunching set.
                 bool spreadUsed = cfg.aim == ForgeWingman.Aim.Mirrored;
+                var dead = new List<string>();
 
-                WarnUnusedWingmanKeys(
-                    j, fileName, cfg.motion,
-                    spreadUsed
-                        ? new[] { "bearing", "signal", "bunching", "atRest",
-                                  "holdSeconds" }
-                        : new[] { "bearing", "signal", "bunching", "atRest",
-                                  "holdSeconds", "spread" });
+                if (!cfg.UsesRow)
+                {
+                    dead.Add("bearing");
+                    dead.Add("signal");
+                }
+
+                dead.Add("bunching");
+                dead.Add("atRest");
+                dead.Add("holdSeconds");
+
+                if (!spreadUsed)
+                    dead.Add("spread");
+
+                WarnUnusedWingmanKeys(j, fileName, cfg.motion, dead.ToArray());
             }
 
+            // `spacing` is the trail's gap and a row's; `smoothing` only the
+            // trail's.
             if (cfg.motion != ForgeWingman.Motion.Trail &&
                 (j["spacing"] != null || j["smoothing"] != null))
             {
                 WarnUnusedWingmanKeys(
-                    j, fileName, cfg.motion, new[] { "spacing", "smoothing" });
+                    j, fileName, cfg.motion,
+                    cfg.UsesRow ? new[] { "smoothing" } : new[] { "spacing", "smoothing" });
             }
 
             // `looseness` is the ease used by every ring motion, so it is only
@@ -2302,14 +2375,21 @@ namespace WeaponForge
             switch (key)
             {
                 case "spacing":
+                    return "\"trail\", which follows the path you flew - how far " +
+                           "back they sit - and the rows (\"protector\", " +
+                           "\"rearguard\"), where it is the gap between them";
+
                 case "smoothing":
                     return "\"trail\", which follows the path you flew - " +
-                           "\"spacing\" is how far back they sit and " +
                            "\"smoothing\" is how loosely they take the corners";
 
+                case "distance":
+                    return "the rows (\"protector\", \"rearguard\"), where it is " +
+                           "how far in front of or behind you the row stands";
+
                 case "looseness":
-                    return "the ring motions (\"orbit\", \"drag\", \"lead\"), " +
-                           "where it is the ease a companion slides to its " +
+                    return "the ring motions (\"orbit\", \"drag\", \"lead\") and the " +
+                           "rows, where it is the ease a companion slides to its " +
                            "place - a trail uses \"smoothing\" instead";
 
                 case "spinSpeed":
@@ -2318,6 +2398,12 @@ namespace WeaponForge
 
                 case "radius":
                     return "the ring motions (\"orbit\", \"drag\", \"lead\")";
+
+                case "bearing":
+                case "signal":
+                    return "\"drag\" and \"lead\", where there is a direction " +
+                           "to bunch against, and the rows (\"protector\", " +
+                           "\"rearguard\"), where it is which way is in front";
 
                 default:
                     return "\"drag\" and \"lead\", where there is a direction " +
@@ -2376,6 +2462,34 @@ namespace WeaponForge
                 string.Join("; and to ", homes.ToArray()) + ". " +
                 instead +
                 " Nothing is broken; the value is simply not read.");
+        }
+
+        // `motion`, forgiving the spellings a person types for the two-word
+        // one ("rear guard", "rear_guard", "rear-guard") and SAYING when it
+        // does not know a word - ParseEnum's quiet fallback to orbit would turn
+        // a typo into a different motion with nothing in the log.
+        private static ForgeWingman.Motion ParseMotion(JToken tok, string fileName)
+        {
+            string s = (tok != null) ? (string)tok : null;
+
+            if (string.IsNullOrEmpty(s))
+                return ForgeWingman.Motion.Orbit;
+
+            string squashed = s.Replace(" ", "").Replace("_", "").Replace("-", "");
+
+            try
+            {
+                return (ForgeWingman.Motion)Enum.Parse(typeof(ForgeWingman.Motion), squashed, true);
+            }
+            catch
+            {
+                Log.LogWarning(
+                    fileName + ": wingman \"motion\": \"" + s + "\" is not a motion I know, so " +
+                    "it uses orbit. The motions are orbit, trail, drag, lead, protector and " +
+                    "rearguard.");
+
+                return ForgeWingman.Motion.Orbit;
+            }
         }
 
         private static T ParseEnum<T>(JToken tok, T fallback) where T : struct
@@ -2585,6 +2699,12 @@ namespace WeaponForge
             // registered and refuses loudly when it is not. Run before
             // ApplyCharge, that check would fail on every weapon.
             ApplyLunge(weapon, root, fileName);
+
+            // LAST: it refuses to share a gun with blocks that decide where
+            // the shot starts (bloom, converge, orbit) or that act on the shot
+            // at the trigger (charge, swipe), so it reads them after they are
+            // parsed - and it touches no prefab, so nothing below depends on it.
+            ApplyCourier(weapon, root, isGadget, fileName);
         }
 
         private static ForgeEntry BuildDrone(
@@ -6144,38 +6264,22 @@ namespace WeaponForge
             // A rigidbody BULLET is a different question, because it moves -
             // and the answer turns on GRAVITY, not on the flag (the trap that
             // made `guided` refuse rockets for a reason that only applied to
-            // grenades). A rocket has no fall to cancel, so it can fly a path;
-            // a grenade steered along one would stop falling.
-            if (pw != null && pw.usePhysics)
+            // grenades). A rocket has no fall to cancel, so it can fly a path.
+            // A grenade steered along one would stop falling, so since
+            // 2026-10-09 it is THROWN instead (ApplyBloomGrenade) - it used to
+            // be refused here.
+            if (pw != null && pw.usePhysics && !bullet)
             {
-                if (!bullet)
-                {
-                    Log.LogWarning(
-                        fileName + ": \"bloom\" does not work on a usePhysics " +
-                        "(rigidbody) weapon as a bubble - ignored. A bloom " +
-                        "hangs at a point with no velocity, and a rigidbody " +
-                        "left with no velocity is simply dropped. Pick a " +
-                        "straight-projectile template, or - for a MISSILE " +
-                        "(White Dart, Purple / Caps / Electron Rocket) - set " +
-                        "bloom \"when\": \"bullet\" and it flies the path as " +
-                        "itself.");
-                    return;
-                }
-
-                float g = PhysicsGravity(pw);
-
-                if (g > 0.0001f)
-                {
-                    Log.LogWarning(
-                        fileName + ": bloom \"when\": \"bullet\" does not work " +
-                        "on a LOBBED weapon - ignored. This shot falls " +
-                        "(gravityScale " + g.ToString("0.##") + "), and flying " +
-                        "it along a bloom's path means setting its velocity " +
-                        "every step, which would cancel the fall and turn a " +
-                        "grenade into a missile. A rocket has no fall, so it " +
-                        "works: White Dart, Purple / Caps / Electron Rocket.");
-                    return;
-                }
+                Log.LogWarning(
+                    fileName + ": \"bloom\" does not work on a usePhysics " +
+                    "(rigidbody) weapon as a bubble - ignored. A bloom " +
+                    "hangs at a point with no velocity, and a rigidbody " +
+                    "left with no velocity is simply dropped. Pick a " +
+                    "straight-projectile template, or set bloom \"when\": " +
+                    "\"bullet\": a MISSILE (White Dart, Purple / Caps / " +
+                    "Electron Rocket) then flies the path as itself, and a " +
+                    "GRENADE is thrown in at the centre.");
+                return;
             }
 
             if ((bool?)root["orbit"] ?? false)
@@ -6300,6 +6404,52 @@ namespace WeaponForge
                         fileName + ": bloom \"atCentre\": '" + s + "' is not " +
                         "recognised - use \"end\", \"through\" or \"burst\". " +
                         "Using end.");
+                }
+
+                // Named, not defaulted: a grenade that says nothing goes off at
+                // the centre, every other bullet ends there. (An unrecognised
+                // word fell back to end above, and counts as not named.)
+                ForgeBloom.Centre named;
+
+                cfg.atCentreSet = !string.IsNullOrEmpty(s) &&
+                                  ForgeBloom.ParseCentre(s, out named);
+
+                s = (string)o["arrive"];
+
+                if (!ForgeBloom.ParseArrive(s, out cfg.arrive))
+                {
+                    Log.LogWarning(
+                        fileName + ": bloom \"arrive\": '" + s + "' is not " +
+                        "recognised - use \"together\" (all at once), " +
+                        "\"staggered\" (one after another) or \"arc\" (each " +
+                        "on its own arc). Using together.");
+                }
+
+                ForgeBloomPath.Arrival arrived;
+
+                cfg.arriveSet = !string.IsNullOrEmpty(s) &&
+                                ForgeBloom.ParseArrive(s, out arrived);
+
+                // A number (1 = the flat throw, 2 = twice as long, 3 = a
+                // mortar) or one of his three words.
+                JToken lt = o["lob"];
+
+                if (lt != null && lt.Type != JTokenType.Null)
+                {
+                    if (lt.Type == JTokenType.Integer || lt.Type == JTokenType.Float)
+                    {
+                        cfg.lob = (float)lt;
+                    }
+                    else if (!ForgeBloom.ParseLob((string)lt, out cfg.lob))
+                    {
+                        Log.LogWarning(
+                            fileName + ": bloom \"lob\": '" + (string)lt + "' is " +
+                            "not recognised - use \"flat\", \"medium\" or " +
+                            "\"high\", or a number (1 = flat, 2 = twice as " +
+                            "long, 3 = a mortar). Using flat.");
+                    }
+
+                    cfg.lob = Mathf.Clamp(cfg.lob, 0.25f, 6f);
                 }
 
                 s = (string)o["missile"];
@@ -6433,12 +6583,14 @@ namespace WeaponForge
             {
                 // Bullet-mode keys on a bubble. Said rather than silent, the
                 // way every other ignored key is.
-                if (o["atCentre"] != null || o["missile"] != null)
+                if (o["atCentre"] != null || o["missile"] != null ||
+                    o["arrive"] != null || o["lob"] != null)
                 {
                     Log.LogInfo(
-                        fileName + ": bloom \"atCentre\" / \"missile\" only " +
-                        "mean something with \"when\": \"bullet\" - a bubble " +
-                        "pops wherever it is when its fuse runs out. Ignored.");
+                        fileName + ": bloom \"atCentre\" / \"missile\" / " +
+                        "\"arrive\" / \"lob\" only mean something with " +
+                        "\"when\": \"bullet\" - a bubble pops wherever it is " +
+                        "when its fuse runs out. Ignored.");
                 }
 
                 bool spiral = cfg.drift == ForgeBloom.Drift.Spiral;
@@ -6765,6 +6917,24 @@ namespace WeaponForge
             string fileName)
         {
             bool missile = pw.usePhysics;
+
+            // A GRENADE is THROWN, not flown, and almost nothing below applies
+            // to it - so it has its own method. GRAVITY decides, never the flag.
+            if (missile && PhysicsGravity(pw) > 0.0001f)
+            {
+                ApplyBloomGrenade(weapon, pw, root, o, cfg, fileName);
+                return;
+            }
+
+            // The grenade-only keys, on a shot that is not one.
+            if (o != null && (o["arrive"] != null || o["lob"] != null))
+            {
+                Log.LogInfo(
+                    fileName + ": bloom \"arrive\" / \"lob\" only mean " +
+                    "something on a GRENADE (a template that falls, like " +
+                    "White Derbis) - it is thrown in, where this " +
+                    (missile ? "missile" : "shot") + " flies its path. Ignored.");
+            }
 
             // A BULLET WITH NO DRIFT DOES NOT MOVE, and a still shot is the
             // immortal aura: its zero-length sweep hits whatever it sits in on
@@ -7111,6 +7281,845 @@ namespace WeaponForge
                 "." + (engineLine.Length > 0 ? engineLine + "." : "") +
                 " Its hits, piercing and impact are the gun's own; " +
                 "rangeData.range is still how far out it can be placed.");
+        }
+
+        // A GRENADE IN BULLET MODE (2026-10-09). His note on R21 321: "give
+        // the projectile in the circle thrust launching towards the center of
+        // the circle of the cursor ... Just no spiral regarding it." It is
+        // THROWN once from its ring slot (ForgeBloomBullet.SetupThrow) and
+        // never steered, so gravity, drag, bouncing, its fuse and its impact
+        // stay the game's. Its own method because almost nothing a flown
+        // bullet checks applies - there is no path, nothing steers it, no
+        // reach budget ends it. What is checked is his three answers, each a
+        // choice with his default:
+        //   arrive    together (default) / staggered / arc
+        //   atCentre  burst (default for a grenade) / through / end
+        //   lob       1 = flat and fast (default), 2, 3 - or the words
+        // and the two drifts a throw can do: inward and outward.
+        private static void ApplyBloomGrenade(
+            WeaponData weapon,
+            ProjectileWeaponData pw,
+            JObject root,
+            JObject o,
+            ForgeBloom.Config cfg,
+            string fileName)
+        {
+            // ---- the drift: thrown IN, or thrown OUT ----------------------
+            switch (cfg.drift)
+            {
+                case ForgeBloom.Drift.Inward:
+                case ForgeBloom.Drift.Outward:
+                    break;
+
+                // "Thrown in" IS a grenade's default - unlike a flown bullet,
+                // a grenade with no drift is not a still shot.
+                case ForgeBloom.Drift.None:
+                    cfg.drift = ForgeBloom.Drift.Inward;
+                    break;
+
+                // The staggered drift's own meaning, as an arrival.
+                case ForgeBloom.Drift.Staggered:
+                    if (!cfg.arriveSet)
+                    {
+                        cfg.arrive = ForgeBloomPath.Arrival.Staggered;
+                    }
+                    else if (cfg.arrive != ForgeBloomPath.Arrival.Staggered)
+                    {
+                        Log.LogInfo(
+                            fileName + ": bloom \"drift\": \"staggered\" and " +
+                            "\"arrive\": \"" +
+                            cfg.arrive.ToString().ToLowerInvariant() + "\" " +
+                            "disagree - \"arrive\" decides how a grenade ring " +
+                            "lands, so it lands " +
+                            ForgeBloom.ArriveWord(cfg.arrive) + ".");
+                    }
+
+                    cfg.drift = ForgeBloom.Drift.Inward;
+                    break;
+
+                default:
+                    Log.LogWarning(
+                        fileName + ": bloom \"drift\": \"" +
+                        cfg.drift.ToString().ToLowerInvariant() + "\" cannot " +
+                        "be done by a GRENADE - it is thrown once and never " +
+                        "flown, because setting a falling shot's velocity every " +
+                        "step would cancel its fall. Throwing it IN at the " +
+                        "centre instead. A grenade takes \"inward\" (the " +
+                        "default) or \"outward\".");
+
+                    cfg.drift = ForgeBloom.Drift.Inward;
+                    break;
+            }
+
+            bool inward = cfg.drift == ForgeBloom.Drift.Inward;
+
+            // ---- settings that do nothing on a thrown grenade --------------
+            if (o != null)
+            {
+                var quiet = new List<string>();
+
+                foreach (string k in new[] {
+                    "pick", "retick", "push", "digThrough", "absorb", "deflect",
+                    "fuse", "driftSpeed", "pace", "turns", "missile" })
+                {
+                    if (o[k] != null)
+                        quiet.Add(k);
+                }
+
+                if (quiet.Count > 0)
+                {
+                    Log.LogInfo(
+                        fileName + ": bloom " + string.Join(", ", quiet.ToArray()) +
+                        " - these do nothing on a bloom GRENADE. It is thrown " +
+                        "once and never steered, hits the way the gun's grenade " +
+                        "always does, and is ended by the centre, its fuse or " +
+                        "its impact.");
+                }
+
+                if (!inward)
+                {
+                    var outward = new List<string>();
+
+                    foreach (string k in new[] {
+                        "arrive", "lob", "atCentre", "stagger", "direction" })
+                    {
+                        if (o[k] != null)
+                            outward.Add(k);
+                    }
+
+                    if (outward.Count > 0)
+                    {
+                        Log.LogInfo(
+                            fileName + ": bloom " +
+                            string.Join(", ", outward.ToArray()) + " - not used " +
+                            "with \"drift\": \"outward\". An outward grenade " +
+                            "never reaches the centre: it is thrown straight out " +
+                            "from it at projectileSpeed, and is an ordinary " +
+                            "grenade from then on.");
+                    }
+                }
+                else if ((o["stagger"] != null || o["direction"] != null) &&
+                         cfg.arrive != ForgeBloomPath.Arrival.Staggered)
+                {
+                    Log.LogInfo(
+                        fileName + ": bloom \"stagger\" / \"direction\" only " +
+                        "mean something on a grenade ring that arrives " +
+                        "\"staggered\" (one after another). Ignored.");
+                }
+            }
+
+            // Bubble-only, and the shot tracker they would switch on costs a
+            // sweep over every enemy bullet.
+            cfg.absorb = false;
+            cfg.deflect = false;
+
+            // ---- what pulls it off its throw -------------------------------
+            //
+            // The throw is solved for gravity and drag ALONE, so anything that
+            // pushes or steers it in flight lands it somewhere else - and it
+            // still goes off on the step it was due on the centre.
+            if (inward)
+            {
+                var pullers = new List<string>();
+
+                foreach (string k in new[] { "guided", "homing" })
+                {
+                    if (root[k] != null)
+                        pullers.Add(k);
+                }
+
+                // A maxSpeed of 0 never thrusts (CLAUDE.md), which is what
+                // every stock grenade ships.
+                if (pw.homingData.maxSpeed > 0f && pw.homingData.acceleration > 0f)
+                    pullers.Add("its own homingData thrust");
+
+                if (pullers.Count > 0)
+                {
+                    Log.LogWarning(
+                        fileName + ": " + string.Join(", ", pullers.ToArray()) +
+                        " on a bloom GRENADE - its throw is worked out for " +
+                        "gravity and drag alone, so anything that pushes or " +
+                        "steers it in flight takes it off the arc, and it goes " +
+                        "off wherever it is when it was due on the centre.");
+                }
+            }
+
+            // ---- the centre: a grenade goes off there unless the file says --
+            if (!cfg.atCentreSet)
+                cfg.atCentre = ForgeBloom.Centre.Burst;
+
+            // What "going off" fires: the impact's hooks - or, on a grenade
+            // whose impact is OFF (the ones that bounce), its fuse's, which is
+            // the only way such a grenade ever goes off (ForgeBloomBullet.Finish).
+            ProjectileImpactBehaviour ib = pw.impactBehaviour;
+            ProjectileLifetimeData ld = pw.lifetimeData;
+
+            bool fuseHurts = ld.enabled &&
+                             (ld.spawnExplosion || ld.fireSub || ld.discharge);
+            bool hitHurts = ib.enabled &&
+                            (ib.spawnExplosion || ib.fireSub || ib.discharge);
+
+            string centreWord;
+            bool hurts;
+
+            switch (cfg.atCentre)
+            {
+                case ForgeBloom.Centre.Through:
+                    centreWord = "carries on falling, and its own fuse or " +
+                                 "impact ends it the way the gun's grenade's does";
+                    hurts = true;
+                    break;
+
+                case ForgeBloom.Centre.Burst:
+                    centreWord = ib.enabled
+                        ? "goes off as if it hit something (" +
+                          BlastWords("its impact effect", ib.spawnExplosion,
+                                     ib.fireSub, ib.discharge) + ")"
+                        : "goes off the way it does on its fuse - its impact " +
+                          "is off, which is what lets it bounce (" +
+                          BlastWords("its fuse's effect", ld.spawnExplosion,
+                                     ld.fireSub, ld.discharge) + ")";
+                    hurts = ib.enabled ? hitHurts : fuseHurts;
+                    break;
+
+                default:
+                    centreWord = "ends, firing what its fuse would" +
+                                 (fuseHurts
+                                     ? " (" + BlastWords("its fuse's effect",
+                                           ld.spawnExplosion, ld.fireSub,
+                                           ld.discharge) + ")"
+                                     : " (for this grenade, nothing: it " +
+                                       "simply goes)");
+                    hurts = fuseHurts;
+                    break;
+            }
+
+            if (inward && !hurts)
+            {
+                Log.LogWarning(
+                    fileName + ": at the centre this grenade " +
+                    (cfg.atCentre == ForgeBloom.Centre.Burst ? "goes off" : "ends") +
+                    " with no explosion, sub-emitter or discharge, so it does " +
+                    "NO damage there - only what it hits on the way in. Give " +
+                    "it an \"explosion\" block and \"impactBehaviour\": " +
+                    "{ \"spawnExplosion\": true }, or set \"atCentre\": " +
+                    "\"through\" to let it carry on.");
+            }
+
+            // ---- the numbers, at full reach --------------------------------
+            //
+            // Worked out with the same arithmetic the throw uses, on this
+            // grenade's own gravity and drag, so the log and the game agree.
+            float speed = pw.projectileSpeed;
+
+            if (speed <= 0.01f)
+            {
+                Log.LogWarning(
+                    fileName + ": a bloom GRENADE's flat throw is a level throw " +
+                    "at projectileSpeed, and this weapon's is " +
+                    speed.ToString("0.##") + " - throwing at 20 units/second " +
+                    "instead. Set \"projectileSpeed\".");
+
+                speed = 20f;
+            }
+
+            float cap = (float)ForgeBloomPath.ThrowCap;
+
+            if (speed > cap)
+            {
+                Log.LogInfo(
+                    fileName + ": projectileSpeed " + speed.ToString("0.#") +
+                    " is past what the game lets a body fly (100 units/second, " +
+                    "Physics2DSettings) - a bloom grenade is thrown at no more " +
+                    "than " + cap.ToString("0") + ".");
+            }
+
+            Rigidbody2D body =
+                pw.physicsProjectilePrefab.GetComponent<Rigidbody2D>();
+
+            if (body == null)
+            {
+                body = pw.physicsProjectilePrefab
+                    .GetComponentInChildren<Rigidbody2D>(true);
+            }
+
+            Vector2 g = Physics2D.gravity * ((body != null) ? body.gravityScale : 1f);
+            float dt = Time.fixedDeltaTime;
+
+            ForgeBloomPath.Fall fall = ForgeBloomPath.MakeFall(
+                g.x, g.y, (body != null) ? body.linearDamping : 0f, dt);
+
+            float reach = cfg.templateRange;
+            float ring = ForgeBloom.RingRadius(weapon.spread, reach);
+            int max = ForgeBloomPath.MaxThrowSteps;
+
+            int n0 = ForgeBloomPath.BaseSteps(ref fall, ring, speed, cfg.lob, max);
+
+            float first = n0 * dt;
+            float last = first;
+
+            if (inward && ring > 0.05f)
+            {
+                if (cfg.arrive == ForgeBloomPath.Arrival.Staggered &&
+                    weapon.projectileCount > 1f)
+                {
+                    last = (float)Math.Round(
+                        n0 * ForgeBloomPath.StaggerScale(1.0, cfg.stagger)) * dt;
+                }
+                else if (cfg.arrive == ForgeBloomPath.Arrival.Arc)
+                {
+                    // Each lands on its own arc, so walk the ring for the
+                    // quickest (thrown down) and the slowest (thrown up).
+                    int lo = int.MaxValue, hi = 0;
+
+                    for (int k = 0; k < 16; k++)
+                    {
+                        double a = k * ForgeBloomPath.TwoPi / 16.0;
+
+                        int n = ForgeBloomPath.ThrowSteps(
+                            ref fall, ring * Math.Cos(a), ring * Math.Sin(a),
+                            0.0, 0.0, ring, speed, cfg.lob,
+                            ForgeBloomPath.Arrival.Arc, 1.0, max);
+
+                        lo = Math.Min(lo, n);
+                        hi = Math.Max(hi, n);
+                    }
+
+                    first = lo * dt;
+                    last = hi * dt;
+                }
+            }
+
+            if (inward && ld.enabled && ld.time > 0f && last > ld.time)
+            {
+                Log.LogWarning(
+                    fileName + ": at full reach the " +
+                    (last > first + 0.005f ? "slowest grenade's" : "grenades'") +
+                    " throw in takes about " + last.ToString("0.00") + "s, and " +
+                    "its lifetimeData.time is " + ld.time.ToString("0.##") + "s - " +
+                    "so it ends BEFORE it reaches the centre, the way its fuse " +
+                    "ends it. Raise lifetimeData.time, or use a lower \"lob\" " +
+                    "or a shorter reach (rangeData.range).");
+            }
+
+            if (inward && weapon.spread <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": bloom grenade at spread 0 - every grenade " +
+                    "starts ON the centre, so there is nothing to throw it " +
+                    "across and the centre rule (\"" +
+                    cfg.atCentre.ToString().ToLowerInvariant() + "\") applies on " +
+                    "the first step. Give the weapon a spread to put them on a " +
+                    "ring.");
+            }
+
+            // ---- attach -------------------------------------------------------
+            //
+            // On the physics prefab - a lobbed weapon's projectilePrefab is
+            // NULL (CLAUDE.md).
+            GameObject clone = VisualCustomizer.ClonePrefab(
+                pw.physicsProjectilePrefab.gameObject);
+
+            var shot = clone.GetComponentInChildren<PhysicsProjectile>(true);
+
+            if (shot == null)
+            {
+                Log.LogWarning(
+                    fileName + ": bloom - no PhysicsProjectile on the " +
+                    "grenade's prefab, so there is nothing to throw.");
+                return;
+            }
+
+            pw.physicsProjectilePrefab = shot;
+
+            var bb = shot.GetComponent<ForgeBloomBullet>();
+
+            if (bb == null)
+                bb = shot.gameObject.AddComponent<ForgeBloomBullet>();
+
+            // An INT, never the Config itself - see ForgeConfigTable.
+            bb.cfgId = ForgeConfigTable.Id(cfg);
+            bb.fallbackRate = speed;
+            bb.fallbackRange = reach;
+
+            ForgeBloom.Register(weapon, cfg);
+
+            // ---- the summary ----------------------------------------------------
+            string lobWord = Mathf.Approximately(cfg.lob, 1f)
+                ? "flat and fast: a level throw at the gun's " +
+                  Mathf.Min(speed, cap).ToString("0.#") + " units/second"
+                : "a lob " + cfg.lob.ToString("0.##") + "x as long as the " +
+                  "flat throw";
+
+            Log.LogInfo(
+                fileName + ": BLOOM GRENADE - the gun's own grenade appears on " +
+                "a ring round the crosshair up to " + reach + " units out " +
+                "(clamped past that) and is THROWN " +
+                (inward
+                    ? "at the centre, landing " + ForgeBloom.ArriveWord(cfg.arrive) +
+                      " (" + lobWord + "), about " + first.ToString("0.00") +
+                      "s in at full reach" +
+                      (last > first + 0.005f
+                          ? " (the last " + last.ToString("0.00") + "s)"
+                          : "") +
+                      "; at the centre it " + centreWord
+                    : "straight out from the centre at " +
+                      Mathf.Min(speed, cap).ToString("0.#") + " units/second, " +
+                      "and is an ordinary grenade from then on") +
+                ". It is never steered: gravity, drag, bouncing, its fuse and " +
+                "its impact are the game's; rangeData.range is how far out it " +
+                "can be placed.");
+        }
+
+        // COURIER (2026-10-09) - his R21 part 1 idea, his reference the Gaster
+        // Blaster: the trigger launches a DRONE that flies to your cursor,
+        // winds up, fires the gun from there (or a weapon the file names),
+        // `shots` times, and fades. Design and every decision:
+        // Docs/CURSOR DRONE - CONCEPT.md. The runtime is ForgeCourier,
+        // ForgeCourierDrone and ForgeCourierPatch; the arithmetic is
+        // ForgeCourierRules (no Unity - the probe runs it).
+        private static void ApplyCourier(
+            WeaponData weapon,
+            JObject root,
+            bool isGadget,
+            string fileName)
+        {
+            JToken token = root["courier"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return;
+
+            var o = token as JObject;
+
+            if (o == null)
+            {
+                if (token.Type != JTokenType.Boolean || !(bool)token)
+                {
+                    Log.LogWarning(fileName + ": \"courier\" should be true or " +
+                                   "an object - ignored.");
+                    return;
+                }
+
+                o = new JObject();
+            }
+            else if (!((bool?)o["enabled"] ?? true))
+            {
+                return;
+            }
+
+            // ---- what it may be on -------------------------------------
+            bool beam = weapon is HitscanWeaponData;
+            var pw = weapon as ProjectileWeaponData;
+
+            if (!beam && pw == null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"courier\" works on a projectile or a beam " +
+                    "weapon - this template is neither (a minion spawner, most " +
+                    "likely). Ignored.");
+                return;
+            }
+
+            // ---- blocks that cannot share a gun with it --------------------
+            //
+            // Refused rather than warned, the way bloom refuses: each would be
+            // FIGHTING the courier over the same moment, not idling beside it.
+            string clash = null;
+
+            if (root["bloom"] != null)
+                clash = "bloom (both decide where the shot starts - bloom puts it AT the cursor)";
+            else if (root["converge"] != null)
+                clash = "converge (both decide where the shots go - converge aims them at one point)";
+            else if ((bool?)root["orbit"] ?? false)
+                clash = "orbit (an orbit ring never fires a shot for a drone to replace)";
+            else if (root["charge"] != null)
+                clash = "charge (a charged shot is armed for the gun's next volley, and that " +
+                        "volley happens at the drone, long after the charge has expired)";
+            else if (root["swipe"] != null)
+                clash = "swipe (the swing happens at your ship on every volley, so it would " +
+                        "swing from you each time a drone fires)";
+            // curveBeam is NOT here any more (R21 part 4, his MegaLazor): a
+            // drone's beam is built from this same file, so the curve rides
+            // the drone, and ForgeCurveBeamPatch hides the launcher's own.
+            else if (root["wingman"] != null)
+                clash = "wingman (a wingman file's own gun is never fired)";
+
+            if (clash != null)
+            {
+                Log.LogWarning(
+                    fileName + ": \"courier\" cannot be combined with " + clash +
+                    " - courier is ignored so the other block still works. " +
+                    "Remove one of the two.");
+                return;
+            }
+
+            var cfg = new ForgeCourier.Config();
+            cfg.fileName = fileName;
+            string s;
+
+            // ---- what it fires ---------------------------------------------
+            s = (string)o["weapon"];
+            cfg.weapon = string.IsNullOrEmpty(s) ? null : s.Trim();
+
+            cfg.shots = Mathf.Clamp((int?)o["shots"] ?? 1, 1, 50);
+            cfg.interval = Mathf.Clamp((float?)o["interval"] ?? 0f, 0f, 10f);
+            cfg.beamTime = Mathf.Clamp((float?)o["beamTime"] ?? 0.75f, 0.05f, 10f);
+            cfg.beamRate = Mathf.Clamp((float?)o["beamRate"] ?? 12f, 1f, 60f);
+
+            // ---- the trip --------------------------------------------------
+            cfg.speed = Mathf.Clamp((float?)o["speed"] ?? 30f, 1f, 200f);
+            cfg.reach = Mathf.Clamp((float?)o["reach"] ?? 0f, 0f, 75f);
+            cfg.follow = (bool?)o["follow"] ?? false;
+            cfg.overWalls = (bool?)o["overWalls"] ?? true;
+
+            s = (string)o["entry"];
+            if (!ForgeCourierRules.ParseEntry(s, out cfg.entry))
+                Log.LogWarning(fileName + ": courier \"entry\": '" + s + "' is not " +
+                               "recognised - use \"fly\" or \"appear\". Using fly.");
+
+            // ---- aim -------------------------------------------------------
+            cfg.windup = Mathf.Clamp((float?)o["windup"] ?? 0.25f, 0f, 5f);
+
+            s = (string)o["aim"];
+            if (!ForgeCourierRules.ParseAim(s, out cfg.aim))
+                Log.LogWarning(fileName + ": courier \"aim\": '" + s + "' is not " +
+                               "recognised - use \"outward\", \"enemy\", \"back\", " +
+                               "\"launch\" or \"centre\". Using outward.");
+
+            ForgeCourierRules.Aim aimProbe;
+            cfg.aimSet = !string.IsNullOrEmpty(s) && ForgeCourierRules.ParseAim(s, out aimProbe);
+
+            cfg.snap = Mathf.Clamp((float?)o["snap"] ?? 0f, 0f, 180f);
+            cfg.turn = Mathf.Clamp((float?)o["turn"] ?? 0f, -360f, 360f);
+
+            s = (string)o["pattern"];
+            if (!ForgeCourierRules.ParsePattern(s, out cfg.pattern))
+                Log.LogWarning(fileName + ": courier \"pattern\": '" + s + "' is not " +
+                               "recognised - use \"single\", \"sides\", \"cross\", " +
+                               "\"x\" or \"star\". Using single.");
+
+            s = (string)o["formation"];
+            if (!ForgeCourierRules.ParseFormation(s, out cfg.formation))
+                Log.LogWarning(fileName + ": courier \"formation\": '" + s + "' is " +
+                               "not recognised - use \"one\" or \"ring\". Using one.");
+
+            // ---- boosted: more drones a pull (R21 part 4, his answers) ------
+            cfg.dronesPerLevel = Mathf.Clamp((int?)o["dronesPerLevel"] ?? 1, 0, 10);
+            cfg.spacing = Mathf.Clamp((float?)o["spacing"] ?? 1.5f, 0f, 20f);
+
+            s = (string)o["wingmanDrones"];
+
+            if (!string.IsNullOrEmpty(s))
+            {
+                string w = s.Trim().ToLowerInvariant();
+
+                if (w == "stack" || w == "stacked" || w == "together")
+                    cfg.mirrorWingmen = false;
+                else if (w == "mirror" || w == "mirrored" || w == "spread")
+                    cfg.mirrorWingmen = true;
+                else
+                    Log.LogWarning(fileName + ": courier \"wingmanDrones\": '" + s + "' is " +
+                                   "not recognised - use \"mirror\" or \"stack\". Using mirror.");
+            }
+
+            // ---- leaving -----------------------------------------------------
+            s = (string)o["exit"];
+            if (!ForgeCourierRules.ParseExit(s, out cfg.exit))
+                Log.LogWarning(fileName + ": courier \"exit\": '" + s + "' is not " +
+                               "recognised - use \"fade\" or \"recoil\". Using fade.");
+
+            cfg.fadeTime = Mathf.Clamp((float?)o["fadeTime"] ?? 0.3f, 0f, 5f);
+
+            // ---- its body ------------------------------------------------------
+            JToken sh = o["shootable"];
+
+            if (sh != null && sh.Type == JTokenType.Boolean)
+            {
+                cfg.shootable = (bool)sh
+                    ? ForgeCourierRules.Shootable.Hit
+                    : ForgeCourierRules.Shootable.Off;
+            }
+            else
+            {
+                s = (string)sh;
+
+                if (!ForgeCourierRules.ParseShootable(s, out cfg.shootable))
+                    Log.LogWarning(fileName + ": courier \"shootable\": '" + s + "' " +
+                                   "is not recognised - use false, true (\"hit\") or " +
+                                   "\"decoy\". Using false.");
+            }
+
+            cfg.health = Mathf.Clamp((float?)o["health"] ?? 10f, 1f, 10000f);
+            cfg.contact = (bool?)o["contact"] ?? false;
+            cfg.faceAim = (bool?)o["faceAim"] ?? true;
+
+            // ---- its look: the wingman's resolver ------------------------------
+            cfg.art = new ForgeWingman.Config();
+
+            s = (string)o["visual"];
+            cfg.art.visual = string.IsNullOrEmpty(s) ? ForgeWingman.DefaultBody : s.Trim();
+            cfg.art.scale = Mathf.Clamp((float?)o["scale"] ?? 1f, 0.1f, 10f);
+            cfg.art.hasColor = ReadColor((string)o["color"], "courier color",
+                                         fileName, ref cfg.art.color);
+
+            ForgeWingmanArt.Resolve(cfg.art, fileName);
+
+            // ---- the reach ring ----------------------------------------------
+            //
+            // His ask: "if the courier drone has a range, then we should
+            // probably implement it." It does - `reach` - and a cursor past it
+            // is pulled in with nothing on screen to say so, exactly bloom's
+            // invisible range. So bloom's ring, bloom's six keys and defaults,
+            // with ForgeCourier.ReachOf as the radius.
+            s = (string)o["ring"];
+
+            if (!ForgeBloom.ParseRing(s, out cfg.ring))
+            {
+                Log.LogWarning(
+                    fileName + ": courier \"ring\": '" + s + "' is not " +
+                    "recognised - use \"off\", \"held\", \"always\" or " +
+                    "\"outOfRange\". Using off.");
+            }
+
+            string rsprite = (string)o["ringSprite"];
+
+            if (!string.IsNullOrEmpty(rsprite))
+                cfg.ringSprite = rsprite;
+
+            ReadColor((string)o["ringColor"], "courier ringColor",
+                      fileName, ref cfg.ringColor);
+
+            cfg.ringFade = Mathf.Clamp((float?)o["ringFade"] ?? 0f, 0f, 5f);
+            cfg.ringOpacity = Mathf.Clamp01((float?)o["ringOpacity"] ?? 1f);
+            cfg.ringWidth = Mathf.Clamp((float?)o["ringWidth"] ?? 0f, 0f, 4f);
+
+            bool ringShaped = cfg.ringFade > 0f || cfg.ringOpacity < 1f ||
+                              cfg.ringWidth > 0f || !string.IsNullOrEmpty(rsprite) ||
+                              o["ringColor"] != null;
+
+            if (cfg.ring == ForgeBloom.RingShow.Off && ringShaped)
+            {
+                Log.LogInfo(
+                    fileName + ": courier ringSprite / ringColor / ringFade / " +
+                    "ringOpacity / ringWidth are set but \"ring\" is off, so " +
+                    "there is no ring for them to change. Set \"ring\" to " +
+                    "\"held\", \"always\" or \"outOfRange\".");
+            }
+
+            if (cfg.ring != ForgeBloom.RingShow.Off && isGadget)
+            {
+                Log.LogWarning(
+                    fileName + ": courier \"ring\" draws nothing in a GADGET " +
+                    "slot. The reach circle is driven from Shooter, and a " +
+                    "gadget calls the weapon directly and never touches it. " +
+                    "The drones themselves work normally.");
+            }
+
+            if (cfg.ringWidth > 0f && !string.IsNullOrEmpty(cfg.ringSprite))
+            {
+                Log.LogInfo(
+                    fileName + ": courier \"ringWidth\" only thickens the ring " +
+                    "the mod DRAWS - this file names a \"ringSprite\", whose " +
+                    "line is part of its own art, so the width is not used.");
+            }
+
+            // ---- sound ---------------------------------------------------------
+            //
+            // `launchSfx` - his ask: replaceable on the builder page. Absent =
+            // the game's combat drone deploy sound (a real clip, volume 0.1);
+            // "" = none. The gun's own shot sound plays where the drone fires.
+            JToken ls = o["launchSfx"];
+
+            cfg.launchSfx = (ls == null || ls.Type == JTokenType.Null)
+                ? ResolveChargeSfx(DefaultCourierLaunchSfx, null, false,
+                                   "courier \"launchSfx\"", fileName)
+                : ResolveChargeSfx((string)ls, null, false,
+                                   "courier \"launchSfx\"", fileName);
+
+            // ---- a BEAM launcher -----------------------------------------------
+            //
+            // Its shot happens at the drone, so your ship must not hum or warm
+            // up while nothing fires from it. The held sounds MOVE to the drone
+            // (it plays them while it winds up and fires), and the gun's own
+            // warm-up becomes the drone's windup - the stock beam's warm-up art
+            // is what the drone shows while it holds.
+            var hw = weapon as HitscanWeaponData;
+
+            if (hw != null)
+            {
+                cfg.beamHum = hw.continousShootSfx;
+                cfg.beamWarmup = hw.warmupSfx;
+                cfg.beamRelease = hw.releaseSfx;
+
+                // A RE-RUN (a rank unlock rebuilding a copy) meets a weapon
+                // whose held sounds this step already moved off - so they are
+                // taken from the registration the copy inherited instead.
+                ForgeCourier.Config before;
+
+                if (ForgeCourier.TryGet(weapon, out before))
+                {
+                    if (string.IsNullOrEmpty(cfg.beamHum)) cfg.beamHum = before.beamHum;
+                    if (string.IsNullOrEmpty(cfg.beamWarmup)) cfg.beamWarmup = before.beamWarmup;
+                    if (string.IsNullOrEmpty(cfg.beamRelease)) cfg.beamRelease = before.beamRelease;
+                }
+
+                float warm = hw.warmupTime;
+
+                hw.continousShootSfx = null;
+                hw.warmupSfx = null;
+                hw.warmupTime = 0f;
+
+                if (warm > 0f)
+                {
+                    Log.LogInfo(
+                        fileName + ": courier on a beam - its warmupTime (" +
+                        warm.ToString("0.##") + "s) is moved to the drones: the " +
+                        "trigger launches at once, and each drone shows the " +
+                        "beam's warm-up for its \"windup\" (" +
+                        cfg.windup.ToString("0.##") + "s) before it fires.");
+                }
+
+                if (weapon.fireRate > 3f)
+                {
+                    Log.LogWarning(
+                        fileName + ": a held beam pulls its trigger fireRate " +
+                        "times a second (" + weapon.fireRate.ToString("0.#") +
+                        "), and a courier launches a drone with every pull - " +
+                        "that is " + weapon.fireRate.ToString("0.#") + " drones a " +
+                        "second. A courier laser wants a fireRate of about 1. " +
+                        "Each drone's beam ticks at \"beamRate\" (" +
+                        cfg.beamRate.ToString("0.#") + " a second) whatever " +
+                        "fireRate says.");
+                }
+            }
+            else if ((o["beamTime"] != null || o["beamRate"] != null) && cfg.weapon == null)
+            {
+                Log.LogInfo(fileName + ": courier \"beamTime\" / \"beamRate\" " +
+                            "only mean something when the drone fires a BEAM. " +
+                            "Ignored.");
+            }
+
+            // ---- the honest notes ------------------------------------------------
+            if (cfg.weapon != null)
+            {
+                Log.LogInfo(
+                    fileName + ": courier fires '" + cfg.weapon + "' from each " +
+                    "drone instead of its own shot - looked up when a drone first " +
+                    "fires, built with this gun's modules, and its kills are paid " +
+                    "to this gun.");
+            }
+
+            if (cfg.shootable == ForgeCourierRules.Shootable.Decoy &&
+                !string.Equals(cfg.art.visual, ForgeWingman.DefaultBody,
+                               StringComparison.OrdinalIgnoreCase))
+            {
+                Log.LogInfo(
+                    fileName + ": a decoy courier is the game's own combat drone " +
+                    "(enemies can only aim at a real unit); \"visual\" is worn " +
+                    "on top of it with the drone's own art hidden.");
+            }
+
+            if (cfg.formation == ForgeCourierRules.Formation.Ring &&
+                weapon.projectileCount <= 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": courier \"formation\": \"ring\" sends one drone " +
+                    "per pellet, and this gun has projectileCount " +
+                    weapon.projectileCount + " - so it is one drone. Raise " +
+                    "projectileCount (and give it a spread for the ring's size).");
+            }
+
+            if (cfg.formation == ForgeCourierRules.Formation.Ring &&
+                weapon.spread <= 0f && weapon.projectileCount > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": courier ring at spread 0 - every drone lands " +
+                    "on the same point. Give the weapon a spread: it sets the " +
+                    "ring's size, the way it does for bloom.");
+            }
+
+            ForgeCourier.Register(weapon, cfg);
+
+            // ---- the summary -------------------------------------------------------
+            string fires = cfg.weapon != null
+                ? "'" + cfg.weapon + "'"
+                : (beam ? "its own beam" : "its own shot");
+
+            Log.LogInfo(
+                fileName + ": COURIER - each pull launches " +
+                (cfg.formation == ForgeCourierRules.Formation.Ring
+                    ? "a RING of " + Mathf.Max(1, Mathf.RoundToInt(weapon.projectileCount)) +
+                      " drones round your cursor"
+                    : "a drone") +
+                " that " +
+                (cfg.entry == ForgeCourierRules.Entry.Appear
+                    ? "appears there"
+                    : "flies there at " + cfg.speed.ToString("0.#") + " units/second" +
+                      (cfg.overWalls ? " over walls" : ", stopping at the first wall")) +
+                (cfg.reach > 0f ? " (reach " + cfg.reach.ToString("0.#") + ")" : " (reach: the gun's range)") +
+                ", winds up " + cfg.windup.ToString("0.##") + "s and fires " + fires + " " +
+                cfg.shots + " time(s)" +
+                (beam ? " (" + cfg.beamTime.ToString("0.##") + "s of beam each, " +
+                        cfg.beamRate.ToString("0.#") + " damage ticks a second)" : "") +
+                ", aimed " + cfg.AimFor(cfg.formation == ForgeCourierRules.Formation.Ring)
+                    .ToString().ToLowerInvariant() +
+                (cfg.snap > 0f ? " snapped to " + cfg.snap.ToString("0.#") + " degrees" : "") +
+                (cfg.pattern != ForgeCourierRules.Pattern.Single
+                    ? ", " + cfg.pattern.ToString().ToLowerInvariant() + " pattern" : "") +
+                (cfg.turn != 0f ? ", turning " + cfg.turn.ToString("0.#") + " degrees a shot" : "") +
+                ", then " + (cfg.exit == ForgeCourierRules.Exit.Recoil ? "pulls back and fades" : "fades") +
+                " over " + cfg.fadeTime.ToString("0.##") + "s. " +
+                (cfg.shootable == ForgeCourierRules.Shootable.Off
+                    ? "Enemies cannot hit it."
+                    : cfg.shootable == ForgeCourierRules.Shootable.Hit
+                        ? "Enemy fire that reaches it hurts it (" + cfg.health.ToString("0.#") +
+                          " health) and is blocked by it."
+                        : "It is a DECOY enemies aim at (" + cfg.health.ToString("0.#") + " health).") +
+                " No cap: the gun's fire rate and ammo are the limit." +
+                (cfg.dronesPerLevel > 0
+                    ? " A BoosterCore beside it adds " + cfg.dronesPerLevel + " drone(s) a pull for each " +
+                      "level above 1 (" + (cfg.formation == ForgeCourierRules.Formation.Ring
+                          ? "to the ring"
+                          : "side by side across your aim, " + cfg.spacing.ToString("0.##") + " apart") +
+                      ", at most " + ForgeCourierRules.MaxLine + ")."
+                    : " Boosting adds no drones (\"dronesPerLevel\": 0).") +
+                (cfg.mirrorWingmen
+                    ? " A wingman's drone lands beside yours, where that wingman sits by your ship."
+                    : " A wingman's drone lands on top of yours (\"wingmanDrones\": \"stack\").") +
+                (beam && root["curveBeam"] != null
+                    ? " Its curveBeam is drawn from each drone, not from your ship."
+                    : "") +
+                (cfg.ring == ForgeBloom.RingShow.Off
+                    ? ""
+                    : " The reach ring is drawn round your ship " +
+                      (cfg.ring == ForgeBloom.RingShow.Always ? "all the time"
+                       : cfg.ring == ForgeBloom.RingShow.Held ? "while you hold the trigger"
+                       : "when your cursor is past the reach") + "."));
+        }
+
+        private const string DefaultCourierLaunchSfx = "Actives/CombatDrone/Deploy";
+
+        // "its impact effect, its explosion and its sub-emitter" - what a
+        // grenade fires when it goes off, in words.
+        private static string BlastWords(
+            string effect, bool explosion, bool sub, bool discharge)
+        {
+            var parts = new List<string> { effect };
+
+            if (explosion)
+                parts.Add("its explosion");
+
+            if (sub)
+                parts.Add("its sub-emitter");
+
+            if (discharge)
+                parts.Add("its discharge");
+
+            if (parts.Count == 1)
+                return parts[0];
+
+            return string.Join(", ", parts.GetRange(0, parts.Count - 1).ToArray()) +
+                   " and " + parts[parts.Count - 1];
         }
 
         // The drift, in words, with its laps and direction where it has them.
@@ -20288,6 +21297,20 @@ namespace WeaponForge
 
                 if (ForgeWingman.TryGet(weapon, out wing) && wing != null &&
                     wing.capPerLevel > 0)
+                {
+                    scalesWithLevel = true;
+                }
+            }
+
+            // A COURIER's drones a pull grow with the level (R21 part 4, his
+            // "+1 drone a level", on by default) - the fourth feature that
+            // reads Level and would be dead without this flag.
+            if (!scalesWithLevel && weapon != null)
+            {
+                ForgeCourier.Config courier;
+
+                if (ForgeCourier.TryGet(weapon, out courier) && courier != null &&
+                    courier.dronesPerLevel > 0)
                 {
                     scalesWithLevel = true;
                 }

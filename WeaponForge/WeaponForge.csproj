@@ -322,6 +322,7 @@
     <Compile Include="ForgeDroneBrain.cs" />
     <Compile Include="ForgeDroneModesPatch.cs" />
     <Compile Include="ForgeDroneModeSave.cs" />
+    <Compile Include="ForgeSettingsTab.cs" />
     <Compile Include="ForgeRankPatch.cs" />
     <Compile Include="ForgeRankSave.cs" />
     <Compile Include="ForgeRankCarry.cs" />
@@ -331,6 +332,10 @@
     <Compile Include="ForgeBloomHooks.cs" />
     <Compile Include="ForgeBloomPatch.cs" />
     <Compile Include="ForgeBloomPath.cs" />
+    <Compile Include="ForgeCourier.cs" />
+    <Compile Include="ForgeCourierDrone.cs" />
+    <Compile Include="ForgeCourierPatch.cs" />
+    <Compile Include="ForgeCourierRules.cs" />
     <Compile Include="ForgeBloomRing.cs" />
     <Compile Include="ForgeBloomShot.cs" />
     <Compile Include="ForgeGrowth.cs" />

@@ -245,42 +245,56 @@ namespace WeaponForge
         {
             static void Prefix(WeaponBase __instance)
             {
-                if (!ForgeWingman.Any || _mirroring || __instance == null)
+                // A COURIER DRONE FIRING is not a pull: the wingmen already
+                // fired with the courier gun's launch (ForgeCourierDrone calls
+                // Mirror then), and would otherwise fire again with every
+                // shot the drone takes.
+                if (ForgeCourier.Firing > 0)
                     return;
 
-                Unit owner = __instance.Owner;
+                Mirror(__instance);
+            }
+        }
 
-                if (owner == null)
+        // One pull of `__instance`: every wingman mirroring it fires. Public
+        // for the courier launch, whose pull never reaches DoShoot.
+        public static void Mirror(WeaponBase __instance)
+        {
+            if (!ForgeWingman.Any || _mirroring || __instance == null)
+                return;
+
+            Unit owner = __instance.Owner;
+
+            if (owner == null)
+                return;
+
+            try
+            {
+                Ensure(owner);
+
+                var controllers =
+                    owner.GetComponentsInChildren<ForgeWingmanController>(true);
+
+                if (controllers == null || controllers.Length == 0)
                     return;
+
+                _mirroring = true;
 
                 try
                 {
-                    Ensure(owner);
-
-                    var controllers =
-                        owner.GetComponentsInChildren<ForgeWingmanController>(true);
-
-                    if (controllers == null || controllers.Length == 0)
-                        return;
-
-                    _mirroring = true;
-
-                    try
-                    {
-                        for (int i = 0; i < controllers.Length; i++)
-                            if (controllers[i].Mirrors(__instance))
-                                controllers[i].OnMirroredShot(__instance);
-                    }
-                    finally
-                    {
-                        _mirroring = false;
-                    }
+                    for (int i = 0; i < controllers.Length; i++)
+                        if (controllers[i].Mirrors(__instance))
+                            controllers[i].OnMirroredShot(__instance);
                 }
-                catch (Exception e)
+                finally
                 {
                     _mirroring = false;
-                    Log.LogError("wingman: mirroring a shot failed: " + e);
                 }
+            }
+            catch (Exception e)
+            {
+                _mirroring = false;
+                Log.LogError("wingman: mirroring a shot failed: " + e);
             }
         }
 
